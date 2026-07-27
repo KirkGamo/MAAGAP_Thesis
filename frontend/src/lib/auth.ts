@@ -8,19 +8,26 @@ import type { UserRole } from "@/types/database";
  * check belongs in layouts/Server Components rather than in proxy.ts —
  * see src/lib/supabase/proxy.ts for why.
  *
- * Uses `getClaims()` (not `getSession()`), which validates the JWT
- * signature against Supabase's published keys on every call and is the
- * method Supabase's own docs recommend for protecting pages/data.
+ * Uses `getUser()` (not `getSession()` or `getClaims()`). `getUser()`
+ * revalidates the token against the Supabase Auth server on every call,
+ * which works identically regardless of whether a project has asymmetric
+ * JWT signing keys enabled. `getClaims()` verifies locally instead and
+ * depends on that key configuration — on a project still using the
+ * legacy shared JWT secret, `getClaims()` failed to verify a freshly
+ * signed-in user at all, bouncing every request straight back to /login
+ * (the exact bug reported in Phase 8.5). `getSession()` is avoided
+ * because it does not guarantee revalidation of a potentially-stale
+ * token.
  */
 export async function requireRole(allowed: UserRole[]) {
   const supabase = await createClient();
 
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  if (claimsError || !claimsData?.claims) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
     redirect("/login");
   }
 
-  const userId = claimsData.claims.sub;
+  const userId = userData.user.id;
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, full_name, role")

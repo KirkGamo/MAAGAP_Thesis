@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, riskTierVariant } from "@/components/ui/badge";
+import type { ProjectStatus, RiskTier } from "@/types/database";
 import {
   Table,
   TableBody,
@@ -44,11 +45,17 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
   if (params.q) {
     query = query.ilike("name_of_project", `%${params.q}%`);
   }
-  if (params.risk_tier) {
-    query = query.eq("risk_tier", params.risk_tier);
+  // Narrow the raw URL search params (plain strings) to the actual union
+  // types the risk_tier/status columns use — .eq() is typed against the
+  // column, so a bare string (even one that's always valid in practice,
+  // since it only ever comes from BacklogFilters' own <select> options)
+  // won't type-check without this. Invalid/stale query params are simply
+  // ignored rather than erroring the page.
+  if (params.risk_tier && (RISK_TIERS as readonly string[]).includes(params.risk_tier)) {
+    query = query.eq("risk_tier", params.risk_tier as RiskTier);
   }
-  if (params.status) {
-    query = query.eq("status", params.status);
+  if (params.status && STATUSES.some((s) => s.value === params.status)) {
+    query = query.eq("status", params.status as ProjectStatus);
   }
 
   const { data: projects, error } = await query;

@@ -7,6 +7,19 @@
  * version exists so the scaffold type-checks before a live Supabase project
  * is connected — regenerate it as the first step after running
  * `supabase/schema.sql` against a real project.
+ *
+ * SHAPE NOTE (Phase 8.5 fix): every table needs a `Relationships` array,
+ * and the `public` schema needs `Views`/`Functions`/`Enums`/
+ * `CompositeTypes` keys (even if empty), because postgrest-js's
+ * `GenericSchema`/`GenericTable` types require them structurally. An
+ * earlier version of this file omitted them (a plausible-looking but
+ * incomplete hand-write), which silently collapsed every `.from(...)`
+ * query's inferred type to `never` once @supabase/supabase-js was
+ * upgraded past ~2.5x — every column access in every Server
+ * Component/Action started failing `tsc` with
+ * "Property 'x' does not exist on type 'never'" despite the code itself
+ * being correct. Match this exact shape (the same one the Supabase CLI's
+ * `gen types` command produces) to avoid that class of bug recurring.
  */
 
 export type UserRole = "manager" | "inspector";
@@ -19,7 +32,10 @@ export type ProjectStatus =
   | "completed"
   | "for_bidding";
 
-export interface Database {
+export type Database = {
+  __InternalSupabase: {
+    PostgrestVersion: "13";
+  };
   public: {
     Tables: {
       profiles: {
@@ -41,6 +57,7 @@ export interface Database {
           role?: UserRole;
           created_at?: string;
         };
+        Relationships: [];
       };
       projects: {
         Row: {
@@ -65,6 +82,15 @@ export interface Database {
           location: string;
         };
         Update: Partial<Database["public"]["Tables"]["projects"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "projects_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       inspector_schedules: {
         Row: {
@@ -83,6 +109,22 @@ export interface Database {
           week_of: string;
         };
         Update: Partial<Database["public"]["Tables"]["inspector_schedules"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "inspector_schedules_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "inspector_schedules_inspector_id_fkey";
+            columns: ["inspector_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       monitoring_reports: {
         Row: {
@@ -102,7 +144,30 @@ export interface Database {
           status_observed: ProjectStatus;
         };
         Update: Partial<Database["public"]["Tables"]["monitoring_reports"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "monitoring_reports_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "monitoring_reports_inspector_id_fkey";
+            columns: ["inspector_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: {
+      user_role: UserRole;
+      project_status: ProjectStatus;
+    };
+    CompositeTypes: Record<string, never>;
   };
-}
+};
