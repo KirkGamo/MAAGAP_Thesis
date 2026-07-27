@@ -1,6 +1,5 @@
-# MAAGAP ML microservice — data pipeline + Level 0 model training dependencies
-# Additional dependencies (pulp, fastapi) will be added as the optimization
-# and API service stages are implemented.
+# MAAGAP ML microservice — data pipeline, model training, optimization, and
+# API service dependencies.
 pandas>=2.2
 numpy>=1.26
 openpyxl>=3.1
@@ -9,3 +8,11 @@ scikit-learn>=1.3
 xgboost>=2.0
 tensorflow>=2.16
 joblib>=1.3
+
+# Optimization engine (Phase 5)
+pulp>=2.8
+
+# FastAPI feedback-loop service (Phase 8)
+fastapi>=0.115
+uvicorn[standard]>=0.32
+supabase>=2.10

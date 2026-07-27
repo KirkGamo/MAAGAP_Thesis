@@ -5,20 +5,23 @@
  * ================================================================================
  * This Server Action is the seam between the human field-monitoring workflow
  * (an Inspector physically visiting a project and filing a report) and the
- * ML pipeline in ml-service/ that MAAGAP's risk scoring depends on. It is a
- * placeholder in two senses, and both are intentional and documented rather
- * than silently deferred:
+ * ML pipeline in ml-service/ that MAAGAP's risk scoring depends on.
  *
  *   1. The Supabase write (inserting into `monitoring_reports`) is fully
  *      implemented and safe to use as-is — RLS (see
  *      supabase/schema.sql, "reports: inspectors insert own") independently
  *      enforces that an Inspector can only file a report as themselves.
  *
- *   2. The webhook call to the FastAPI ML service is NOT implemented against
- *      a real endpoint, because that endpoint does not exist yet in
- *      ml-service/ — this action documents exactly what it should do and
- *      calls a clearly-named, not-yet-built URL so wiring it up later is a
- *      one-file change, not an archaeology exercise.
+ *   2. AS OF PHASE 8, the webhook call to the FastAPI ML service is wired to
+ *      a real endpoint: `POST ${FASTAPI_ML_SERVICE_URL}/webhooks/monitoring-report`,
+ *      implemented in ml-service/main.py (an alias of
+ *      `/api/v1/update-monitoring`), which triggers
+ *      ml-service/inference/live_scoring.py to refresh that one project's
+ *      time-elapsed features and LSTM event sequence and re-run it through
+ *      the already-trained RF/XGBoost/LSTM/meta-learner artifacts. See that
+ *      module's docstring for exactly what this can and cannot do without a
+ *      full retrain (new feature columns like percent_complete cannot move
+ *      the score; status and elapsed-time features can).
  *
  * WHY THIS MATTERS FOR THE THESIS ARCHITECTURE
  * -----------------------------------------------
@@ -89,18 +92,24 @@ export type SubmitReportResult =
 
 /**
  * Notifies the FastAPI ML service that a project's real-world state may
- * have changed, so it can eventually trigger re-scoring/retraining.
+ * have changed, so it re-scores that project's live risk classification.
  *
- * PLACEHOLDER: `${FASTAPI_ML_SERVICE_URL}/webhooks/monitoring-report` does
- * not exist in ml-service/ yet. Until it does, this function logs its
- * intent and returns without throwing — see the module docstring for the
- * full intended contract. Fire-and-forget: a failure here must never
- * surface as an error to the Inspector submitting the report.
+ * WIRED (Phase 8 Task 2): `${FASTAPI_ML_SERVICE_URL}/webhooks/monitoring-report`
+ * is now a real route — see ml-service/main.py's `monitoring_report_webhook`
+ * (an alias of `POST /api/v1/update-monitoring`). The body is intentionally
+ * snake_case to match FastAPI/Pydantic's `UpdateMonitoringPayload` field
+ * names exactly, since FastAPI does not camelCase-alias by default. Still
+ * fire-and-forget: a failure here must never surface as an error to the
+ * Inspector submitting the report — ml-service/main.py's endpoint is only
+ * ever a downstream consequence of a report that has already been saved to
+ * Supabase (see submitReport() below), never a precondition for it.
  */
 async function notifyMlService(payload: {
   projectKey: string;
   statusObserved: ProjectStatus;
-  dateOfCompletion: string | null;
+  percentComplete: number | null;
+  amountSpent: number | null;
+  observedAt: string;
 }) {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   const secret = process.env.ML_SERVICE_WEBHOOK_SECRET;
@@ -108,8 +117,8 @@ async function notifyMlService(payload: {
   if (!baseUrl) {
     console.warn(
       "[submit-report] FASTAPI_ML_SERVICE_URL is not configured — skipping ML " +
-        "service webhook. This is expected until ml-service/ exposes " +
-        "/webhooks/monitoring-report (see this file's module docstring)."
+        "service webhook. Set it (e.g. http://localhost:8000 for local dev) to " +
+        "enable live re-scoring via ml-service/main.py."
     );
     return;
   }
@@ -121,7 +130,13 @@ async function notifyMlService(payload: {
         "Content-Type": "application/json",
         "X-Webhook-Secret": secret ?? "",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        project_key: payload.projectKey,
+        status_observed: payload.statusObserved,
+        percent_complete: payload.percentComplete,
+        amount_spent: payload.amountSpent,
+        observed_at: payload.observedAt,
+      }),
       // Fire-and-forget: don't let a slow/unreachable ML service hold up
       // the Inspector's submission.
       signal: AbortSignal.timeout(3000),
@@ -180,7 +195,9 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     await notifyMlService({
       projectKey: project.project_key,
       statusObserved: input.statusObserved,
-      dateOfCompletion,
+      percentComplete: input.percentComplete ?? null,
+      amountSpent: null, // not yet collected by the inspector report form — see module docstring
+      observedAt: new Date().toISOString(),
     });
   }
 

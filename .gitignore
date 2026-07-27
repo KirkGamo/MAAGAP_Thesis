@@ -121,6 +121,14 @@ logs/
 .git-broken/
 .git-old-*/
 **/.git-scaffold-nested-DELETE-ME/
+**/.live_scores-test-artifact-DELETE-ME.json
+
+# ---------------------------------------------------------------------
+# ml-service/main.py's live re-scoring output — runtime state, not a
+# committed artifact (regenerated per-project as inspector reports come
+# in; see ml-service/inference/live_scoring.py's _persist_live_score).
+# ---------------------------------------------------------------------
+ml-service/artifacts/live_scores.json
 
 # ---------------------------------------------------------------------
 # Office lock/temp files (Word/Excel/LibreOffice)
