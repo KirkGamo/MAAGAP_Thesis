@@ -90,17 +90,13 @@ create policy "projects: managers full access"
     exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
   );
 
--- Inspectors can only READ projects they are currently scheduled against
--- (join through inspector_schedules) — never the full backlog, and never
--- write access to project records themselves.
-create policy "projects: inspectors read assigned"
-  on public.projects for select
-  using (
-    exists (
-      select 1 from public.inspector_schedules s
-      where s.project_id = projects.id and s.inspector_id = auth.uid()
-    )
-  );
+-- NOTE: the "inspectors read assigned" policy on public.projects is
+-- defined further down, right after public.inspector_schedules is
+-- created — a CREATE POLICY's USING clause is resolved at creation time,
+-- so it cannot reference a table that doesn't exist yet. (Originally this
+-- policy was placed here, before inspector_schedules existed, which fails
+-- with "relation public.inspector_schedules does not exist" — moved below
+-- to fix that ordering bug.)
 
 -- ---------------------------------------------------------------------
 -- inspector_schedules: the PuLP-optimized weekly deployment output,
@@ -117,6 +113,19 @@ create table if not exists public.inspector_schedules (
 );
 
 alter table public.inspector_schedules enable row level security;
+
+-- Inspectors can only READ projects they are currently scheduled against
+-- (join through inspector_schedules) — never the full backlog, and never
+-- write access to project records themselves. Defined here (not up next
+-- to projects' other policy) because it depends on this table existing.
+create policy "projects: inspectors read assigned"
+  on public.projects for select
+  using (
+    exists (
+      select 1 from public.inspector_schedules s
+      where s.project_id = projects.id and s.inspector_id = auth.uid()
+    )
+  );
 
 create policy "schedules: managers full access"
   on public.inspector_schedules for all
