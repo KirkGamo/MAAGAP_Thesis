@@ -21,7 +21,7 @@ export default async function ProjectRiskMapPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Risk Map</h1>
+        <h1 className="text-2xl font-semibold text-brand-navy">Risk Map</h1>
         <p className="text-sm text-slate-500">
           Ongoing projects plotted by municipality, color-coded by the meta-learner&apos;s
           predicted risk tier.

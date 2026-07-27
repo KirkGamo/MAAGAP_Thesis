@@ -8,13 +8,15 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-slate-900 text-slate-50 hover:bg-slate-800",
+        // MAAGAP brand primary (Phase 9) -- sampled from the logo, see
+        // globals.css's @theme block for the palette definition.
+        default: "bg-brand-navy text-white hover:bg-brand-blue",
         destructive: "bg-red-600 text-white hover:bg-red-500",
         outline:
-          "border border-slate-200 bg-white hover:bg-slate-100 hover:text-slate-900",
-        secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
-        ghost: "hover:bg-slate-100 hover:text-slate-900",
-        link: "text-slate-900 underline-offset-4 hover:underline",
+          "border border-brand-navy/20 bg-white text-brand-navy hover:bg-brand-surface",
+        secondary: "bg-brand-surface text-brand-navy hover:bg-brand-cyan-light/60",
+        ghost: "hover:bg-brand-surface hover:text-brand-navy",
+        link: "text-brand-blue underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",

@@ -39,7 +39,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">{project.name_of_project}</h1>
+        <h1 className="text-2xl font-semibold text-brand-navy">{project.name_of_project}</h1>
         <p className="text-sm text-slate-500">
           {project.project_key} · {project.location}
         </p>

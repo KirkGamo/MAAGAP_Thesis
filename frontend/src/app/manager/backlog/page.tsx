@@ -63,7 +63,7 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Backlog</h1>
+        <h1 className="text-2xl font-semibold text-brand-navy">Backlog</h1>
         <p className="text-sm text-slate-500">
           Every tracked project, filterable by name, risk tier, and status.
         </p>

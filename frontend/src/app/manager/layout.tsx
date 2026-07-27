@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 
@@ -6,6 +7,10 @@ import { requireRole } from "@/lib/auth";
  * signed-in Inspector tries to reach a /manager/* route, and to /login if
  * no session exists at all — this is the RBAC enforcement point for the
  * whole portal (see src/lib/auth.ts).
+ *
+ * Phase 9: sidebar now shows the actual MAAGAP logo (public/maagap-logo.png)
+ * instead of a plain-text wordmark, and uses the brand palette defined in
+ * globals.css's @theme block (sampled from the logo itself).
  */
 export default async function ManagerLayout({
   children,
@@ -23,26 +28,33 @@ export default async function ManagerLayout({
   ];
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white p-4 md:block">
+    <div className="flex min-h-screen bg-brand-surface">
+      <aside className="hidden w-60 shrink-0 border-r border-brand-navy/10 bg-white p-4 md:block">
         <div className="mb-6 px-2">
-          <p className="text-sm font-semibold text-slate-900">MAAGAP</p>
-          <p className="text-xs text-slate-500">Manager Portal</p>
+          <Image
+            src="/maagap-logo.png"
+            alt="MAAGAP"
+            width={140}
+            height={46}
+            priority
+            className="h-auto w-full max-w-[140px]"
+          />
+          <p className="mt-1 text-xs font-medium text-brand-blue">Manager Portal</p>
         </div>
         <nav className="flex flex-col gap-1">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="rounded-md px-3 py-2 text-sm font-medium text-brand-navy/80 transition-colors hover:bg-brand-surface hover:text-brand-navy"
             >
               {item.label}
             </Link>
           ))}
         </nav>
-        <div className="mt-8 border-t border-slate-200 px-2 pt-4 text-xs text-slate-500">
+        <div className="mt-8 border-t border-brand-navy/10 px-2 pt-4 text-xs text-slate-500">
           Signed in as
-          <div className="font-medium text-slate-700">
+          <div className="font-medium text-brand-navy">
             {profile.full_name ?? "Manager"}
           </div>
         </div>

@@ -1,8 +1,38 @@
 @import "tailwindcss";
 
+/*
+ * MAAGAP brand palette (Phase 9), sampled directly from the logo
+ * (image_94dbf2.png) rather than guessed -- averaged the actual pixel
+ * clusters in each of the logo's four color regions:
+ *   Deep Navy  #242467  (leftmost mark + "MA")
+ *   Royal Blue #234FA4  ("A")
+ *   Sky Blue   #099ED7  ("G")
+ *   Cyan       #6AD9F7  ("AP")
+ *
+ * This project uses Tailwind v4 (@tailwindcss/postcss), which replaced
+ * tailwind.config.ts's JS-based theme extension with this CSS-native
+ * @theme block -- there is no tailwind.config.ts in this scaffold to
+ * edit (verified: none exists). Defining --color-brand-* here makes
+ * bg-brand-navy, text-brand-sky, border-brand-cyan, etc. available as
+ * ordinary Tailwind utility classes everywhere in the app, exactly as
+ * tailwind.config.ts's `theme.extend.colors` would have.
+ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  --color-brand-navy: #242467;
+  --color-brand-blue: #234fa4;
+  --color-brand-sky: #099ed7;
+  --color-brand-cyan: #6ad9f7;
+
+  /* Lighter/darker steps of the brand blues, for hover states, subtle
+     backgrounds, and borders without introducing an unrelated hue. */
+  --color-brand-navy-dark: #171749;
+  --color-brand-blue-light: #4a72c2;
+  --color-brand-sky-light: #3fbde5;
+  --color-brand-cyan-light: #a3e9fb;
+  --color-brand-surface: #f2f8fd;
 }
 
 @theme inline {
@@ -10,6 +40,16 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-brand-navy: var(--color-brand-navy);
+  --color-brand-blue: var(--color-brand-blue);
+  --color-brand-sky: var(--color-brand-sky);
+  --color-brand-cyan: var(--color-brand-cyan);
+  --color-brand-navy-dark: var(--color-brand-navy-dark);
+  --color-brand-blue-light: var(--color-brand-blue-light);
+  --color-brand-sky-light: var(--color-brand-sky-light);
+  --color-brand-cyan-light: var(--color-brand-cyan-light);
+  --color-brand-surface: var(--color-brand-surface);
 }
 
 @media (prefers-color-scheme: dark) {

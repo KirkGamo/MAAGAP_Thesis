@@ -7,7 +7,7 @@ export default function ImportProjectsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Import Projects</h1>
+        <h1 className="text-2xl font-semibold text-brand-navy">Import Projects</h1>
         <p className="text-sm text-slate-500">
           Bring new PPDO monitoring data into MAAGAP via a consolidated CSV export, or
           add a single project by hand.
