@@ -68,10 +68,13 @@
  *
  * WHAT IS DELIBERATELY NOT HERE
  * ------------------------------
- * Photo upload handling (Supabase Storage), offline queuing for spotty
- * field connectivity, and the actual FastAPI route handler are all out of
- * scope for this scaffold and should be designed as their own follow-up
- * pieces — flagging them here so they aren't mistaken for oversights.
+ * AS OF PHASE 10, photo upload handling is implemented — see
+ * app/inspector/report/[projectId]/report-form.tsx (captures/uploads to the
+ * `monitoring-photos` Storage bucket, storing paths in `photoUrls` below)
+ * and app/manager/backlog/[projectId]/page.tsx (re-signs and displays
+ * them). Offline queuing for spotty field connectivity is still out of
+ * scope for this scaffold and should be designed as its own follow-up piece
+ * — flagging it here so it isn't mistaken for an oversight.
  */
 
 import { revalidatePath } from "next/cache";
@@ -110,6 +113,7 @@ async function notifyMlService(payload: {
   percentComplete: number | null;
   amountSpent: number | null;
   observedAt: string;
+  photoUrl: string | null;
 }) {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   const secret = process.env.ML_SERVICE_WEBHOOK_SECRET;
@@ -136,6 +140,12 @@ async function notifyMlService(payload: {
         percent_complete: payload.percentComplete,
         amount_spent: payload.amountSpent,
         observed_at: payload.observedAt,
+        // Phase 10, Task 4: ml-service/main.py's UpdateMonitoringPayload
+        // accepts one representative photo path for audit visibility on
+        // that endpoint; the full set already lives in Supabase's
+        // monitoring_reports.photo_urls (written above), which is the
+        // record of truth.
+        photo_url: payload.photoUrl,
       }),
       // Fire-and-forget: don't let a slow/unreachable ML service hold up
       // the Inspector's submission.
@@ -198,6 +208,7 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
       percentComplete: input.percentComplete ?? null,
       amountSpent: null, // not yet collected by the inspector report form — see module docstring
       observedAt: new Date().toISOString(),
+      photoUrl: input.photoUrls?.[0] ?? null,
     });
   }
 
