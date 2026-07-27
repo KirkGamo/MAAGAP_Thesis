@@ -19,6 +19,7 @@ export default async function ManagerLayout({
     { href: "/manager/import", label: "Import Projects" },
     { href: "/manager/backlog", label: "Backlog" },
     { href: "/manager/schedule", label: "Schedule" },
+    { href: "/manager/map", label: "Risk Map" },
   ];
 
   return (
