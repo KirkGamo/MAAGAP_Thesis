@@ -19,11 +19,27 @@ export default async function RootPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", userData!.user.id)
     .single();
 
-  redirect(profile?.role === "manager" ? "/manager" : "/inspector");
+  // Don't silently fall through to "/inspector" on a failed/empty lookup —
+  // that previously masked a real bug (an RLS infinite-recursion error on
+  // public.profiles, fixed in supabase/schema.sql + fix_rls_recursion.sql)
+  // by making it look like "signed in, but somehow always an Inspector."
+  // If the profile genuinely can't be read, send the user back to sign in
+  // rather than guessing a role, and log why on the server so it's
+  // debuggable instead of a silent redirect loop.
+  if (profileError || !profile) {
+    console.error(
+      "[RootPage] Could not load profile for signed-in user %s:",
+      userData!.user.id,
+      profileError
+    );
+    redirect("/login");
+  }
+
+  redirect(profile.role === "manager" ? "/manager" : "/inspector");
 }

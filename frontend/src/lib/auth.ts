@@ -35,6 +35,15 @@ export async function requireRole(allowed: UserRole[]) {
     .single();
 
   if (profileError || !profile) {
+    // Log the real reason rather than only redirecting -- a
+    // "not signed in" bounce is indistinguishable from an RLS error
+    // (e.g. the profiles infinite-recursion bug fixed in
+    // supabase/fix_rls_recursion.sql) without this, and that's exactly
+    // what made the Phase 8.5 login loop hard to diagnose from the
+    // request log alone.
+    console.error(
+      "[requireRole] Could not load profile for user %s:", userId, profileError
+    );
     redirect("/login");
   }
 

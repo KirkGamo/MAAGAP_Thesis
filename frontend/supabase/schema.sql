@@ -25,15 +25,35 @@ create policy "profiles: read own"
   on public.profiles for select
   using (auth.uid() = id);
 
+-- "Is the current user a manager?" helper, used by every "managers full
+-- access" policy below (profiles/projects/inspector_schedules/
+-- monitoring_reports). MUST be `security definer` so its internal query
+-- runs as the function owner and bypasses RLS entirely -- if this were a
+-- plain inline `exists (select 1 from public.profiles ...)` subquery
+-- directly inside a policy ON public.profiles (as an earlier version of
+-- this schema had it), Postgres has to re-apply profiles' RLS to resolve
+-- that subquery, which re-triggers the very same policy, which queries
+-- profiles again... "infinite recursion detected in policy for relation
+-- profiles" on every single select against profiles (this was a real bug
+-- caught in Phase 8.5: every login appeared to succeed but every
+-- subsequent request bounced back to /login, because the profile lookup
+-- inside requireRole() was failing with exactly this Postgres error).
+create function public.is_manager()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and role = 'manager'
+  );
+$$;
+
 -- Managers can read every profile (needed to list/assign inspectors).
 create policy "profiles: managers read all"
   on public.profiles for select
-  using (
-    exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.role = 'manager'
-    )
-  );
+  using (public.is_manager());
 
 -- Auto-create a profile row (defaulting to 'inspector') whenever a new
 -- auth.users row is created. Promote a user to 'manager' manually via the
@@ -83,12 +103,8 @@ alter table public.projects enable row level security;
 -- Managers have full read/write access.
 create policy "projects: managers full access"
   on public.projects for all
-  using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
-  )
-  with check (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
-  );
+  using (public.is_manager())
+  with check (public.is_manager());
 
 -- NOTE: the "inspectors read assigned" policy on public.projects is
 -- defined further down, right after public.inspector_schedules is
@@ -129,12 +145,8 @@ create policy "projects: inspectors read assigned"
 
 create policy "schedules: managers full access"
   on public.inspector_schedules for all
-  using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
-  )
-  with check (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
-  );
+  using (public.is_manager())
+  with check (public.is_manager());
 
 create policy "schedules: inspectors read own"
   on public.inspector_schedules for select
@@ -161,9 +173,7 @@ alter table public.monitoring_reports enable row level security;
 
 create policy "reports: managers read all"
   on public.monitoring_reports for select
-  using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
-  );
+  using (public.is_manager());
 
 create policy "reports: inspectors insert own"
   on public.monitoring_reports for insert
