@@ -77,6 +77,21 @@ class UpdateMonitoringPayload(BaseModel):
     observed_at: Optional[datetime] = Field(
         None, description="Defaults to server-received time (UTC) if omitted."
     )
+    photo_url: Optional[str] = Field(
+        None,
+        description=(
+            "Phase 10, Task 4: a Supabase Storage path/URL for one of the Inspector's "
+            "site photos on this visit (see monitoring_reports.photo_urls in Supabase, "
+            "which is the record of truth for the full set — this webhook only ever "
+            "receives one representative photo alongside the re-score signal). Not a "
+            "model feature: none of RF/XGBoost/LSTM/the meta-learner consume image data, "
+            "so this field does not affect risk_tier or risk_probability. It is accepted "
+            "and logged/persisted (see _run_rescore below) purely so this endpoint's "
+            "payload can be inspected/audited without needing a separate Supabase query, "
+            "and so any future visual-evidence feature (e.g. image-based progress "
+            "verification) has a place to land without another payload migration."
+        ),
+    )
 
 
 class UpdateMonitoringResponse(BaseModel):
@@ -115,6 +130,13 @@ def _run_rescore(payload: UpdateMonitoringPayload) -> None:
         payload.project_key, result.risk_tier, result.meta_prob,
         result.random_forest_prob, result.xgboost_prob, result.lstm_prob,
     )
+    if payload.photo_url:
+        # Not a model input (see UpdateMonitoringPayload.photo_url's
+        # docstring) -- logged only, for audit visibility on this endpoint.
+        # The record of truth for an Inspector's photos is Supabase's
+        # monitoring_reports.photo_urls, written directly by
+        # actions/submit-report.ts before this webhook ever fires.
+        logger.info("Photo attached to %s's monitoring report: %s", payload.project_key, payload.photo_url)
 
     _maybe_patch_supabase(payload.project_key, result.risk_tier, result.meta_prob)
 
