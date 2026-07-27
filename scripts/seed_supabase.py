@@ -105,6 +105,18 @@ def _clean_nan(value):
     return value
 
 
+def _safe_str(value, default: str) -> str:
+    """`value or default` looks like the right fallback here, but it's
+    wrong for pandas data: a missing cell comes through as `float('nan')`,
+    and NaN is truthy in Python (`bool(float('nan'))` is True), so
+    `nan or default` evaluates to `nan`, not `default` -- the fallback
+    never fires and `.strip()` blows up downstream with exactly the
+    AttributeError this caused. Check for NaN explicitly instead."""
+    if value is None or (isinstance(value, float) and np.isnan(value)) or pd.isna(value):
+        return default
+    return str(value).strip()
+
+
 def _to_iso_date(value) -> Optional[str]:
     ts = pd.to_datetime(value, errors="coerce")
     return None if pd.isna(ts) else ts.strftime("%Y-%m-%d")
@@ -199,8 +211,8 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
 
         rows.append({
             "project_key": project_key,
-            "name_of_project": (row.get("NAME OF PROJECT") or "Untitled project").strip()[:500],
-            "location": (row.get("LOCATION") or "Unknown").strip()[:500],
+            "name_of_project": _safe_str(row.get("NAME OF PROJECT"), "Untitled project")[:500],
+            "location": _safe_str(row.get("LOCATION"), "Unknown")[:500],
             "municipality": municipality,
             "amount_php": unscale_amount(row.get("AMOUNT (Php)"), scaler_params),
             "status": map_status(row.get("STATUS")),
