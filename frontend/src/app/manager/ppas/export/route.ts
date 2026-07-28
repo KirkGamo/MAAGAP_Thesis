@@ -1,11 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import type { ProjectStatus, RiskTier } from "@/types/database";
-
-const RISK_TIERS = ["Critical", "High", "Medium", "Low"] as const;
-const STATUSES = ["not_yet_implemented", "for_bidding", "on_going", "completed"] as const;
-const PROJECT_TYPES = ["Infrastructure", "Non-Infrastructure", "Unclassified"] as const;
+import { applyPpaFilters, type PpaFilterParams } from "../filters";
 
 /** Quotes a CSV field per RFC 4180: wrap in double quotes and escape any
  * embedded double quotes, but only when the value actually needs it (a
@@ -20,48 +16,51 @@ function csvField(value: string | number | null | undefined): string {
 }
 
 /**
- * Phase 16: CSV export for the PPAs tab, honoring the exact same filters
- * (q, risk_tier, status, municipality, project_type) as the table/map
- * views -- built as a Route Handler rather than a Server Action so the
- * "Export" control can be a plain `<a href>` download link with the
- * current query string, no client-side JS trigger needed. Always exports
- * every matching row (no pagination), since "export the current page
- * only" is rarely what a Manager filtering down to a few hundred rows
- * actually wants.
+ * Phase 16/17: CSV export for the PPAs tab, honoring the exact same
+ * filters as the table/map views -- built as a Route Handler rather than a
+ * Server Action so the "Export" control can be a plain `<a href>` download
+ * link with the current query string, no client-side JS trigger needed.
+ * Always exports every matching row (no pagination), since "export the
+ * current page only" is rarely what a Manager filtering down to a few
+ * hundred rows actually wants.
+ *
+ * Filter application delegates entirely to filters.ts's `applyPpaFilters`
+ * -- the same function page.tsx uses -- so this can never drift out of
+ * sync with what the Manager sees on screen.
  */
 export async function GET(request: NextRequest) {
   await requireRole(["manager"]);
   const supabase = await createClient();
-  const params = request.nextUrl.searchParams;
+  const searchParams = request.nextUrl.searchParams;
+
+  const params: PpaFilterParams = {
+    q: searchParams.get("q") ?? undefined,
+    risk_tier: searchParams.get("risk_tier") ?? undefined,
+    status: searchParams.get("status") ?? undefined,
+    project_type: searchParams.get("project_type") ?? undefined,
+    municipality: searchParams.get("municipality") ?? undefined,
+    revenue_min: searchParams.get("revenue_min") ?? undefined,
+    revenue_max: searchParams.get("revenue_max") ?? undefined,
+    risk_min: searchParams.get("risk_min") ?? undefined,
+    risk_max: searchParams.get("risk_max") ?? undefined,
+  };
+
+  // Same live distinct-municipality validation page.tsx does, so a
+  // municipality param here is trusted exactly as much as it is there.
+  const { data: municipalityRows } = await supabase
+    .from("projects")
+    .select("municipality")
+    .not("municipality", "is", null);
+  const municipalities = Array.from(
+    new Set((municipalityRows ?? []).map((r) => r.municipality).filter((m): m is string => Boolean(m)))
+  );
 
   let query = supabase
     .from("projects")
     .select("project_key, name_of_project, municipality, project_type, status, risk_tier, risk_probability")
     .order("risk_probability", { ascending: false, nullsFirst: false });
 
-  const q = params.get("q");
-  if (q) query = query.ilike("name_of_project", `%${q}%`);
-
-  const riskTier = params.get("risk_tier");
-  if (riskTier && (RISK_TIERS as readonly string[]).includes(riskTier)) {
-    query = query.eq("risk_tier", riskTier as RiskTier);
-  }
-
-  const status = params.get("status");
-  if (status && (STATUSES as readonly string[]).includes(status)) {
-    query = query.eq("status", status as ProjectStatus);
-  }
-
-  const municipality = params.get("municipality");
-  if (municipality) query = query.eq("municipality", municipality);
-
-  const projectType = params.get("project_type");
-  if (projectType && (PROJECT_TYPES as readonly string[]).includes(projectType)) {
-    query = query.eq(
-      "project_type",
-      projectType as "Infrastructure" | "Non-Infrastructure" | "Unclassified"
-    );
-  }
+  query = applyPpaFilters(query, params, municipalities);
 
   const { data, error } = await query;
   if (error) {

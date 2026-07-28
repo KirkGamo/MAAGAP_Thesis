@@ -1,57 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import * as SliderPrimitive from "@radix-ui/react-slider";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseCsvParam } from "./filters";
+
+interface Bounds {
+  min: number;
+  max: number;
+}
 
 interface PpaFilterSidebarProps {
   riskTiers: readonly string[];
   statuses: readonly { value: string; label: string }[];
   projectTypes: readonly string[];
   municipalities: string[];
+  revenueBounds: Bounds;
 }
 
+const RISK_PROBABILITY_BOUNDS: Bounds = { min: 0, max: 100 };
+
 /**
- * Phase 16: dedicated left filter panel for the PPAs tab, replacing the
- * inline `<select>`s that used to sit in a top filter bar (ppa-filters.tsx,
- * now removed) -- matching the reference dashboard's "FILTERS" sidebar
- * pattern the user asked for. Free-text search lives in the table
- * toolbar (data-table.tsx) instead, since it's a different kind of filter
- * (searches text, doesn't facet a fixed set of values) and the reference
- * keeps it there too.
+ * Phase 16 built this as single-select pills; Phase 17 reworks it to match
+ * a reference dashboard screenshot more closely: multi-select checkboxes
+ * per facet (backed by filters.ts's comma-separated `.in()` query logic,
+ * replacing the old single-value `.eq()` filters), plus two dual-handle
+ * range sliders (Budget, Risk Probability) using @radix-ui/react-slider --
+ * the reference's "Total Revenue"/"Headcount" sliders, mapped onto the two
+ * numeric columns this schema actually has (amount_php, risk_probability).
+ * Slider color is brand-blue rather than the reference's red, since red is
+ * already this app's "Critical/danger" signal everywhere else (risk-tier
+ * badges, the KPI header's Critical Risk Load figure) -- reusing it here
+ * for a neutral filter control would misleadingly suggest something's
+ * wrong.
  *
- * Still just rewrites URL search params -- every facet here stays
- * single-select (matching the Supabase .eq() query in page.tsx), rendered
- * as a vertical pill list rather than a <select>, not real multi-select
- * checkboxes like the reference's facets. Multi-select would need
- * .in(...) query changes; out of scope for a visual pass.
- *
- * Municipality and Project Type were added on top of the original Risk
- * Tier/Status pair, per the user's ask for "more filters based on the
- * available data" -- both are real columns on `projects` (see
- * types/database.ts) that weren't filterable at all before this. The
- * Municipality list comes from a live distinct-values query in page.tsx
- * rather than a hardcoded list, so it never drifts from what's actually
- * in the database; it defaults to collapsed since it can run to 40+
- * options and would otherwise dominate the sidebar.
+ * Revenue bounds come from a live MIN/MAX query in page.tsx (via two
+ * cheap order+limit(1) queries, since PostgREST has no aggregate MIN/MAX
+ * in a single .select()) rather than a guessed constant, so the slider's
+ * range always matches what's actually in the database.
  */
 export function PpaFilterSidebar({
   riskTiers,
   statuses,
   projectTypes,
   municipalities,
+  revenueBounds,
 }: PpaFilterSidebarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeRiskTier = searchParams.get("risk_tier") ?? "";
-  const activeStatus = searchParams.get("status") ?? "";
-  const activeProjectType = searchParams.get("project_type") ?? "";
-  const activeMunicipality = searchParams.get("municipality") ?? "";
 
-  function setParam(key: string, value: string) {
+  function setCsvParam(key: string, values: string[]) {
     const next = new URLSearchParams(searchParams.toString());
-    if (value) next.set(key, value);
+    if (values.length > 0) next.set(key, values.join(","));
     else next.delete(key);
     // Changing a filter can shrink the result set below the page the
     // Manager was on -- reset to page 1 rather than showing a confusing
@@ -60,59 +62,64 @@ export function PpaFilterSidebar({
     router.push(`/manager/ppas?${next.toString()}`);
   }
 
+  function toggleCsvValue(key: string, value: string) {
+    const active = new Set(parseCsvParam(searchParams.get(key) ?? undefined));
+    if (active.has(value)) active.delete(value);
+    else active.add(value);
+    setCsvParam(key, Array.from(active));
+  }
+
   return (
-    <aside className="w-full shrink-0 rounded-xl border border-brand-navy/10 bg-white p-4 shadow-md lg:w-56">
+    <aside className="w-full shrink-0 rounded-xl border border-brand-navy/10 bg-white p-4 shadow-md lg:w-64">
       <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
-      <FilterSection title="Risk Tier">
-        <FilterPill label="All tiers" active={!activeRiskTier} onClick={() => setParam("risk_tier", "")} />
-        {riskTiers.map((tier) => (
-          <FilterPill
-            key={tier}
-            label={tier}
-            active={activeRiskTier === tier}
-            onClick={() => setParam("risk_tier", tier)}
-          />
-        ))}
-      </FilterSection>
-      <FilterSection title="Status">
-        <FilterPill label="All statuses" active={!activeStatus} onClick={() => setParam("status", "")} />
-        {statuses.map((s) => (
-          <FilterPill
-            key={s.value}
-            label={s.label}
-            active={activeStatus === s.value}
-            onClick={() => setParam("status", s.value)}
-          />
-        ))}
-      </FilterSection>
-      <FilterSection title="Project Type">
-        <FilterPill label="All types" active={!activeProjectType} onClick={() => setParam("project_type", "")} />
-        {projectTypes.map((t) => (
-          <FilterPill
-            key={t}
-            label={t}
-            active={activeProjectType === t}
-            onClick={() => setParam("project_type", t)}
-          />
-        ))}
-      </FilterSection>
-      <FilterSection title="Municipality" defaultOpen={false}>
-        <FilterPill
-          label="All municipalities"
-          active={!activeMunicipality}
-          onClick={() => setParam("municipality", "")}
-        />
-        <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
-          {municipalities.map((m) => (
-            <FilterPill
-              key={m}
-              label={m}
-              active={activeMunicipality === m}
-              onClick={() => setParam("municipality", m)}
-            />
-          ))}
-        </div>
-      </FilterSection>
+
+      <RangeFilterSection
+        title="Budget"
+        paramMinKey="revenue_min"
+        paramMaxKey="revenue_max"
+        bounds={revenueBounds}
+        step={1000}
+        prefix="₱"
+      />
+      <RangeFilterSection
+        title="Risk Probability"
+        paramMinKey="risk_min"
+        paramMaxKey="risk_max"
+        bounds={RISK_PROBABILITY_BOUNDS}
+        step={1}
+        suffix="%"
+      />
+
+      <CheckboxFilterSection
+        title="Risk Tier"
+        paramKey="risk_tier"
+        options={riskTiers.map((t) => ({ value: t, label: t }))}
+        selected={parseCsvParam(searchParams.get("risk_tier") ?? undefined)}
+        onToggle={(v) => toggleCsvValue("risk_tier", v)}
+      />
+      <CheckboxFilterSection
+        title="Status"
+        paramKey="status"
+        options={statuses.map((s) => ({ value: s.value, label: s.label }))}
+        selected={parseCsvParam(searchParams.get("status") ?? undefined)}
+        onToggle={(v) => toggleCsvValue("status", v)}
+      />
+      <CheckboxFilterSection
+        title="Project Type"
+        paramKey="project_type"
+        options={projectTypes.map((t) => ({ value: t, label: t }))}
+        selected={parseCsvParam(searchParams.get("project_type") ?? undefined)}
+        onToggle={(v) => toggleCsvValue("project_type", v)}
+      />
+      <CheckboxFilterSection
+        title="Municipality"
+        paramKey="municipality"
+        options={municipalities.map((m) => ({ value: m, label: m }))}
+        selected={parseCsvParam(searchParams.get("municipality") ?? undefined)}
+        onToggle={(v) => toggleCsvValue("municipality", v)}
+        defaultOpen={false}
+        scrollable
+      />
     </aside>
   );
 }
@@ -141,30 +148,170 @@ function FilterSection({
           <ChevronRight className="size-4 text-slate-400" aria-hidden="true" />
         )}
       </button>
-      {open && <div className="mt-2 flex flex-col gap-0.5">{children}</div>}
+      {open && <div className="mt-3">{children}</div>}
     </div>
   );
 }
 
-function FilterPill({
+function CheckboxFilterSection({
+  title,
+  options,
+  selected,
+  onToggle,
+  defaultOpen = true,
+  scrollable = false,
+}: {
+  title: string;
+  paramKey: string;
+  options: { value: string; label: string }[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  defaultOpen?: boolean;
+  scrollable?: boolean;
+}) {
+  const selectedSet = new Set(selected);
+  return (
+    <FilterSection title={title} defaultOpen={defaultOpen}>
+      <div className={cn("flex flex-col gap-2", scrollable && "max-h-56 overflow-y-auto pr-1")}>
+        {options.map((opt) => (
+          <label
+            key={opt.value}
+            className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"
+          >
+            <input
+              type="checkbox"
+              checked={selectedSet.has(opt.value)}
+              onChange={() => onToggle(opt.value)}
+              className="size-3.5 rounded border-brand-navy/20 text-brand-blue focus:ring-2 focus:ring-brand-blue/40"
+            />
+            {opt.label}
+          </label>
+        ))}
+        {options.length === 0 && <p className="text-xs text-slate-400">No options available.</p>}
+      </div>
+    </FilterSection>
+  );
+}
+
+function RangeFilterSection({
+  title,
+  paramMinKey,
+  paramMaxKey,
+  bounds,
+  step,
+  prefix,
+  suffix,
+}: {
+  title: string;
+  paramMinKey: string;
+  paramMaxKey: string;
+  bounds: Bounds;
+  step: number;
+  prefix?: string;
+  suffix?: string;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const urlMin = Number(searchParams.get(paramMinKey) ?? bounds.min);
+  const urlMax = Number(searchParams.get(paramMaxKey) ?? bounds.max);
+  const [range, setRange] = useState<[number, number]>([urlMin, urlMax]);
+
+  // Keep local slider state in sync if the URL changes from elsewhere
+  // (e.g. browser back/forward, or another control resetting filters).
+  useEffect(() => {
+    setRange([
+      Number(searchParams.get(paramMinKey) ?? bounds.min),
+      Number(searchParams.get(paramMaxKey) ?? bounds.max),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get(paramMinKey), searchParams.get(paramMaxKey)]);
+
+  function commit(next: [number, number]) {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (next[0] > bounds.min) nextParams.set(paramMinKey, String(next[0]));
+    else nextParams.delete(paramMinKey);
+    if (next[1] < bounds.max) nextParams.set(paramMaxKey, String(next[1]));
+    else nextParams.delete(paramMaxKey);
+    nextParams.delete("page");
+    router.push(`/manager/ppas?${nextParams.toString()}`);
+  }
+
+  return (
+    <FilterSection title={title}>
+      <div className="flex items-center gap-2 pb-4">
+        <NumberField
+          label="Min."
+          value={range[0]}
+          prefix={prefix}
+          suffix={suffix}
+          onChange={(v) => setRange([Math.min(v, range[1]), range[1]])}
+          onCommit={() => commit(range)}
+        />
+        <NumberField
+          label="Max."
+          value={range[1]}
+          prefix={prefix}
+          suffix={suffix}
+          onChange={(v) => setRange([range[0], Math.max(v, range[0])])}
+          onCommit={() => commit(range)}
+        />
+      </div>
+      <SliderPrimitive.Root
+        className="relative flex h-4 w-full touch-none select-none items-center"
+        min={bounds.min}
+        max={bounds.max}
+        step={step}
+        value={range}
+        onValueChange={(v) => setRange([v[0], v[1]])}
+        onValueCommit={(v) => commit([v[0], v[1]])}
+      >
+        <SliderPrimitive.Track className="relative h-1 w-full grow rounded-full bg-brand-navy/10">
+          <SliderPrimitive.Range className="absolute h-full rounded-full bg-brand-blue" />
+        </SliderPrimitive.Track>
+        <SliderPrimitive.Thumb
+          aria-label={`${title} minimum`}
+          className="block size-4 rounded-full border-2 border-brand-blue bg-white shadow transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
+        />
+        <SliderPrimitive.Thumb
+          aria-label={`${title} maximum`}
+          className="block size-4 rounded-full border-2 border-brand-blue bg-white shadow transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
+        />
+      </SliderPrimitive.Root>
+    </FilterSection>
+  );
+}
+
+function NumberField({
   label,
-  active,
-  onClick,
+  value,
+  prefix,
+  suffix,
+  onChange,
+  onCommit,
 }: {
   label: string;
-  active: boolean;
-  onClick: () => void;
+  value: number;
+  prefix?: string;
+  suffix?: string;
+  onChange: (value: number) => void;
+  onCommit: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-        active ? "bg-brand-blue/10 font-medium text-brand-navy" : "text-slate-600 hover:bg-brand-surface"
-      )}
-    >
-      {label}
-    </button>
+    <div className="flex flex-1 flex-col gap-1">
+      <span className="text-xs text-slate-400">{label}</span>
+      <div className="flex items-center gap-1 rounded-md border border-brand-navy/10 bg-white px-2">
+        {prefix && <span className="text-xs text-slate-400">{prefix}</span>}
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          onBlur={onCommit}
+          onKeyDown={(e) => e.key === "Enter" && onCommit()}
+          className="h-8 w-full min-w-0 bg-transparent text-sm focus-visible:outline-none"
+        />
+        {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
+      </div>
+    </div>
   );
 }

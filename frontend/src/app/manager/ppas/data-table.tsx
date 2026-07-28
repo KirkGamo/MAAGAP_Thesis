@@ -29,6 +29,10 @@ export interface PpaTableParams {
   status?: string;
   project_type?: string;
   municipality?: string;
+  revenue_min?: string;
+  revenue_max?: string;
+  risk_min?: string;
+  risk_max?: string;
   view?: string;
 }
 
@@ -57,6 +61,10 @@ function buildHref(params: PpaTableParams, targetPage: number): string {
   if (params.status) next.set("status", params.status);
   if (params.project_type) next.set("project_type", params.project_type);
   if (params.municipality) next.set("municipality", params.municipality);
+  if (params.revenue_min) next.set("revenue_min", params.revenue_min);
+  if (params.revenue_max) next.set("revenue_max", params.revenue_max);
+  if (params.risk_min) next.set("risk_min", params.risk_min);
+  if (params.risk_max) next.set("risk_max", params.risk_max);
   if (params.view) next.set("view", params.view);
   if (targetPage > 1) next.set("page", String(targetPage));
   const qs = next.toString();
@@ -238,40 +246,47 @@ export function PpasDataTable<TData>({
         </div>
       </div>
 
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {rows.length > 0 ? (
-            rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
+      {/* Phase 17: capped to roughly 15 visible rows with its own vertical
+          scroll, rather than letting a full 50-row page push the whole
+          page tall -- the header stays `sticky` within this scroll
+          region so column names never scroll out of view while browsing
+          the rest of the page. */}
+      <div className="max-h-[560px] overflow-y-auto">
+        <Table>
+          <TableHeader className="sticky top-0 z-10">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={visibleColumnCount} className="p-5 text-center text-slate-400">
-                No projects match the current filters.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {rows.length > 0 ? (
+              rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={visibleColumnCount} className="p-5 text-center text-slate-400">
+                  No projects match the current filters.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {totalCount > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
