@@ -143,7 +143,14 @@ export default async function ManagerOverviewPage() {
             index="municipality"
             categories={[HIGH_RISK_CATEGORY, LOW_RISK_CATEGORY]}
             colors={["amber", "emerald"]}
-            valueFormatter={(value) => `${value}`}
+            // No valueFormatter prop: this page is a Server Component, and
+            // functions (including inline arrow functions) cannot be passed
+            // as props across the server/client boundary to BarChart (a
+            // "use client" component) — React only allows Server Actions
+            // ("use server" functions) to cross that boundary. BarChart's
+            // own default, `(value) => value.toString()`, is functionally
+            // identical to what was passed here, so it's simply omitted
+            // rather than worked around.
             yAxisWidth={40}
           />
         ) : (
