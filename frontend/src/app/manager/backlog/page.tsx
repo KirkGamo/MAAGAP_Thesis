@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge, riskTierVariant } from "@/components/ui/badge";
+import { Badge, riskTierVariant, statusVariant } from "@/components/ui/badge";
 import type { ProjectStatus, RiskTier } from "@/types/database";
 import {
   Table,
@@ -71,12 +71,12 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
 
       <BacklogFilters riskTiers={RISK_TIERS} statuses={STATUSES} />
 
-      <Card>
-        <CardHeader>
+      <Card className="border-brand-navy/10 p-0">
+        <CardHeader className="border-b border-brand-navy/10 px-5 py-4">
           <CardTitle>{projects?.length ?? 0} project(s)</CardTitle>
         </CardHeader>
-        <CardContent>
-          {error && <p className="text-sm text-red-600">{error.message}</p>}
+        <CardContent className="p-0">
+          {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
           <Table>
             <TableHeader>
               <TableRow>
@@ -100,7 +100,15 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
                     <div className="text-xs text-slate-400">{p.project_key}</div>
                   </TableCell>
                   <TableCell>{p.municipality ?? "—"}</TableCell>
-                  <TableCell className="capitalize">{p.status?.replaceAll("_", " ")}</TableCell>
+                  <TableCell>
+                    {p.status ? (
+                      <Badge variant={statusVariant(p.status)}>
+                        {STATUSES.find((s) => s.value === p.status)?.label ?? p.status}
+                      </Badge>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
                   <TableCell>
                     {p.risk_tier ? (
                       <Badge variant={riskTierVariant(p.risk_tier)}>{p.risk_tier}</Badge>
@@ -108,8 +116,10 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
                       <span className="text-slate-400">Unscored</span>
                     )}
                   </TableCell>
-                  <TableCell>
-                    {p.risk_probability != null ? p.risk_probability.toFixed(2) : "—"}
+                  <TableCell className="tabular-nums">
+                    {/* Clean percentage rather than a raw 0-1 decimal (Phase
+                        11, Task 3) -- e.g. 0.834 -> "83.4%". */}
+                    {p.risk_probability != null ? `${(p.risk_probability * 100).toFixed(1)}%` : "—"}
                   </TableCell>
                 </TableRow>
               ))}

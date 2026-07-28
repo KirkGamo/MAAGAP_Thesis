@@ -15,6 +15,14 @@ const badgeVariants = cva(
         medium: "border-transparent bg-amber-100 text-amber-800",
         high: "border-transparent bg-orange-100 text-orange-800",
         critical: "border-transparent bg-red-100 text-red-800",
+        // project_status variants (Phase 11, Task 3: soft-background/
+        // dark-text badges for the Backlog table's Status column, matching
+        // the same visual language as the risk-tier variants above rather
+        // than introducing a second color system).
+        statusOnGoing: "border-transparent bg-blue-100 text-blue-800",
+        statusCompleted: "border-transparent bg-emerald-100 text-emerald-800",
+        statusForBidding: "border-transparent bg-amber-100 text-amber-800",
+        statusNotYetImplemented: "border-transparent bg-slate-100 text-slate-600",
       },
     },
     defaultVariants: {
@@ -44,6 +52,25 @@ export function riskTierVariant(
       return "high";
     case "Critical":
       return "critical";
+    default:
+      return "secondary";
+  }
+}
+
+/** Maps a project_status value (see types/database.ts's ProjectStatus) to
+ * the matching Badge variant. */
+export function statusVariant(
+  status: string
+): VariantProps<typeof badgeVariants>["variant"] {
+  switch (status) {
+    case "on_going":
+      return "statusOnGoing";
+    case "completed":
+      return "statusCompleted";
+    case "for_bidding":
+      return "statusForBidding";
+    case "not_yet_implemented":
+      return "statusNotYetImplemented";
     default:
       return "secondary";
   }
