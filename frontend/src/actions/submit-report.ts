@@ -71,7 +71,7 @@
  * AS OF PHASE 10, photo upload handling is implemented — see
  * app/inspector/report/[projectId]/report-form.tsx (captures/uploads to the
  * `monitoring-photos` Storage bucket, storing paths in `photoUrls` below)
- * and app/manager/backlog/[projectId]/page.tsx (re-signs and displays
+ * and app/manager/ppas/[projectId]/page.tsx (re-signs and displays
  * them). Offline queuing for spotty field connectivity is still out of
  * scope for this scaffold and should be designed as its own follow-up piece
  * — flagging it here so it isn't mistaken for an oversight.
@@ -212,8 +212,8 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     });
   }
 
-  revalidatePath("/manager/backlog");
-  revalidatePath(`/manager/backlog/${input.projectId}`);
+  revalidatePath("/manager/ppas");
+  revalidatePath(`/manager/ppas/${input.projectId}`);
   revalidatePath("/inspector");
 
   return { success: true };

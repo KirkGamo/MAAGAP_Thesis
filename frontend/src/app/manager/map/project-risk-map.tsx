@@ -13,8 +13,8 @@ import Link from "next/link";
 import {
   ILOILO_PROVINCE_CENTER,
   ILOILO_PROVINCE_DEFAULT_ZOOM,
-  resolveMunicipalityCoordinates,
 } from "@/lib/municipality-coordinates";
+import { jitteredCoordinates } from "@/lib/pin-jitter";
 import type { MapProject } from "./types";
 
 const RISK_COLORS: Record<string, string> = {
@@ -27,26 +27,6 @@ const UNSCORED_COLOR = "#94a3b8"; // slate-400
 
 function riskColor(tier: string | null): string {
   return tier ? RISK_COLORS[tier] ?? UNSCORED_COLOR : UNSCORED_COLOR;
-}
-
-/** Simple deterministic string hash, used only to jitter pins that share a
- * municipality's exact town-center coordinate so they don't stack
- * perfectly on top of one another. Not cryptographic — just needs to be
- * stable per project_key. */
-function hashToUnitInterval(key: string): number {
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash << 5) - hash + key.charCodeAt(i);
-    hash |= 0;
-  }
-  return (Math.abs(hash) % 1000) / 1000;
-}
-
-function jitteredCoordinates(municipality: string | null, projectKey: string): [number, number] {
-  const [lat, lng] = resolveMunicipalityCoordinates(municipality);
-  const angle = hashToUnitInterval(projectKey) * 2 * Math.PI;
-  const radiusDegrees = 0.01 + hashToUnitInterval(projectKey + "r") * 0.015;
-  return [lat + Math.sin(angle) * radiusDegrees, lng + Math.cos(angle) * radiusDegrees];
 }
 
 function riskDivIcon(tier: string | null) {
@@ -98,7 +78,7 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
             >
               <Popup>
                 <div className="flex flex-col gap-1 text-sm">
-                  <Link href={`/manager/backlog/${project.id}`} className="font-medium hover:underline">
+                  <Link href={`/manager/ppas/${project.id}`} className="font-medium hover:underline">
                     {project.name_of_project}
                   </Link>
                   <span className="text-slate-500">{project.municipality}</span>

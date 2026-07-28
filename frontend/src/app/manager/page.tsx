@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/tremor/card";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { Tracker, type TrackerBlockProps } from "@/components/tremor/tracker";
+import { BarChart } from "@/components/tremor/bar-chart";
 import type { RiskTier } from "@/types/database";
 
 const TIER_ORDER: RiskTier[] = ["Critical", "High", "Medium", "Low"];
@@ -23,25 +24,35 @@ const TIER_TRACKER_COLOR: Record<RiskTier, string> = {
   Low: "bg-emerald-600",
 };
 
+// Tremor's BarChart colors bars by category name, drawing from a fixed
+// palette of named colors (see components/tremor/chart-utils.ts) rather
+// than arbitrary hex/Tailwind classes -- that fixed set has no "red", so
+// "amber" (this app's Chapter 3 alert color) and "emerald" (this app's
+// existing "safe/low-risk" color everywhere else -- Tracker above, the
+// Risk Map's pins, badge.tsx) are the closest available match.
+const HIGH_RISK_CATEGORY = "High/Critical";
+const LOW_RISK_CATEGORY = "Low/Medium";
+const MAX_MUNICIPALITIES_SHOWN = 10;
 const MAX_TRACKER_BLOCKS = 120;
 
 /**
  * Manager overview: Phase 10 replaced the hand-built KPI cards with genuine
  * Tremor Raw components (Card, a small Metric primitive built in Tremor
  * Raw's own conventions since Tremor Raw doesn't ship one -- see
- * components/tremor/metric.tsx's comment -- and Tracker).
+ * components/tremor/metric.tsx's comment -- Tracker, and BarChart).
  *
- * PHASE 11: the municipality BarChart and Risk Map that used to live on
- * this page/its own /manager/map route both moved to the new Monitoring
- * tab (see app/manager/monitoring/page.tsx) — this page keeps the
- * per-tier counts and the Tracker distribution strip, which are genuinely
- * "at a glance" overview content, while the two municipality/spatial
- * views (which both answer "where" rather than "how many") live together
- * one tab over. The three headline KPIs (Total Active Projects, Critical
- * Risk Load, Optimized Inspector Capacity) that used to implicitly live
- * here now live in the shared sticky header above every tab (see
- * ../layout.tsx), since they're meant to stay visible regardless of which
- * tab a Manager is on.
+ * Phase 11 briefly moved the BarChart (and the Risk Map) to a standalone
+ * "Monitoring" tab. Phase 12 removed that tab per the user's revised nav
+ * (Overview / PPAs / Schedule / Inspectors / Models / Reports) — the
+ * BarChart moves back here since there's no other natural home for a
+ * portal-wide municipality breakdown, while the Risk Map instead becomes
+ * a view toggle inside the new PPAs tab (see app/manager/ppas/page.tsx),
+ * since it's fundamentally a spatial view OF the PPA list, not a
+ * separate concern. The three headline KPIs (Total Active Projects,
+ * Critical Risk Load, Optimized Inspector Capacity) live in the shared
+ * sticky header above the sidebar's content area (see ../layout.tsx),
+ * since they're meant to stay visible regardless of which nav item is
+ * active.
  */
 export default async function ManagerOverviewPage() {
   const supabase = await createClient();
@@ -59,6 +70,33 @@ export default async function ManagerOverviewPage() {
     if (tier) counts[tier] += 1;
   }
   const totalScored = rows.length;
+
+  // Group by municipality: how many High/Critical vs. Low/Medium projects
+  // in each. Projects with no resolved municipality (see
+  // src/lib/municipality-coordinates.ts / optimization_engine.py's
+  // resolve_municipality "Unmapped" fallback) are excluded from this
+  // chart -- there's no meaningful bar to plot them under -- rather than
+  // silently lumped into a misleading catch-all category.
+  const byMunicipality = new Map<string, { high: number; low: number }>();
+  for (const row of rows) {
+    const municipality = row.municipality;
+    const tier = row.risk_tier as RiskTier | null;
+    if (!municipality || !tier) continue;
+    const bucket = byMunicipality.get(municipality) ?? { high: 0, low: 0 };
+    if (tier === "High" || tier === "Critical") bucket.high += 1;
+    else bucket.low += 1;
+    byMunicipality.set(municipality, bucket);
+  }
+  const municipalityChartData = Array.from(byMunicipality.entries())
+    .map(([municipality, { high, low }]) => ({
+      municipality,
+      [HIGH_RISK_CATEGORY]: high,
+      [LOW_RISK_CATEGORY]: low,
+      total: high + low,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, MAX_MUNICIPALITIES_SHOWN)
+    .map(({ total: _total, ...rest }) => rest);
 
   // Tracker: one block per scored project (capped for render/legibility),
   // colored by risk tier -- a compact "at a glance" distribution strip
@@ -102,14 +140,40 @@ export default async function ManagerOverviewPage() {
       </Card>
 
       <Card>
+        <MetricLabel>
+          High/Critical vs. Low/Medium risk projects by municipality (top {MAX_MUNICIPALITIES_SHOWN})
+        </MetricLabel>
+        {municipalityChartData.length > 0 ? (
+          <BarChart
+            className="mt-4"
+            data={municipalityChartData}
+            index="municipality"
+            categories={[HIGH_RISK_CATEGORY, LOW_RISK_CATEGORY]}
+            colors={["amber", "emerald"]}
+            // No valueFormatter prop: this page is a Server Component, and
+            // functions cannot be passed as props across the server/
+            // client boundary to BarChart (a "use client" component) --
+            // see Phase 10's fix for the full explanation. BarChart's own
+            // default formatter is functionally identical to what would
+            // have been passed here.
+            yAxisWidth={40}
+          />
+        ) : (
+          <p className="mt-3 text-sm text-slate-400">
+            No scored projects with a resolved municipality yet.
+          </p>
+        )}
+      </Card>
+
+      <Card>
         <p className="font-semibold text-gray-900">Next steps</p>
         <p className="mt-2 text-sm text-gray-500">
-          Use <span className="font-medium text-brand-navy">Import Projects</span> (top right) to
-          bring in new monitoring data, <span className="font-medium text-brand-navy">Monitoring</span>{" "}
-          to see the municipality breakdown and risk map, <span className="font-medium text-brand-navy">Backlog</span>{" "}
-          to review and filter every tracked project, and{" "}
-          <span className="font-medium text-brand-navy">Schedule</span> to deploy the latest
-          PuLP-optimized inspector routes.
+          Use <span className="font-medium text-brand-navy">Program, Projects, and Activities (PPAs)</span>{" "}
+          to import new monitoring data, review the full project list, and switch to a map view;{" "}
+          <span className="font-medium text-brand-navy">Schedule</span> to see the latest
+          PuLP-optimized inspector routes; <span className="font-medium text-brand-navy">Inspectors</span>{" "}
+          to manage who&apos;s active; and <span className="font-medium text-brand-navy">Models</span> to
+          review the ML stack&apos;s validation performance.
         </p>
       </Card>
     </div>

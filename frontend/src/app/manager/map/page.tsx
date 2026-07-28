@@ -1,13 +1,13 @@
 import { redirect } from "next/navigation";
 
 /**
- * Phase 11, Task 4: /manager/map's content (the Risk Map) moved into the
- * new Monitoring tab (see ../monitoring/page.tsx), alongside the
- * municipality BarChart that used to live on the Overview page. This route
- * is kept as a redirect rather than deleted outright so any existing
- * bookmark/external link to /manager/map still lands somewhere useful,
- * instead of 404ing.
+ * Phase 11 folded /manager/map's content into a "Monitoring" tab; Phase 12
+ * removed that tab in favor of a table/map toggle directly inside the new
+ * PPAs tab (see ../ppas/page.tsx and ../ppas/view-toggle.tsx). This route
+ * is kept as a redirect (now pointing straight at /manager/ppas?view=map
+ * rather than chaining through the now-also-redirecting /manager/monitoring)
+ * so any existing bookmark/external link still lands somewhere useful.
  */
-export default function ProjectRiskMapPage() {
-  redirect("/manager/monitoring");
+export default function ProjectRiskMapRedirectPage() {
+  redirect("/manager/ppas?view=map");
 }

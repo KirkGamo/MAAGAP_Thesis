@@ -25,7 +25,7 @@ type PhotoUploadState = {
   /** Storage object path (e.g. "<uid>/<project_id>/<ts>-<uuid>.jpg"), NOT a
    * signed URL. `monitoring_reports.photo_urls` stores this path so the
    * Manager Portal can re-sign it fresh on every view (see
-   * manager/backlog/[projectId]/page.tsx) rather than persisting a signed
+   * manager/ppas/[projectId]/page.tsx) rather than persisting a signed
    * URL that expires a fixed number of days after upload. */
   storagePath?: string;
   error?: string;
@@ -101,7 +101,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
       // would expire a fixed number of days after upload regardless of when
       // a Manager actually looks at it. The Manager Portal re-signs this
       // path fresh on every page load instead (see
-      // manager/backlog/[projectId]/page.tsx). A short-lived signed URL is
+      // manager/ppas/[projectId]/page.tsx). A short-lived signed URL is
       // still generated here purely for this form's own local photo preview.
       setPhotos((prev) =>
         prev.map((p) => (p === entry ? { ...p, status: "uploaded", storagePath: path } : p))

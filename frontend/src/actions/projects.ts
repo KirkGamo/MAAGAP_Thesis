@@ -38,7 +38,7 @@ export async function createProject(input: ManualProjectInput) {
     return { success: false as const, error: error.message };
   }
 
-  revalidatePath("/manager/backlog");
+  revalidatePath("/manager/ppas");
   return { success: true as const };
 }
 
@@ -105,6 +105,6 @@ export async function importProjectsCsv(rows: CsvProjectRow[]) {
     return { success: false as const, error: error.message, imported: 0 };
   }
 
-  revalidatePath("/manager/backlog");
+  revalidatePath("/manager/ppas");
   return { success: true as const, imported: records.length };
 }
