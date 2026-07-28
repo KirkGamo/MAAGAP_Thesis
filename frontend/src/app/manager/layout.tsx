@@ -1,37 +1,27 @@
-import Image from "next/image";
-import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
-import { TabNav } from "@/components/tremor/tab-nav";
 import { NotificationBell } from "@/components/tremor/notification-bell";
 import { UserMenu } from "@/components/tremor/user-menu";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
+import { SidebarNav } from "./sidebar-nav";
 
 /**
  * Manager portal shell. `requireRole` redirects to /inspector if a
  * signed-in Inspector tries to reach a /manager/* route, and to /login if
  * no session exists at all — this is the RBAC enforcement point for the
- * whole portal (see src/lib/auth.ts). Unchanged since Phase 8.5.
+ * whole portal (see src/lib/auth.ts). Unchanged since Phase 8.5, except it
+ * now also enforces `profile.active` (see lib/auth.ts's Phase 12 comment).
  *
- * PHASE 11 REWRITE: replaces the Phase 9 left sidebar with the layout shown
- * in the attached premium Tremor template screenshots -- a slim top bar
- * (logo, notification bell, user menu), a shared inline KPI row, and an
- * underlined tab bar. Per the architecture decision made explicitly with
- * the user before this rewrite: the four tabs below (Overview, Monitoring,
- * Backlog, Schedule) are real routes re-skinned to look like tabs (see
- * components/tremor/tab-nav.tsx's docstring for the full reasoning), not a
- * single client-side page — every page under /manager/* keeps its own
- * server-side Supabase fetch and stays covered by the requireRole() gate
- * above, unchanged. "Import Projects" (previously its own nav item) moves
- * to a header action button rather than a fifth tab, since the template's
- * tab count is 4 and Import is an action ("do something"), not a place
- * ("look at something") — the same distinction the Support Dashboard
- * template draws between its tabs and its "Create Ticket" header button.
- * "Risk Map" (previously its own nav item) is folded into the new
- * Monitoring tab alongside the municipality bar chart (see
- * app/manager/monitoring/page.tsx) rather than kept as a standalone
- * destination.
+ * PHASE 12: brings back the left sidebar (the user's explicit call after
+ * trying Phase 11's top-tab layout) with an updated nav: Overview,
+ * "Program, Projects, and Activities (PPAs)" (was Backlog, now also hosts
+ * the Risk Map as a view toggle), Schedule, Inspectors (new), Models
+ * (new), and Reports (new). The Phase 11 top bar (logo + NotificationBell
+ * + UserMenu) and the sticky inline KPI row are both kept — they don't
+ * conflict with a sidebar, they just move to sit above the main content
+ * area instead of above a tab bar. "Import Projects" moves off this
+ * header entirely and into the PPAs tab itself (per the user's spec),
+ * since it's PPA-specific data entry, not a portal-wide action.
  */
 export default async function ManagerLayout({
   children,
@@ -50,17 +40,10 @@ export default async function ManagerLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const tabItems = [
-    { href: "/manager", label: "Overview" },
-    { href: "/manager/monitoring", label: "Monitoring" },
-    { href: "/manager/backlog", label: "Backlog" },
-    { href: "/manager/schedule", label: "Schedule" },
-  ];
-
-  // Phase 11, Task 2: the sticky inline KPI row shown above the tabs in
-  // the attached "Quotes" template (Lead-to-Quote Ratio / Project Load /
-  // Win Probability). One round trip per metric, computed here (not per-
-  // tab) since it's meant to stay visible/consistent across every tab.
+  // Phase 11, Task 2 (kept as-is in Phase 12): the sticky inline KPI row.
+  // One round trip per metric, computed here (not per-page) since it's
+  // meant to stay visible/consistent regardless of which nav item is
+  // active.
   const [activeProjects, criticalProjects, scheduledThisWeek] = await Promise.all([
     supabase.from("projects").select("id", { count: "exact", head: true }).eq("status", "on_going"),
     supabase
@@ -73,10 +56,8 @@ export default async function ManagerLayout({
     // recent PuLP solve (see ml-service/optimization_engine.py,
     // inspector_schedules). Deliberately not a fabricated capacity/
     // utilization percentage -- there's no per-inspector max-capacity
-    // figure anywhere in this schema to divide by (unlike the Agents
-    // template's "Capacity (mins)" column, which this app has no
-    // equivalent of) -- this is a real, honestly-labeled coverage ratio
-    // instead: assigned vs. total ongoing.
+    // figure anywhere in this schema to divide by -- this is a real,
+    // honestly-labeled coverage ratio instead: assigned vs. total ongoing.
     supabase.from("inspector_schedules").select("project_id"),
   ]);
 
@@ -86,58 +67,42 @@ export default async function ManagerLayout({
   const capacityPct = totalActive > 0 ? Math.round((distinctScheduledProjects / totalActive) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-brand-surface">
-      <header className="sticky top-0 z-40 border-b border-brand-navy/10 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
-          <Link href="/manager" className="flex items-center gap-2">
-            <Image src="/maagap-logo.png" alt="MAAGAP" width={120} height={40} priority className="h-8 w-auto" />
-          </Link>
-          <div className="flex items-center gap-3">
+    <div className="flex min-h-screen bg-brand-surface">
+      <SidebarNav />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-40 border-b border-brand-navy/10 bg-white">
+          <div className="flex items-center justify-end gap-3 px-6 py-3">
             <NotificationBell />
             <UserMenu fullName={profile.full_name} email={user?.email ?? null} />
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="mx-auto max-w-7xl px-6 pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-brand-navy">Manager Portal</h1>
-            <p className="text-sm text-slate-500">
-              Real-time monitoring of PPDO project risk with AI-powered insights.
-            </p>
-          </div>
-          <Button asChild>
-            <Link href="/manager/import">Import Projects</Link>
-          </Button>
-        </div>
-
-        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-          <div>
-            <MetricLabel>Total Active Projects</MetricLabel>
-            <Metric>{totalActive.toLocaleString()}</Metric>
-          </div>
-          <div>
-            <MetricLabel>Critical Risk Load</MetricLabel>
-            <Metric className={criticalCount > 0 ? "text-red-600" : undefined}>
-              {criticalCount.toLocaleString()}
-            </Metric>
-          </div>
-          <div>
-            <MetricLabel>Optimized Inspector Capacity</MetricLabel>
-            <Metric>{capacityPct}%</Metric>
-            <p className="mt-0.5 text-xs text-slate-400">
-              {distinctScheduledProjects} of {totalActive} ongoing projects have a deployed inspector
-            </p>
+        <div className="px-6 pt-6">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+            <div>
+              <MetricLabel>Total Active Projects</MetricLabel>
+              <Metric>{totalActive.toLocaleString()}</Metric>
+            </div>
+            <div>
+              <MetricLabel>Critical Risk Load</MetricLabel>
+              <Metric className={criticalCount > 0 ? "text-red-600" : undefined}>
+                {criticalCount.toLocaleString()}
+              </Metric>
+            </div>
+            <div>
+              <MetricLabel>Optimized Inspector Capacity</MetricLabel>
+              <Metric>{capacityPct}%</Metric>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {distinctScheduledProjects} of {totalActive} ongoing projects have a deployed inspector
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="mt-6">
-          <TabNav items={tabItems} />
-        </div>
+        <main className="flex-1 px-6 py-6">{children}</main>
       </div>
-
-      <main className="mx-auto max-w-7xl px-6 py-6">{children}</main>
     </div>
   );
 }
+
