@@ -1,21 +1,14 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge, riskTierVariant, statusVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ProjectStatus, RiskTier } from "@/types/database";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { PpaFilters } from "./ppa-filters";
 import { ViewToggle, type PpaView } from "./view-toggle";
 import { MapLoader } from "../map/map-loader";
 import type { MapProject } from "../map/types";
+import { PpasDataTable } from "./data-table";
+import { ppaColumns } from "./columns";
 
 const RISK_TIERS = ["Critical", "High", "Medium", "Low"] as const;
 const STATUSES = [
@@ -98,20 +91,6 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
   const totalCount = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
-  // Preserves every other filter/view param, only ever changing `page` --
-  // same "rewrite the URL" approach as ppa-filters.tsx/view-toggle.tsx, but
-  // built as plain hrefs here since Prev/Next needs no client state.
-  function pageHref(targetPage: number): string {
-    const next = new URLSearchParams();
-    if (params.q) next.set("q", params.q);
-    if (params.risk_tier) next.set("risk_tier", params.risk_tier);
-    if (params.status) next.set("status", params.status);
-    if (params.view) next.set("view", params.view);
-    if (targetPage > 1) next.set("page", String(targetPage));
-    const qs = next.toString();
-    return qs ? `/manager/ppas?${qs}` : "/manager/ppas";
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
@@ -140,92 +119,16 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
           </CardHeader>
           <CardContent className="p-0">
             {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Project</TableHead>
-                  <TableHead>Municipality</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Risk Tier</TableHead>
-                  <TableHead>P(RedFlag)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(projects ?? []).map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <Link
-                        href={`/manager/ppas/${p.id}`}
-                        className="font-medium text-slate-900 hover:underline"
-                      >
-                        {p.name_of_project}
-                      </Link>
-                      <div className="text-xs text-slate-400">{p.project_key}</div>
-                    </TableCell>
-                    <TableCell>{p.municipality ?? "—"}</TableCell>
-                    <TableCell>
-                      {p.status ? (
-                        <Badge variant={statusVariant(p.status)}>
-                          {STATUSES.find((s) => s.value === p.status)?.label ?? p.status}
-                        </Badge>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {p.risk_tier ? (
-                        <Badge variant={riskTierVariant(p.risk_tier)}>{p.risk_tier}</Badge>
-                      ) : (
-                        <span className="text-slate-400">Unscored</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {p.risk_probability != null ? `${(p.risk_probability * 100).toFixed(1)}%` : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {(projects ?? []).length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="p-5 text-center text-slate-400">
-                      No projects match the current filters.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <PpasDataTable
+              columns={ppaColumns}
+              data={projects ?? []}
+              page={page}
+              totalPages={totalPages}
+              totalCount={totalCount}
+              pageSize={PAGE_SIZE}
+              params={{ q: params.q, risk_tier: params.risk_tier, status: params.status, view: params.view }}
+            />
           </CardContent>
-          {totalCount > 0 && (
-            <div className="flex items-center justify-between border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
-              <span>
-                Showing {from + 1}–{Math.min(from + PAGE_SIZE, totalCount)} of {totalCount}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button asChild variant="outline" size="sm">
-                  <Link
-                    href={pageHref(page - 1)}
-                    aria-disabled={page <= 1}
-                    tabIndex={page <= 1 ? -1 : undefined}
-                    className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
-                  >
-                    Previous
-                  </Link>
-                </Button>
-                <span className="tabular-nums">
-                  Page {page} of {totalPages}
-                </span>
-                <Button asChild variant="outline" size="sm">
-                  <Link
-                    href={pageHref(page + 1)}
-                    aria-disabled={page >= totalPages}
-                    tabIndex={page >= totalPages ? -1 : undefined}
-                    className={page >= totalPages ? "pointer-events-none opacity-50" : undefined}
-                  >
-                    Next
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
         </Card>
       ) : (
         <Card>
