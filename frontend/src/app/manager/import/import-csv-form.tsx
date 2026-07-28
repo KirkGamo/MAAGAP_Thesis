@@ -54,28 +54,40 @@ export function ImportCsvForm() {
 
   return (
     <div className="flex flex-col gap-4">
-      <input
-        type="file"
-        accept=".csv"
-        onChange={handleFileChange}
-        className="text-sm file:mr-4 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-50"
-      />
-      {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+      <label
+        htmlFor="csv-file"
+        className="flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed border-brand-navy/20 bg-brand-surface px-4 py-6 text-center transition-colors hover:border-brand-blue/40 hover:bg-brand-cyan-light/20"
+      >
+        <span className="text-sm font-medium text-brand-navy">
+          {fileName ? "Choose a different CSV file" : "Click to choose a CSV file"}
+        </span>
+        <span className="text-xs text-slate-500">project_key, name_of_project, location, ...</span>
+      </label>
+      <input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} className="sr-only" />
+
+      {parseError && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {parseError}
+        </p>
+      )}
       {fileName && !parseError && (
-        <p className="text-sm text-slate-600">
-          Parsed {rows.length} row(s) from <span className="font-medium">{fileName}</span>.
+        <p className="rounded-md border border-brand-navy/10 bg-white px-3 py-2 text-sm text-slate-600">
+          Parsed <span className="font-medium text-brand-navy">{rows.length}</span> row(s) from{" "}
+          <span className="font-medium">{fileName}</span>.
         </p>
       )}
       {result && (
-        <p className={`text-sm ${result.success ? "text-emerald-700" : "text-red-600"}`}>
+        <p
+          className={`rounded-md border px-3 py-2 text-sm ${
+            result.success
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-600"
+          }`}
+        >
           {result.message}
         </p>
       )}
-      <Button
-        onClick={handleImport}
-        disabled={rows.length === 0 || isPending}
-        className="w-fit"
-      >
+      <Button onClick={handleImport} disabled={rows.length === 0 || isPending} className="w-fit">
         {isPending ? "Importing..." : `Import ${rows.length || ""} row(s)`}
       </Button>
     </div>

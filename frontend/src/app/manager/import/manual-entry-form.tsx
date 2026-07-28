@@ -51,33 +51,13 @@ export function ManualEntryForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
+    // Phase 19: single-column, not a `sm:grid-cols-2` grid -- this form is
+    // now primarily used inside the ~576px-wide import slide-out panel
+    // (ppa-import-panel.tsx), where a viewport-driven `sm:` breakpoint
+    // would still fire on any normal desktop width and cram two fields
+    // into a panel that narrow. One column reads cleanly at every size.
+    <form onSubmit={handleSubmit} className="flex max-w-md flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="project_key">Project Key</Label>
-        <Input
-          id="project_key"
-          required
-          placeholder="PRJ_10234"
-          value={form.project_key}
-          onChange={(e) => setForm((f) => ({ ...f, project_key: e.target.value }))}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="status">Status</Label>
-        <select
-          id="status"
-          className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm"
-          value={form.status}
-          onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as ProjectStatus }))}
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="col-span-full flex flex-col gap-1.5">
         <Label htmlFor="name_of_project">Name of Project</Label>
         <Input
           id="name_of_project"
@@ -85,6 +65,33 @@ export function ManualEntryForm() {
           value={form.name_of_project}
           onChange={(e) => setForm((f) => ({ ...f, name_of_project: e.target.value }))}
         />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="project_key">Project Key</Label>
+          <Input
+            id="project_key"
+            required
+            placeholder="PRJ_10234"
+            value={form.project_key}
+            onChange={(e) => setForm((f) => ({ ...f, project_key: e.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="status">Status</Label>
+          <select
+            id="status"
+            className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
+            value={form.status}
+            onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as ProjectStatus }))}
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="location">Location</Label>
@@ -96,24 +103,26 @@ export function ManualEntryForm() {
           onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
         />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="municipality">Municipality</Label>
-        <Input
-          id="municipality"
-          value={form.municipality}
-          onChange={(e) => setForm((f) => ({ ...f, municipality: e.target.value }))}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="amount_php">Amount (PHP)</Label>
-        <Input
-          id="amount_php"
-          type="number"
-          min="0"
-          step="0.01"
-          value={form.amount_php}
-          onChange={(e) => setForm((f) => ({ ...f, amount_php: e.target.value }))}
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="municipality">Municipality</Label>
+          <Input
+            id="municipality"
+            value={form.municipality}
+            onChange={(e) => setForm((f) => ({ ...f, municipality: e.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="amount_php">Amount (PHP)</Label>
+          <Input
+            id="amount_php"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.amount_php}
+            onChange={(e) => setForm((f) => ({ ...f, amount_php: e.target.value }))}
+          />
+        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="date_released">Date Released</Label>
@@ -126,11 +135,17 @@ export function ManualEntryForm() {
       </div>
 
       {result && (
-        <p className={`col-span-full text-sm ${result.success ? "text-emerald-700" : "text-red-600"}`}>
+        <p
+          className={`rounded-md border px-3 py-2 text-sm ${
+            result.success
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-600"
+          }`}
+        >
           {result.message}
         </p>
       )}
-      <Button type="submit" disabled={isPending} className="col-span-full w-fit">
+      <Button type="submit" disabled={isPending} className="w-fit">
         {isPending ? "Saving..." : "Create project"}
       </Button>
     </form>

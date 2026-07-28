@@ -18,6 +18,15 @@ import { cn } from "@/lib/utils";
  * open/close slide + fade transition (no tailwindcss-animate plugin
  * installed in this project -- data-table.tsx's dropdown already proves
  * `data-[highlighted]:...` works the same way without one).
+ *
+ * z-index is 1200, not the more typical z-50: leaflet.css sets
+ * `.leaflet-top`/`.leaflet-bottom` (the zoom control, attribution, etc.)
+ * to z-index 1000, and `.leaflet-container` never gets a z-index of its
+ * own, so it doesn't establish a new stacking context -- those controls
+ * were competing directly against a z-50 overlay/content at the document
+ * root and winning, which is why opening this panel from the PPAs Map
+ * view left Leaflet's controls (and the dimming overlay showed nothing
+ * behind them) visibly on top of the slide-out instead of underneath it.
  */
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
@@ -27,7 +36,7 @@ function SheetOverlay({ className, ...props }: React.ComponentProps<typeof Sheet
   return (
     <SheetPrimitive.Overlay
       className={cn(
-        "fixed inset-0 z-50 bg-brand-navy/30 opacity-0 transition-opacity duration-300 ease-in-out data-[state=open]:opacity-100",
+        "fixed inset-0 z-[1200] bg-brand-navy/30 opacity-0 transition-opacity duration-300 ease-in-out data-[state=open]:opacity-100",
         className
       )}
       {...props}
@@ -45,7 +54,7 @@ function SheetContent({
       <SheetOverlay />
       <SheetPrimitive.Content
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex h-full w-full translate-x-full flex-col border-l border-brand-navy/10 bg-white shadow-xl transition-transform duration-300 ease-in-out data-[state=open]:translate-x-0 sm:max-w-lg",
+          "fixed inset-y-0 right-0 z-[1200] flex h-full w-full translate-x-full flex-col border-l border-brand-navy/10 bg-white shadow-xl transition-transform duration-300 ease-in-out data-[state=open]:translate-x-0 sm:max-w-xl",
           className
         )}
         {...props}

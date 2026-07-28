@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -37,7 +38,12 @@ export function PpaImportPanel() {
       </SheetTrigger>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Import projects</SheetTitle>
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-surface text-brand-blue">
+              <UploadCloud className="size-4.5" aria-hidden="true" />
+            </span>
+            <SheetTitle>Import projects</SheetTitle>
+          </div>
           <SheetDescription>
             CSV columns expected: project_key, name_of_project, location, municipality,
             amount_php, status, date_released. Re-uploading a file with the same
@@ -46,14 +52,18 @@ export function PpaImportPanel() {
         </SheetHeader>
         <SheetBody>
           <Tabs defaultValue="csv">
-            <TabsList>
-              <TabsTrigger value="csv">CSV Upload</TabsTrigger>
-              <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+            <TabsList className="w-full">
+              <TabsTrigger value="csv" className="flex-1">
+                CSV Upload
+              </TabsTrigger>
+              <TabsTrigger value="manual" className="flex-1">
+                Manual Entry
+              </TabsTrigger>
             </TabsList>
-            <TabsContent value="csv">
+            <TabsContent value="csv" className="mt-5">
               <ImportCsvForm />
             </TabsContent>
-            <TabsContent value="manual">
+            <TabsContent value="manual" className="mt-5">
               <ManualEntryForm />
             </TabsContent>
           </Tabs>

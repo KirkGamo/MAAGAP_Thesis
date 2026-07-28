@@ -49,11 +49,13 @@ const RISK_PROBABILITY_BOUNDS: Bounds = { min: 0, max: 100 };
  * chips + its own "Clear all".
  *
  * Phase 19: the "Filters" / Reset header row stays outside the scroll
- * region (always visible), while the section list below it caps at the
- * same 560px data-table.tsx uses for the table's row area, with its own
- * `overflow-y-auto` -- so on tall filter sets (many municipalities, etc.)
- * the sidebar and the table now grow to the same visual height instead of
- * the sidebar running arbitrarily long past the table/map card next to it.
+ * region (always visible), while the section list below it fills whatever
+ * space remains and scrolls internally. The sidebar's own outer height is
+ * no longer a hardcoded pixel value -- page.tsx's row wrapper uses
+ * `lg:items-stretch` so this <aside> and its sibling (the table OR map
+ * card, whichever is showing) are always exactly the same height, driven
+ * by CSS flexbox rather than duplicating a magic number that would drift
+ * out of sync the moment either side's layout changes.
  */
 export function PpaFilterSidebar({
   riskTiers,
@@ -96,8 +98,8 @@ export function PpaFilterSidebar({
   const hasActiveFilters = PPA_FILTER_PARAM_KEYS.some((key) => searchParams.get(key));
 
   return (
-    <aside className="flex w-full shrink-0 flex-col rounded-xl border border-brand-navy/10 bg-white shadow-md lg:w-64">
-      <div className="flex items-center justify-between p-4 pb-1">
+    <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-brand-navy/10 bg-white shadow-md lg:w-64">
+      <div className="flex shrink-0 items-center justify-between p-4 pb-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
         {hasActiveFilters && (
           <button
@@ -110,7 +112,13 @@ export function PpaFilterSidebar({
         )}
       </div>
 
-      <div className="max-h-[560px] overflow-y-auto px-4 pb-4">
+      {/* lg:flex-1 + lg:min-h-0 lets this fill whatever height page.tsx's
+          `lg:items-stretch` row gives the <aside> (i.e. the table/map
+          card's height) and scroll internally. Below the lg breakpoint the
+          sidebar stacks above the table instead of sitting beside it, so
+          it falls back to a plain fixed cap instead of trying to match a
+          sibling it's no longer next to. */}
+      <div className="max-h-[420px] overflow-y-auto px-4 pb-4 lg:max-h-none lg:min-h-0 lg:flex-1">
         <CheckboxFilterSection
           title="Status"
           paramKey="status"

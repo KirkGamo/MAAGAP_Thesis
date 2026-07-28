@@ -161,7 +161,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch">
         <PpaFilterSidebar
           riskTiers={RISK_TIERS}
           statuses={STATUSES}
