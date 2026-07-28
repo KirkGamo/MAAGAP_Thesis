@@ -25,8 +25,26 @@ const STATUSES = [
   { value: "completed", label: "Completed" },
 ] as const;
 
+// Table view is paginated for real (see PAGE_SIZE below) -- this used to be
+// a flat `.limit(200)` with no way to reach project #201 onward, which
+// silently hid the other ~3,800 projects once the imported dataset grew
+// past 200 rows. Map view isn't paginated the same way: a map is browsed by
+// panning/zooming, not "next page", so it instead takes the top
+// MAP_MARKER_LIMIT rows by risk (the same ordering the table uses) --
+// react-leaflet-cluster (see ../map/project-risk-map.tsx) was already
+// built to handle clustering roughly this many markers cleanly at
+// province-wide zoom.
+const PAGE_SIZE = 50;
+const MAP_MARKER_LIMIT = 1000;
+
 interface PpasPageProps {
-  searchParams: Promise<{ q?: string; risk_tier?: string; status?: string; view?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    risk_tier?: string;
+    status?: string;
+    view?: string;
+    page?: string;
+  }>;
 }
 
 /**
@@ -46,15 +64,16 @@ interface PpasPageProps {
 export default async function PpasPage({ searchParams }: PpasPageProps) {
   const params = await searchParams;
   const view: PpaView = params.view === "map" ? "map" : "table";
+  const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const supabase = await createClient();
 
   let query = supabase
     .from("projects")
     .select(
-      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, latitude, longitude"
+      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, latitude, longitude",
+      { count: "exact" }
     )
-    .order("risk_probability", { ascending: false, nullsFirst: false })
-    .limit(200);
+    .order("risk_probability", { ascending: false, nullsFirst: false });
 
   if (params.q) {
     query = query.ilike("name_of_project", `%${params.q}%`);
@@ -72,7 +91,26 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
     query = query.eq("status", params.status as ProjectStatus);
   }
 
-  const { data: projects, error } = await query;
+  const from = (page - 1) * PAGE_SIZE;
+  query = view === "map" ? query.limit(MAP_MARKER_LIMIT) : query.range(from, from + PAGE_SIZE - 1);
+
+  const { data: projects, error, count } = await query;
+  const totalCount = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // Preserves every other filter/view param, only ever changing `page` --
+  // same "rewrite the URL" approach as ppa-filters.tsx/view-toggle.tsx, but
+  // built as plain hrefs here since Prev/Next needs no client state.
+  function pageHref(targetPage: number): string {
+    const next = new URLSearchParams();
+    if (params.q) next.set("q", params.q);
+    if (params.risk_tier) next.set("risk_tier", params.risk_tier);
+    if (params.status) next.set("status", params.status);
+    if (params.view) next.set("view", params.view);
+    if (targetPage > 1) next.set("page", String(targetPage));
+    const qs = next.toString();
+    return qs ? `/manager/ppas?${qs}` : "/manager/ppas";
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,7 +136,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
       {view === "table" ? (
         <Card className="border-brand-navy/10 p-0">
           <CardHeader className="border-b border-brand-navy/10 px-5 py-4">
-            <CardTitle>{projects?.length ?? 0} project(s)</CardTitle>
+            <CardTitle>{totalCount} project(s)</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
@@ -146,18 +184,62 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
                     </TableCell>
                   </TableRow>
                 ))}
+                {(projects ?? []).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="p-5 text-center text-slate-400">
+                      No projects match the current filters.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>
+          {totalCount > 0 && (
+            <div className="flex items-center justify-between border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
+              <span>
+                Showing {from + 1}–{Math.min(from + PAGE_SIZE, totalCount)} of {totalCount}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={pageHref(page - 1)}
+                    aria-disabled={page <= 1}
+                    tabIndex={page <= 1 ? -1 : undefined}
+                    className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
+                  >
+                    Previous
+                  </Link>
+                </Button>
+                <span className="tabular-nums">
+                  Page {page} of {totalPages}
+                </span>
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={pageHref(page + 1)}
+                    aria-disabled={page >= totalPages}
+                    tabIndex={page >= totalPages ? -1 : undefined}
+                    className={page >= totalPages ? "pointer-events-none opacity-50" : undefined}
+                  >
+                    Next
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>{projects?.length ?? 0} project(s) on the map</CardTitle>
+            <CardTitle>
+              {(projects ?? []).length} project(s) on the map
+              {totalCount > MAP_MARKER_LIMIT && ` (top ${MAP_MARKER_LIMIT} of ${totalCount} by risk)`}
+            </CardTitle>
             <CardDescription>
               Same filters as the table view above, plotted spatially. Green = Low &middot; Yellow
               = Medium &middot; Orange = High &middot; Red = Critical. Pins cluster at province-wide
               zoom levels.
+              {totalCount > MAP_MARKER_LIMIT &&
+                ` Showing the ${MAP_MARKER_LIMIT} riskiest matches only -- narrow the filters above to see the rest.`}
             </CardDescription>
           </CardHeader>
           <CardContent>

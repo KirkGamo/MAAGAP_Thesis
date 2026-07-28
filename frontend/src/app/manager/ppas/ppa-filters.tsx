@@ -21,6 +21,11 @@ export function PpaFilters({ riskTiers, statuses }: PpaFiltersProps) {
     const next = new URLSearchParams(searchParams.toString());
     if (value) next.set(key, value);
     else next.delete(key);
+    // Changing a filter can shrink the result set below the page the
+    // Manager was on (e.g. viewing page 3, then filtering down to 10
+    // matches) -- reset to page 1 rather than showing a confusing "no
+    // projects match" for a page that simply no longer exists.
+    next.delete("page");
     router.push(`/manager/ppas?${next.toString()}`);
   }
 
