@@ -1,6 +1,17 @@
 # MAAGAP ML microservice — data pipeline, model training, optimization, and
 # API service dependencies.
-pandas>=2.2
+#
+# pandas is capped below 3.0 deliberately: pandas 3.0 (released after this
+# pipeline's Phase 1-7 work) changes default dtype inference and enforces
+# always-on copy-on-write, which is what caused
+# compute_proxy_completion_dates() to raise "Cannot cast DatetimeArray to
+# dtype float64" under pandas 3.0.5 (fixed defensively in
+# feature_engineering.py, but the whole pipeline -- preprocess.py,
+# train_trees.py, train_lstm.py, optimization_engine.py -- has only ever
+# been run and validated against pandas 2.x). Bumping to 3.x is a real
+# migration, not a drop-in upgrade; do it deliberately, with the full test
+# suite and a full pipeline re-run, not as a side effect of a fresh venv.
+pandas>=2.2,<3.0
 numpy>=1.26
 openpyxl>=3.1
 rapidfuzz>=3.9
