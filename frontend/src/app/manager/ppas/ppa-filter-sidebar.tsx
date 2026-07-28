@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseCsvParam } from "./filters";
+import { parseCsvParam, PPA_FILTER_PARAM_KEYS } from "./filters";
 
 interface Bounds {
   min: number;
@@ -40,6 +40,13 @@ const RISK_PROBABILITY_BOUNDS: Bounds = { min: 0, max: 100 };
  * cheap order+limit(1) queries, since PostgREST has no aggregate MIN/MAX
  * in a single .select()) rather than a guessed constant, so the slider's
  * range always matches what's actually in the database.
+ *
+ * Phase 18: sections reordered to Status / Risk Tier / Project Type /
+ * Municipality / Budget / Risk Probability per explicit user request; adds
+ * a "Reset" link next to the "Filters" heading (only shown once a filter
+ * is active) that clears every PPA_FILTER_PARAM_KEYS param but preserves
+ * `view`. See ppa-active-filters.tsx for the companion per-filter removable
+ * chips + its own "Clear all".
  */
 export function PpaFilterSidebar({
   riskTiers,
@@ -69,40 +76,46 @@ export function PpaFilterSidebar({
     setCsvParam(key, Array.from(active));
   }
 
+  // Preserves `view` (a display mode, not a filter) but drops every other
+  // param, including `page` -- resetting filters always goes back to
+  // page 1.
+  function resetAll() {
+    const next = new URLSearchParams();
+    const view = searchParams.get("view");
+    if (view) next.set("view", view);
+    router.push(next.toString() ? `/manager/ppas?${next.toString()}` : "/manager/ppas");
+  }
+
+  const hasActiveFilters = PPA_FILTER_PARAM_KEYS.some((key) => searchParams.get(key));
+
   return (
     <aside className="w-full shrink-0 rounded-xl border border-brand-navy/10 bg-white p-4 shadow-md lg:w-64">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={resetAll}
+            className="text-xs font-medium text-brand-blue hover:underline"
+          >
+            Reset
+          </button>
+        )}
+      </div>
 
-      <RangeFilterSection
-        title="Budget"
-        paramMinKey="revenue_min"
-        paramMaxKey="revenue_max"
-        bounds={revenueBounds}
-        step={1000}
-        prefix="₱"
-      />
-      <RangeFilterSection
-        title="Risk Probability"
-        paramMinKey="risk_min"
-        paramMaxKey="risk_max"
-        bounds={RISK_PROBABILITY_BOUNDS}
-        step={1}
-        suffix="%"
-      />
-
-      <CheckboxFilterSection
-        title="Risk Tier"
-        paramKey="risk_tier"
-        options={riskTiers.map((t) => ({ value: t, label: t }))}
-        selected={parseCsvParam(searchParams.get("risk_tier") ?? undefined)}
-        onToggle={(v) => toggleCsvValue("risk_tier", v)}
-      />
       <CheckboxFilterSection
         title="Status"
         paramKey="status"
         options={statuses.map((s) => ({ value: s.value, label: s.label }))}
         selected={parseCsvParam(searchParams.get("status") ?? undefined)}
         onToggle={(v) => toggleCsvValue("status", v)}
+      />
+      <CheckboxFilterSection
+        title="Risk Tier"
+        paramKey="risk_tier"
+        options={riskTiers.map((t) => ({ value: t, label: t }))}
+        selected={parseCsvParam(searchParams.get("risk_tier") ?? undefined)}
+        onToggle={(v) => toggleCsvValue("risk_tier", v)}
       />
       <CheckboxFilterSection
         title="Project Type"
@@ -119,6 +132,23 @@ export function PpaFilterSidebar({
         onToggle={(v) => toggleCsvValue("municipality", v)}
         defaultOpen={false}
         scrollable
+      />
+
+      <RangeFilterSection
+        title="Budget"
+        paramMinKey="revenue_min"
+        paramMaxKey="revenue_max"
+        bounds={revenueBounds}
+        step={1000}
+        prefix="₱"
+      />
+      <RangeFilterSection
+        title="Risk Probability"
+        paramMinKey="risk_min"
+        paramMaxKey="risk_max"
+        bounds={RISK_PROBABILITY_BOUNDS}
+        step={1}
+        suffix="%"
       />
     </aside>
   );

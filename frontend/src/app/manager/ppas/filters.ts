@@ -38,6 +38,25 @@ export interface PpaFilterParams {
   risk_max?: string;
 }
 
+/** Every URL param a PPAs filter control can set -- used by the sidebar's
+ * Reset button and the active-filters bar to build a "no filters applied"
+ * URL and to detect whether any filter is currently active, without
+ * either component needing its own hardcoded copy of this list. `view`
+ * and `page` are deliberately excluded: view is a display mode, not a
+ * filter, and page is a consequence of the other params, not a filter
+ * itself. */
+export const PPA_FILTER_PARAM_KEYS = [
+  "q",
+  "risk_tier",
+  "status",
+  "project_type",
+  "municipality",
+  "revenue_min",
+  "revenue_max",
+  "risk_min",
+  "risk_max",
+] as const;
+
 export function parseCsvParam(value: string | undefined): string[] {
   return (value ?? "")
     .split(",")

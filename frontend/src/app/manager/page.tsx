@@ -1,9 +1,12 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/tremor/card";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { Tracker, type TrackerBlockProps } from "@/components/tremor/tracker";
 import { BarChart } from "@/components/tremor/bar-chart";
 import type { RiskTier } from "@/types/database";
+import { KpiHeader } from "./kpi-header";
+import { KpiHeaderSkeleton } from "./kpi-header-skeleton";
 
 const TIER_ORDER: RiskTier[] = ["Critical", "High", "Medium", "Low"];
 
@@ -48,11 +51,16 @@ const MAX_TRACKER_BLOCKS = 120;
  * portal-wide municipality breakdown, while the Risk Map instead becomes
  * a view toggle inside the new PPAs tab (see app/manager/ppas/page.tsx),
  * since it's fundamentally a spatial view OF the PPA list, not a
- * separate concern. The three headline KPIs (Total Active Projects,
- * Critical Risk Load, Optimized Inspector Capacity) live in the shared
- * sticky header above the sidebar's content area (see ../layout.tsx),
- * since they're meant to stay visible regardless of which nav item is
- * active.
+ * separate concern.
+ *
+ * Phase 18: the three headline KPIs (Total Active Projects, Critical Risk
+ * Load, Optimized Inspector Capacity) used to live in a shared header
+ * above every /manager/* page (see ../layout.tsx's Phase 18 comment) --
+ * moved here instead, since they're Overview-specific summary content, not
+ * something every tab (PPAs, Schedule, Inspectors, Models, Reports) needs
+ * repeated above it. Kept in its own Suspense boundary with the same
+ * KpiHeaderSkeleton fallback as before, so this page's own two Supabase
+ * queries below don't block on the KPI row's three queries, or vice versa.
  */
 export default async function ManagerOverviewPage() {
   const supabase = await createClient();
@@ -114,6 +122,12 @@ export default async function ManagerOverviewPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Card className="p-6">
+        <Suspense fallback={<KpiHeaderSkeleton />}>
+          <KpiHeader />
+        </Suspense>
+      </Card>
+
       <div>
         <h1 className="text-2xl font-semibold text-brand-navy">Overview</h1>
         <p className="text-sm text-slate-500">

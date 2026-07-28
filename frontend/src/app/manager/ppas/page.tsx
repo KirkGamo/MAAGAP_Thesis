@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PpaFilterSidebar } from "./ppa-filter-sidebar";
+import { PpaActiveFilters } from "./ppa-active-filters";
 import { ViewToggle, type PpaView } from "./view-toggle";
 import { MapLoader } from "../map/map-loader";
 import type { MapProject } from "../map/types";
@@ -54,6 +55,10 @@ interface PpasPageProps {
  * logic), and Budget/Risk Probability range-slider filters were added
  * (see ppa-filter-sidebar.tsx) -- their bounds come from live MIN/MAX
  * queries below rather than guessed constants.
+ * Phase 18: sidebar sections reordered (Status, Risk Tier, Project Type,
+ * Municipality, Budget, Risk Probability) with a Reset link; a removable-
+ * chip active-filters summary (ppa-active-filters.tsx) now sits above the
+ * table/map card, visible in both views since filters apply to both.
  */
 export default async function PpasPage({ searchParams }: PpasPageProps) {
   const params = await searchParams;
@@ -162,7 +167,9 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
           revenueBounds={revenueBounds}
         />
 
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <PpaActiveFilters />
+
           {view === "table" ? (
             <Card className="border-brand-navy/10 p-0">
               <CardContent className="p-0">

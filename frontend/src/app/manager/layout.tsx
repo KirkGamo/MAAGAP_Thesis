@@ -1,12 +1,8 @@
-import { Suspense } from "react";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NotificationBell } from "@/components/tremor/notification-bell";
 import { UserMenu } from "@/components/tremor/user-menu";
-import { Card } from "@/components/ui/card";
 import { SidebarNav } from "./sidebar-nav";
-import { KpiHeader } from "./kpi-header";
-import { KpiHeaderSkeleton } from "./kpi-header-skeleton";
 
 /**
  * Manager portal shell. `requireRole` redirects to /inspector if a
@@ -55,31 +51,13 @@ export default async function ManagerLayout({
           </div>
         </header>
 
-        {/* Phase 13: the KPI row's own data-fetching lives in KpiHeader
-            (see kpi-header.tsx) and is wrapped in its own Suspense boundary
-            here -- previously these three queries were awaited directly in
-            this layout, which blocked the ENTIRE shell (sidebar, header)
-            behind them on every single /manager/* navigation. Now the
-            shell paints immediately and only this row shows
-            KpiHeaderSkeleton briefly while its data loads.
-
-            Phase 15 fix: this row is intentionally PERSISTENT (it lives in
-            the layout, so it renders above every /manager/* page) but was
-            never actually CSS-sticky, despite an earlier comment here
-            claiming otherwise -- it scrolls with the page like everything
-            else. It also had no container of its own, so it sat as bare
-            numbers directly on bg-brand-surface with nothing visually
-            separating it from the page heading right below it. Wrapping it
-            in the now-unified Card gives it the same visual boundary every
-            other content block in the app has. */}
-        <div className="px-6 pt-6">
-          <Card className="p-6">
-            <Suspense fallback={<KpiHeaderSkeleton />}>
-              <KpiHeader />
-            </Suspense>
-          </Card>
-        </div>
-
+        {/* Phase 18: the KPI row (Total Active Projects / Critical Risk
+            Load / Optimized Inspector Capacity) used to live here, so it
+            rendered above every /manager/* page. Moved into
+            manager/page.tsx (Overview) instead, per the user's explicit
+            call -- it's Overview-specific summary content, not a portal-
+            wide status bar every tab needs repeated above it. See
+            kpi-header.tsx and kpi-header-skeleton.tsx, now imported there. */}
         <main className="flex-1 px-6 py-6">{children}</main>
       </div>
     </div>
