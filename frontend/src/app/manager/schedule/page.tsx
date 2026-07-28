@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge, riskTierVariant } from "@/components/ui/badge";
 import { DeployScheduleButton } from "./deploy-schedule-button";
 import { ScheduleMapLoader } from "./schedule-map-loader";
 import { DayFilter } from "./day-filter";
 import { ScheduleEditor } from "./schedule-editor";
+import { ScheduleBoard, type BoardAssignment } from "./schedule-board";
 import type { ScheduleMapPoint } from "./schedule-map";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
@@ -120,6 +120,32 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
     };
   });
 
+  // Phase 13: day -> inspector -> assignments, for the Kanban-style
+  // ScheduleBoard below (replaces the old inspector-first grid). Built
+  // straight from the same `rows` query the map/editor already use, so
+  // there's exactly one source of truth for "what's scheduled this week".
+  const boardByDay: Record<string, Record<string, BoardAssignment[]>> = {};
+  for (const dayOfWeek of DAY_ORDER) boardByDay[dayOfWeek] = {};
+  for (const row of rows ?? []) {
+    const inspectorName =
+      (row.inspector as unknown as { full_name: string | null })?.full_name ?? "Unassigned";
+    const project = row.project as unknown as {
+      name_of_project: string;
+      municipality: string | null;
+      risk_tier: string | null;
+    } | null;
+    const day = row.scheduled_day;
+    if (!boardByDay[day]) boardByDay[day] = {}; // guards against an unexpected day value
+    if (!boardByDay[day][inspectorName]) boardByDay[day][inspectorName] = [];
+    boardByDay[day][inspectorName].push({
+      id: row.id,
+      projectName: project?.name_of_project ?? "Unknown project",
+      municipality: project?.municipality ?? null,
+      riskTier: project?.risk_tier ?? null,
+      cluster: row.cluster,
+    });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -188,56 +214,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from(byInspector.entries()).map(([inspectorName, assignments]) => (
-          <Card key={inspectorName}>
-            <CardHeader>
-              <CardTitle className="text-base">{inspectorName}</CardTitle>
-              <CardDescription>{assignments!.length} site visit(s) this week</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              {DAY_ORDER.map((dayOfWeek) => {
-                const dayAssignments = assignments!.filter((a) => a.scheduled_day === dayOfWeek);
-                if (dayAssignments.length === 0) return null;
-                return (
-                  <div key={dayOfWeek}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      {dayOfWeek}
-                    </p>
-                    <ul className="mt-1 flex flex-col gap-1.5">
-                      {dayAssignments.map((a) => {
-                        const project = a.project as unknown as {
-                          project_key: string;
-                          name_of_project: string;
-                          municipality: string | null;
-                          risk_tier: string | null;
-                        } | null;
-                        return (
-                          <li key={a.id} className="rounded-md border border-slate-100 p-2 text-sm">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-slate-800">
-                                {project?.name_of_project ?? "Unknown project"}
-                              </span>
-                              {project?.risk_tier && (
-                                <Badge variant={riskTierVariant(project.risk_tier)}>
-                                  {project.risk_tier}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-400">
-                              {project?.municipality} · {a.cluster}
-                            </p>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <ScheduleBoard days={DAY_ORDER} boardByDay={boardByDay} colorByInspector={colorByInspector} />
     </div>
   );
 }
