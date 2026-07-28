@@ -81,6 +81,8 @@ export type Database = {
           risk_probability: number | null;
           created_by: string | null; // profiles.id of the Manager who imported it
           created_at: string;
+          latitude: number | null; // geocoded from `location` -- see scripts/geocode_projects.py
+          longitude: number | null;
         };
         Insert: Partial<Database["public"]["Tables"]["projects"]["Row"]> & {
           project_key: string;

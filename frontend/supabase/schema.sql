@@ -123,7 +123,22 @@ create table if not exists public.projects (
     check (risk_tier in ('Low', 'Medium', 'High', 'Critical')),
   risk_probability numeric check (risk_probability between 0 and 1),
   created_by uuid references public.profiles (id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Phase 12.3: real, geocoded site coordinates (see
+  -- scripts/geocode_projects.py, which resolves these from the `location`
+  -- text field via the Nominatim/OpenStreetMap geocoder). Nullable and
+  -- deliberately separate from `municipality`'s town-center approximation
+  -- (lib/municipality-coordinates.ts) -- every map view
+  -- (project-risk-map.tsx, ppas/page.tsx, schedule-map.tsx) prefers these
+  -- when present and only falls back to the jittered municipality center
+  -- (lib/pin-jitter.ts) when a project hasn't been geocoded yet. Standard
+  -- lat/lng bounds, not province-specific -- a tighter check here would
+  -- reject a legitimately mis-entered `location` loudly at write time
+  -- instead of just leaving it ungeocoded, which is not this constraint's
+  -- job (the geocoding script already sanity-checks against Iloilo's
+  -- bounding box before writing).
+  latitude numeric check (latitude between -90 and 90),
+  longitude numeric check (longitude between -180 and 180)
 );
 
 alter table public.projects enable row level security;

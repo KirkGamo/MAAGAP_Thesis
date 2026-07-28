@@ -7,13 +7,18 @@ import {
   ILOILO_PROVINCE_CENTER,
   ILOILO_PROVINCE_DEFAULT_ZOOM,
 } from "@/lib/municipality-coordinates";
-import { jitteredCoordinates } from "@/lib/pin-jitter";
+import { resolveProjectCoordinates } from "@/lib/pin-jitter";
 
 export interface ScheduleMapPoint {
   id: string;
   inspectorName: string;
   projectName: string;
   municipality: string | null;
+  // Real, geocoded coordinates (see scripts/geocode_projects.py) -- when
+  // present, placed here instead of the jittered municipality-center
+  // approximation. See lib/pin-jitter.ts's resolveProjectCoordinates().
+  latitude: number | null;
+  longitude: number | null;
   day: string;
   /** Hex color assigned per-inspector (see page.tsx's INSPECTOR_COLORS
    * palette) — this map answers "which inspector is going where", so pins
@@ -64,7 +69,7 @@ export function ScheduleMap({ points }: { points: ScheduleMapPoint[] }) {
       {points.map((point) => (
         <Marker
           key={point.id}
-          position={jitteredCoordinates(point.municipality, point.id)}
+          position={resolveProjectCoordinates(point, point.municipality, point.id)}
           icon={inspectorDivIcon(point.color)}
         >
           <Popup>
@@ -74,6 +79,11 @@ export function ScheduleMap({ points }: { points: ScheduleMapPoint[] }) {
               <span className="text-slate-500">
                 {point.municipality ?? "Unmapped"} · {point.day}
               </span>
+              {point.latitude == null && (
+                <span className="text-xs italic text-slate-400">
+                  Approximate location — not yet geocoded
+                </span>
+              )}
             </div>
           </Popup>
         </Marker>

@@ -14,7 +14,7 @@ import {
   ILOILO_PROVINCE_CENTER,
   ILOILO_PROVINCE_DEFAULT_ZOOM,
 } from "@/lib/municipality-coordinates";
-import { jitteredCoordinates } from "@/lib/pin-jitter";
+import { resolveProjectCoordinates } from "@/lib/pin-jitter";
 import type { MapProject } from "./types";
 
 const RISK_COLORS: Record<string, string> = {
@@ -73,7 +73,7 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
           {plottable.map((project) => (
             <Marker
               key={project.id}
-              position={jitteredCoordinates(project.municipality, project.project_key)}
+              position={resolveProjectCoordinates(project, project.municipality, project.project_key)}
               icon={riskDivIcon(project.risk_tier)}
             >
               <Popup>
@@ -86,6 +86,11 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
                     {project.risk_tier ?? "Unscored"}
                     {project.risk_probability != null && ` · P=${project.risk_probability.toFixed(2)}`}
                   </span>
+                  {project.latitude == null && (
+                    <span className="text-xs italic text-slate-400">
+                      Approximate location — not yet geocoded
+                    </span>
+                  )}
                 </div>
               </Popup>
             </Marker>

@@ -51,7 +51,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   const { data: rows } = await supabase
     .from("inspector_schedules")
     .select(
-      "id, inspector_id, scheduled_day, week_of, cluster, inspector:profiles!inspector_schedules_inspector_id_fkey(full_name), project:projects(project_key, name_of_project, municipality, risk_tier)"
+      "id, inspector_id, scheduled_day, week_of, cluster, inspector:profiles!inspector_schedules_inspector_id_fkey(full_name), project:projects(project_key, name_of_project, municipality, risk_tier, latitude, longitude)"
     )
     .order("scheduled_day");
 
@@ -90,12 +90,16 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
         project_key: string;
         name_of_project: string;
         municipality: string | null;
+        latitude: number | null;
+        longitude: number | null;
       } | null;
       return {
         id: row.id,
         inspectorName,
         projectName: project?.name_of_project ?? "Unknown project",
         municipality: project?.municipality ?? null,
+        latitude: project?.latitude ?? null,
+        longitude: project?.longitude ?? null,
         day: row.scheduled_day,
         color: colorByInspector.get(inspectorName) ?? INSPECTOR_COLORS[0],
       };

@@ -20,10 +20,39 @@ export function hashToUnitInterval(key: string): number {
 
 /** Jitters a municipality's town-center coordinate by a small, stable
  * (per-key) offset so multiple pins in the same municipality fan out
- * instead of stacking exactly on top of one another. */
+ * instead of stacking exactly on top of one another.
+ *
+ * This is an APPROXIMATION, not a real location -- see this module's other
+ * export, resolveProjectCoordinates(), which is what every map view should
+ * actually call. It only falls back to this function when a project has no
+ * real geocoded coordinates yet. */
 export function jitteredCoordinates(municipality: string | null, key: string): [number, number] {
   const [lat, lng] = resolveMunicipalityCoordinates(municipality);
   const angle = hashToUnitInterval(key) * 2 * Math.PI;
   const radiusDegrees = 0.01 + hashToUnitInterval(key + "r") * 0.015;
   return [lat + Math.sin(angle) * radiusDegrees, lng + Math.cos(angle) * radiusDegrees];
+}
+
+/**
+ * Phase 12.3: the preferred coordinate resolver for every map view
+ * (project-risk-map.tsx, schedule-map.tsx). Real, geocoded coordinates
+ * (projects.latitude/longitude -- see scripts/geocode_projects.py) win when
+ * present; only projects that haven't been geocoded yet (or failed to
+ * geocode) fall back to jitteredCoordinates()'s municipality-center
+ * approximation.
+ *
+ * Takes plain latitude/longitude rather than a whole `project` object so it
+ * can be reused for the Schedule map's points too, which carry municipality
+ * + coordinates from a joined `projects` row rather than a MapProject
+ * directly.
+ */
+export function resolveProjectCoordinates(
+  coords: { latitude: number | null; longitude: number | null },
+  municipality: string | null,
+  key: string
+): [number, number] {
+  if (coords.latitude != null && coords.longitude != null) {
+    return [coords.latitude, coords.longitude];
+  }
+  return jitteredCoordinates(municipality, key);
 }

@@ -50,7 +50,9 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
 
   let query = supabase
     .from("projects")
-    .select("id, project_key, name_of_project, municipality, status, risk_tier, risk_probability")
+    .select(
+      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, latitude, longitude"
+    )
     .order("risk_probability", { ascending: false, nullsFirst: false })
     .limit(200);
 
