@@ -23,7 +23,13 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
         ref={forwardedRef}
         className={cx(
           // base
-          "relative w-full rounded-lg border p-6 text-left shadow-xs",
+          // Phase 13: bumped from rounded-lg/shadow-xs -- on the gray
+          // brand-surface background these cards previously read as almost
+          // flush with the page. A slightly larger radius + a real (if
+          // still subtle) shadow gives every Tremor Card across the app
+          // (KPI cards, Tracker, BarChart, Models tab, etc.) visible
+          // separation without looking like a heavy modal/popover.
+          "relative w-full rounded-xl border p-6 text-left shadow-md",
           // background color
           "bg-white",
           // border color

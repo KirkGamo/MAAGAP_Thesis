@@ -47,9 +47,15 @@ export function SidebarNav() {
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                // Phase 13: the old bg-brand-surface active state (a very
+                // pale near-white tint) was too faint to read as "this is
+                // where you are" at a glance -- bg-brand-blue/10 gives a
+                // clearly visible tint using the actual brand color, paired
+                // with bold text and a left accent bar for a second visual
+                // cue beyond color alone (helps colorblind users too).
                 isActive
-                  ? "bg-brand-surface text-brand-navy"
-                  : "text-brand-navy/70 hover:bg-brand-surface hover:text-brand-navy"
+                  ? "border-l-4 border-l-brand-blue bg-brand-blue/10 font-semibold text-brand-navy"
+                  : "border-l-4 border-l-transparent text-brand-navy/70 hover:bg-brand-surface hover:text-brand-navy"
               )}
             >
               {item.label}
