@@ -9,7 +9,17 @@
 "use client";
 
 import React from "react";
-import { RiArrowLeftSLine, RiArrowRightSLine } from "@remixicon/react";
+// NOTE: Tremor Raw's original source imports RiArrowLeftSLine/
+// RiArrowRightSLine from @remixicon/react. Swapped for lucide-react
+// (already a dependency here for shadcn/ui's icons) because the installed
+// @remixicon/react package repeatedly extracted corrupted/truncated in
+// this project's dev environment (an unterminated string constant inside
+// its bundled index.mjs's SVG path data broke the Next.js build) --
+// rather than depend on a package whose install has proven unreliable
+// here just for two chevron icons, drop it entirely. `icon` below is typed
+// as a generic `React.ElementType`, so any icon component works as a
+// drop-in replacement.
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
@@ -344,7 +354,7 @@ const Legend = React.forwardRef<HTMLOListElement, LegendProps>((props, ref) => {
             )}
           >
             <ScrollButton
-              icon={RiArrowLeftSLine}
+              icon={ChevronLeft}
               onClick={() => {
                 setIsKeyDowned(null);
                 scrollToTest("left");
@@ -352,7 +362,7 @@ const Legend = React.forwardRef<HTMLOListElement, LegendProps>((props, ref) => {
               disabled={!hasScroll?.left}
             />
             <ScrollButton
-              icon={RiArrowRightSLine}
+              icon={ChevronRight}
               onClick={() => {
                 setIsKeyDowned(null);
                 scrollToTest("right");
