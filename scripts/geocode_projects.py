@@ -144,6 +144,39 @@ def geocode_one(location: str, municipality: Optional[str]) -> Optional[tuple[fl
     return lat, lon
 
 
+def update_with_retry(client, project_id: str, lat: float, lon: float, project_key: str) -> bool:
+    """Writes one project's coordinates, retrying a few times with backoff
+    before giving up. This script makes ~1,000 sequential HTTPS calls over
+    15-20 minutes (one geocode + one Supabase write per project) -- long
+    enough that a single transient network blip (a Wi-Fi hiccup, an ISP
+    hiccup, Supabase/PostgREST closing an idle keep-alive connection) is
+    expected, not exceptional. Without this, one reset partway through
+    killed the entire run with an unhandled httpx.ReadError, discarding
+    however much progress hadn't been written yet. Returns True on success,
+    False if every attempt failed (logged, not raised, so the run
+    continues with the next project instead of aborting)."""
+    delays = [1, 3, 6]
+    last_exc: Exception | None = None
+    for attempt, delay in enumerate([0, *delays]):
+        if delay:
+            time.sleep(delay)
+        try:
+            client.table("projects").update({"latitude": lat, "longitude": lon}).eq(
+                "id", project_id
+            ).execute()
+            return True
+        except Exception as exc:  # noqa: BLE001 -- network/HTTP2 failures surface as
+            # various httpx/httpcore exception types (ReadError, ConnectError,
+            # RemoteProtocolError, ...); retrying broadly here is the point.
+            last_exc = exc
+            logger.warning(
+                "[%s] Supabase write failed (attempt %d/%d): %s",
+                project_key, attempt + 1, len(delays) + 1, exc,
+            )
+    logger.error("[%s] Giving up on this write after %d attempts: %s", project_key, len(delays) + 1, last_exc)
+    return False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="Geocode and log results, but don't write to Supabase.")
@@ -189,6 +222,7 @@ def main() -> None:
     empty_location = 0
     no_usable_match = 0
     errors = 0
+    write_errors = 0
 
     for i, project in enumerate(projects):
         location = project.get("location") or ""
@@ -218,7 +252,10 @@ def main() -> None:
         logger.info("[%s] %r -> (%.5f, %.5f)", project_key, location, lat, lon)
 
         if not args.dry_run:
-            client.table("projects").update({"latitude": lat, "longitude": lon}).eq("id", project["id"]).execute()
+            if not update_with_retry(client, project["id"], lat, lon, project_key):
+                write_errors += 1
+                time.sleep(args.sleep)
+                continue
 
         geocoded += 1
         # Respect Nominatim's rate limit between requests -- skip the sleep
@@ -228,9 +265,16 @@ def main() -> None:
             time.sleep(args.sleep)
 
     logger.info(
-        "Done. %d geocoded, %d with no usable match, %d empty `location`, %d request errors (out of %d total).",
-        geocoded, no_usable_match, empty_location, errors, len(projects),
+        "Done. %d geocoded, %d with no usable match, %d empty `location`, %d geocoding request "
+        "errors, %d Supabase write errors (out of %d total).",
+        geocoded, no_usable_match, empty_location, errors, write_errors, len(projects),
     )
+    if write_errors > 0:
+        logger.info(
+            "%d project(s) failed to write after retrying -- just re-run this script (with no "
+            "flags) to pick up only the rows still missing coordinates.",
+            write_errors,
+        )
     if args.dry_run:
         logger.info("--dry-run: no rows were written to Supabase.")
 
