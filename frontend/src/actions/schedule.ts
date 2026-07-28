@@ -24,6 +24,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { currentWeekMonday } from "@/lib/current-week";
 
 export type ScheduleActionResult =
   | { success: true; message?: string }
@@ -34,19 +35,6 @@ const VALID_DAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri"]);
 function revalidateScheduleViews() {
   revalidatePath("/manager/schedule");
   revalidatePath("/inspector");
-}
-
-/** Monday of the current ISO week, as YYYY-MM-DD -- mirrors the same
- * definition used by actions/deploy-schedule.ts's currentWeekMonday(), so
- * a manually-added assignment lands in the same week a fresh "Deploy
- * latest schedule" click would replace. */
-function currentWeekMonday(): string {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMonday);
-  return monday.toISOString().slice(0, 10);
 }
 
 function duplicateAssignmentMessage(): string {

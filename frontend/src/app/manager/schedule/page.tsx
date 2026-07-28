@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { currentWeekMonday } from "@/lib/current-week";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeployScheduleButton } from "./deploy-schedule-button";
 import { ScheduleMapLoader } from "./schedule-map-loader";
@@ -48,11 +49,21 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   const selectedDay = day && (DAY_ORDER as readonly string[]).includes(day) ? day : "All";
   const supabase = await createClient();
 
+  // Phase 14 fix: inspector_schedules accumulates every week ever deployed
+  // (only the CURRENT week is deleted+replaced on redeploy -- see
+  // actions/deploy-schedule.ts) -- without this filter, this query returned
+  // every historical week's rows merged together the moment a second week
+  // had ever been deployed, silently duplicating/misattributing the board,
+  // map, and editor below. Scoping to the current week is what "this
+  // week's schedule" (the page's own heading) actually promises.
+  const weekOf = currentWeekMonday();
+
   const { data: rows } = await supabase
     .from("inspector_schedules")
     .select(
       "id, inspector_id, scheduled_day, week_of, cluster, inspector:profiles!inspector_schedules_inspector_id_fkey(full_name), project:projects(project_key, name_of_project, municipality, risk_tier, latitude, longitude)"
     )
+    .eq("week_of", weekOf)
     .order("scheduled_day");
 
   // For the "reassign inspector" <select> and the "add assignment" form --

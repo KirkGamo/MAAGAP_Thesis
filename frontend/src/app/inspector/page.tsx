@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { currentWeekMonday } from "@/lib/current-week";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, riskTierVariant } from "@/components/ui/badge";
 import { ChevronRight, MapPin } from "lucide-react";
@@ -22,13 +23,20 @@ export default async function InspectorTodayPage() {
 
   const today = DAY_LABELS[new Date().getDay()];
 
+  // Phase 14 fix: filtering by scheduled_day alone (e.g. "Mon") matches
+  // EVERY Monday ever deployed across every week, not just this week's --
+  // inspector_schedules keeps old weeks' rows around (only the current
+  // week is replaced on redeploy). Without also scoping to the current
+  // week, an inspector would see every historical Monday's assignments
+  // merged into "today", not just the current one.
   const { data: assignments } = await supabase
     .from("inspector_schedules")
     .select(
       "id, scheduled_day, cluster, project:projects(id, project_key, name_of_project, location, municipality, risk_tier)"
     )
     .eq("inspector_id", user?.id ?? "")
-    .eq("scheduled_day", today);
+    .eq("scheduled_day", today)
+    .eq("week_of", currentWeekMonday());
 
   return (
     <div className="flex flex-col gap-4">

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { currentWeekMonday } from "@/lib/current-week";
 
 interface ScheduleRow {
   inspector: string;
@@ -17,18 +18,6 @@ interface ScheduleRow {
 interface LatestScheduleResponse {
   rows: ScheduleRow[];
   summary: Record<string, unknown> | null;
-}
-
-/** Monday of the current ISO week, as YYYY-MM-DD -- inspector_schedules.week_of
- * is a plain `date` column, one row per (inspector, project, day) for a
- * given week. */
-function currentWeekMonday(): string {
-  const now = new Date();
-  const day = now.getDay(); // 0 = Sunday, 1 = Monday, ...
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMonday);
-  return monday.toISOString().slice(0, 10);
 }
 
 /**
