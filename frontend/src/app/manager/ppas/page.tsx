@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { ProjectStatus, RiskTier } from "@/types/database";
-import { PpaFilters } from "./ppa-filters";
+import { PpaFilterSidebar } from "./ppa-filter-sidebar";
+import { PpaSearchBar } from "./ppa-search-bar";
 import { ViewToggle, type PpaView } from "./view-toggle";
 import { MapLoader } from "../map/map-loader";
 import type { MapProject } from "../map/types";
@@ -107,50 +108,53 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <PpaFilters riskTiers={RISK_TIERS} statuses={STATUSES} />
-        <ViewToggle current={view} />
-      </div>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <PpaFilterSidebar riskTiers={RISK_TIERS} statuses={STATUSES} />
 
-      {view === "table" ? (
-        <Card className="border-brand-navy/10 p-0">
-          <CardHeader className="border-b border-brand-navy/10 px-5 py-4">
-            <CardTitle>{totalCount} project(s)</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
-            <PpasDataTable
-              columns={ppaColumns}
-              data={projects ?? []}
-              page={page}
-              totalPages={totalPages}
-              totalCount={totalCount}
-              pageSize={PAGE_SIZE}
-              params={{ q: params.q, risk_tier: params.risk_tier, status: params.status, view: params.view }}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {(projects ?? []).length} project(s) on the map
-              {totalCount > MAP_MARKER_LIMIT && ` (top ${MAP_MARKER_LIMIT} of ${totalCount} by risk)`}
-            </CardTitle>
-            <CardDescription>
-              Same filters as the table view above, plotted spatially. Green = Low &middot; Yellow
-              = Medium &middot; Orange = High &middot; Red = Critical. Pins cluster at province-wide
-              zoom levels.
-              {totalCount > MAP_MARKER_LIMIT &&
-                ` Showing the ${MAP_MARKER_LIMIT} riskiest matches only -- narrow the filters above to see the rest.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && <p className="text-sm text-red-600">{error.message}</p>}
-            <MapLoader projects={(projects as MapProject[]) ?? []} />
-          </CardContent>
-        </Card>
-      )}
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex justify-end">
+            <ViewToggle current={view} />
+          </div>
+
+          {view === "table" ? (
+            <Card className="border-brand-navy/10 p-0">
+              <PpaSearchBar totalCount={totalCount} />
+              <CardContent className="p-0">
+                {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
+                <PpasDataTable
+                  columns={ppaColumns}
+                  data={projects ?? []}
+                  page={page}
+                  totalPages={totalPages}
+                  totalCount={totalCount}
+                  pageSize={PAGE_SIZE}
+                  params={{ q: params.q, risk_tier: params.risk_tier, status: params.status, view: params.view }}
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {(projects ?? []).length} project(s) on the map
+                  {totalCount > MAP_MARKER_LIMIT && ` (top ${MAP_MARKER_LIMIT} of ${totalCount} by risk)`}
+                </CardTitle>
+                <CardDescription>
+                  Same filters as the sidebar, plotted spatially. Green = Low &middot; Yellow =
+                  Medium &middot; Orange = High &middot; Red = Critical. Pins cluster at
+                  province-wide zoom levels.
+                  {totalCount > MAP_MARKER_LIMIT &&
+                    ` Showing the ${MAP_MARKER_LIMIT} riskiest matches only -- narrow the filters to see the rest.`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {error && <p className="text-sm text-red-600">{error.message}</p>}
+                <MapLoader projects={(projects as MapProject[]) ?? []} />
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

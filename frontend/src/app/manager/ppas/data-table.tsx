@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export interface PpaTableParams {
   q?: string;
@@ -48,6 +49,26 @@ function buildHref(params: PpaTableParams, targetPage: number): string {
   if (targetPage > 1) next.set("page", String(targetPage));
   const qs = next.toString();
   return qs ? `/manager/ppas?${qs}` : "/manager/ppas";
+}
+
+/** Windowed page-number list (1 … 4 5 [6] 7 8 … 81), matching the reference
+ * dashboard's numbered pagination instead of a bare "Page X of Y" label --
+ * with ~81 pages at 50 rows/page over 4,039 projects, showing every page
+ * number would be unusable, so this always keeps the first, last, and a
+ * small window around the current page, collapsing the rest into "…". */
+function getPageNumbers(current: number, total: number): (number | "ellipsis")[] {
+  if (total <= 1) return [1];
+  const delta = 1;
+  const pages: (number | "ellipsis")[] = [1];
+  const rangeStart = Math.max(2, current - delta);
+  const rangeEnd = Math.min(total - 1, current + delta);
+
+  if (rangeStart > 2) pages.push("ellipsis");
+  for (let i = rangeStart; i <= rangeEnd; i++) pages.push(i);
+  if (rangeEnd < total - 1) pages.push("ellipsis");
+  if (total > 1) pages.push(total);
+
+  return pages;
 }
 
 /**
@@ -118,11 +139,11 @@ export function PpasDataTable<TData>({
       </Table>
 
       {totalCount > 0 && (
-        <div className="flex items-center justify-between border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
           <span>
             Showing {from + 1}–{Math.min(from + pageSize, totalCount)} of {totalCount}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button asChild variant="outline" size="sm">
               <Link
                 href={buildHref(params, page - 1)}
@@ -133,9 +154,27 @@ export function PpasDataTable<TData>({
                 Previous
               </Link>
             </Button>
-            <span className="tabular-nums">
-              Page {page} of {totalPages}
-            </span>
+            {getPageNumbers(page, totalPages).map((p, i) =>
+              p === "ellipsis" ? (
+                <span key={`ellipsis-${i}`} className="px-1.5 text-slate-400">
+                  …
+                </span>
+              ) : (
+                <Link
+                  key={p}
+                  href={buildHref(params, p)}
+                  aria-current={p === page ? "page" : undefined}
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-md text-sm tabular-nums transition-colors",
+                    p === page
+                      ? "bg-brand-navy font-medium text-white"
+                      : "text-slate-600 hover:bg-brand-surface"
+                  )}
+                >
+                  {p}
+                </Link>
+              )
+            )}
             <Button asChild variant="outline" size="sm">
               <Link
                 href={buildHref(params, page + 1)}

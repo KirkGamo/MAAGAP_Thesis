@@ -1,13 +1,14 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const SKELETON_ROW_COUNT = 8;
 
-/** Phase 13: loading.tsx for the PPAs tab -- overrides ../loading.tsx.
- * Shaped like the real page (see page.tsx): heading + Import button,
- * filters row, then a table card with a header and a handful of row
- * placeholders plus a pagination-footer placeholder, so the wireframe
- * doesn't visibly jump once the real 50-row page of data arrives. */
+/** Phase 16: loading.tsx for the PPAs tab -- overrides ../loading.tsx.
+ * Shaped like the real page (see page.tsx): heading + Import button, then
+ * a left filter-sidebar placeholder alongside a table card with a
+ * search-bar header, row placeholders, and a pagination-footer
+ * placeholder, so the wireframe doesn't visibly jump once the real
+ * sidebar/table/pagination arrive. */
 export default function PpasLoading() {
   return (
     <div className="flex flex-col gap-6">
@@ -19,29 +20,31 @@ export default function PpasLoading() {
         <Skeleton className="h-10 w-36" />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-3">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-10 w-36" />
-          <Skeleton className="h-10 w-36" />
-        </div>
-        <Skeleton className="h-9 w-32" />
-      </div>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <Skeleton className="h-56 w-full rounded-xl lg:w-56 lg:shrink-0" />
 
-      <Card className="border-brand-navy/10 p-0">
-        <CardHeader className="border-b border-brand-navy/10 px-5 py-4">
-          <Skeleton className="h-5 w-24" />
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 p-5">
-          {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
-            <Skeleton key={i} className="h-8 w-full" />
-          ))}
-        </CardContent>
-        <div className="flex items-center justify-between border-t border-brand-navy/10 px-5 py-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-8 w-48" />
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex justify-end">
+            <Skeleton className="h-9 w-32" />
+          </div>
+
+          <Card className="border-brand-navy/10 p-0">
+            <div className="flex items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
+              <Skeleton className="h-9 w-full max-w-sm" />
+              <Skeleton className="h-4 w-24 shrink-0" />
+            </div>
+            <CardContent className="flex flex-col gap-3 p-5">
+              {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </CardContent>
+            <div className="flex items-center justify-between border-t border-brand-navy/10 px-5 py-3">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-8 w-64" />
+            </div>
+          </Card>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

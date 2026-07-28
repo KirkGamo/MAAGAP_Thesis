@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
+import { MapPin } from "lucide-react";
 import { Badge, riskTierVariant, statusVariant } from "@/components/ui/badge";
 
 /** One row of the PPAs table -- mirrors exactly the fields page.tsx selects
@@ -43,21 +44,34 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
     accessorKey: "name_of_project",
     header: "Project",
     cell: ({ row }) => (
-      <div>
-        <Link
-          href={`/manager/ppas/${row.original.id}`}
-          className="font-medium text-slate-900 hover:underline"
+      <div className="flex items-center gap-2.5">
+        <span
+          className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-blue/10 text-xs font-semibold text-brand-navy"
+          aria-hidden="true"
         >
-          {row.original.name_of_project}
-        </Link>
-        <div className="text-xs text-slate-400">{row.original.project_key}</div>
+          {row.original.name_of_project.charAt(0).toUpperCase()}
+        </span>
+        <div className="min-w-0">
+          <Link
+            href={`/manager/ppas/${row.original.id}`}
+            className="block truncate font-medium text-slate-900 hover:underline"
+          >
+            {row.original.name_of_project}
+          </Link>
+          <div className="text-xs text-slate-400">{row.original.project_key}</div>
+        </div>
       </div>
     ),
   },
   {
     accessorKey: "municipality",
     header: "Municipality",
-    cell: ({ row }) => row.original.municipality ?? "—",
+    cell: ({ row }) => (
+      <span className="flex items-center gap-1.5 text-slate-600">
+        <MapPin className="size-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+        {row.original.municipality ?? "—"}
+      </span>
+    ),
   },
   {
     accessorKey: "status",
