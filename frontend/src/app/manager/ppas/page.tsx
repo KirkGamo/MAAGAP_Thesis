@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { PpaFilterSidebar } from "./ppa-filter-sidebar";
 import { PpaActiveFilters } from "./ppa-active-filters";
+import { PpaSearchBar } from "./ppa-search-bar";
+import { PpaImportPanel } from "./ppa-import-panel";
 import { ViewToggle, type PpaView } from "./view-toggle";
 import { MapLoader } from "../map/map-loader";
 import type { MapProject } from "../map/types";
@@ -59,6 +59,11 @@ interface PpasPageProps {
  * Municipality, Budget, Risk Probability) with a Reset link; a removable-
  * chip active-filters summary (ppa-active-filters.tsx) now sits above the
  * table/map card, visible in both views since filters apply to both.
+ * Phase 19: the Map view's card gets its own search bar (ppa-search-bar.tsx,
+ * shared with the table toolbar) -- previously only the table view had one.
+ * "Import Projects" is now a slide-out panel (ppa-import-panel.tsx) instead
+ * of a Link to /manager/import, so importing no longer navigates away from
+ * whatever filters/page/view the Manager was looking at.
  */
 export default async function PpasPage({ searchParams }: PpasPageProps) {
   const params = await searchParams;
@@ -152,9 +157,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
         </div>
         <div className="flex items-center gap-3">
           <ViewToggle current={view} />
-          <Button asChild>
-            <Link href="/manager/import">Import Projects</Link>
-          </Button>
+          <PpaImportPanel />
         </div>
       </div>
 
@@ -187,7 +190,10 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
               </CardContent>
             </Card>
           ) : (
-            <Card>
+            <Card className="p-0">
+              <div className="border-b border-brand-navy/10 px-5 py-3">
+                <PpaSearchBar />
+              </div>
               <CardHeader>
                 <CardTitle>
                   {(projects ?? []).length} project(s) on the map

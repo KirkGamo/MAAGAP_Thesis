@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   flexRender,
@@ -11,7 +10,7 @@ import {
   type ColumnDef,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Search, Download, SlidersHorizontal, Check } from "lucide-react";
+import { Download, SlidersHorizontal, Check } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { PpaSearchBar } from "./ppa-search-bar";
 
 export interface PpaTableParams {
   q?: string;
@@ -91,41 +91,6 @@ function getPageNumbers(current: number, total: number): (number | "ellipsis")[]
   return pages;
 }
 
-/** Free-text search input -- rewrites the `q` URL param, same pattern the
- * filter sidebar uses. Lives in this file (rather than its own
- * ppa-search-bar.tsx, which this replaces) because the Toggle Columns
- * control right next to it needs the same TanStack `table` instance this
- * component already builds, and splitting them apart would mean lifting
- * table state up a level for no real benefit. */
-function SearchInput() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  function setQuery(value: string) {
-    const next = new URLSearchParams(searchParams.toString());
-    if (value) next.set("q", value);
-    else next.delete("q");
-    next.delete("page");
-    router.push(`/manager/ppas?${next.toString()}`);
-  }
-
-  return (
-    <div className="relative w-full max-w-sm">
-      <Search
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
-        aria-hidden="true"
-      />
-      <input
-        type="text"
-        placeholder="Search by project name..."
-        defaultValue={searchParams.get("q") ?? ""}
-        onChange={(e) => setQuery(e.target.value)}
-        className="h-9 w-full rounded-md border border-brand-navy/10 bg-white pl-9 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
-      />
-    </div>
-  );
-}
-
 /**
  * Phase 13: the shadcn/ui "DataTable" pattern (TanStack Table for column
  * definitions + rendering) applied to the PPAs tab, replacing a hand-rolled
@@ -139,7 +104,8 @@ function SearchInput() {
  * second data-fetching layer.
  *
  * Phase 16 adds a toolbar above the table: the free-text search input
- * (moved in from the now-deleted ppa-search-bar.tsx), a live row count, a
+ * (see ppa-search-bar.tsx -- Phase 19 pulled it back out into its own file
+ * so the Map view could reuse it too), a live row count, a
  * "Toggle Columns" dropdown (TanStack's built-in `columnVisibility` state,
  * persisted to localStorage so the Manager's column choices survive a
  * reload -- purely a display preference, not data, so localStorage is the
@@ -198,7 +164,7 @@ export function PpasDataTable<TData>({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
-        <SearchInput />
+        <PpaSearchBar />
         <div className="flex items-center gap-3">
           <span className="shrink-0 text-sm text-slate-500">{totalCount.toLocaleString()} project(s)</span>
 

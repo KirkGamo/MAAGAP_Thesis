@@ -47,6 +47,13 @@ const RISK_PROBABILITY_BOUNDS: Bounds = { min: 0, max: 100 };
  * is active) that clears every PPA_FILTER_PARAM_KEYS param but preserves
  * `view`. See ppa-active-filters.tsx for the companion per-filter removable
  * chips + its own "Clear all".
+ *
+ * Phase 19: the "Filters" / Reset header row stays outside the scroll
+ * region (always visible), while the section list below it caps at the
+ * same 560px data-table.tsx uses for the table's row area, with its own
+ * `overflow-y-auto` -- so on tall filter sets (many municipalities, etc.)
+ * the sidebar and the table now grow to the same visual height instead of
+ * the sidebar running arbitrarily long past the table/map card next to it.
  */
 export function PpaFilterSidebar({
   riskTiers,
@@ -89,8 +96,8 @@ export function PpaFilterSidebar({
   const hasActiveFilters = PPA_FILTER_PARAM_KEYS.some((key) => searchParams.get(key));
 
   return (
-    <aside className="w-full shrink-0 rounded-xl border border-brand-navy/10 bg-white p-4 shadow-md lg:w-64">
-      <div className="mb-1 flex items-center justify-between">
+    <aside className="flex w-full shrink-0 flex-col rounded-xl border border-brand-navy/10 bg-white shadow-md lg:w-64">
+      <div className="flex items-center justify-between p-4 pb-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
         {hasActiveFilters && (
           <button
@@ -103,53 +110,55 @@ export function PpaFilterSidebar({
         )}
       </div>
 
-      <CheckboxFilterSection
-        title="Status"
-        paramKey="status"
-        options={statuses.map((s) => ({ value: s.value, label: s.label }))}
-        selected={parseCsvParam(searchParams.get("status") ?? undefined)}
-        onToggle={(v) => toggleCsvValue("status", v)}
-      />
-      <CheckboxFilterSection
-        title="Risk Tier"
-        paramKey="risk_tier"
-        options={riskTiers.map((t) => ({ value: t, label: t }))}
-        selected={parseCsvParam(searchParams.get("risk_tier") ?? undefined)}
-        onToggle={(v) => toggleCsvValue("risk_tier", v)}
-      />
-      <CheckboxFilterSection
-        title="Project Type"
-        paramKey="project_type"
-        options={projectTypes.map((t) => ({ value: t, label: t }))}
-        selected={parseCsvParam(searchParams.get("project_type") ?? undefined)}
-        onToggle={(v) => toggleCsvValue("project_type", v)}
-      />
-      <CheckboxFilterSection
-        title="Municipality"
-        paramKey="municipality"
-        options={municipalities.map((m) => ({ value: m, label: m }))}
-        selected={parseCsvParam(searchParams.get("municipality") ?? undefined)}
-        onToggle={(v) => toggleCsvValue("municipality", v)}
-        defaultOpen={false}
-        scrollable
-      />
+      <div className="max-h-[560px] overflow-y-auto px-4 pb-4">
+        <CheckboxFilterSection
+          title="Status"
+          paramKey="status"
+          options={statuses.map((s) => ({ value: s.value, label: s.label }))}
+          selected={parseCsvParam(searchParams.get("status") ?? undefined)}
+          onToggle={(v) => toggleCsvValue("status", v)}
+        />
+        <CheckboxFilterSection
+          title="Risk Tier"
+          paramKey="risk_tier"
+          options={riskTiers.map((t) => ({ value: t, label: t }))}
+          selected={parseCsvParam(searchParams.get("risk_tier") ?? undefined)}
+          onToggle={(v) => toggleCsvValue("risk_tier", v)}
+        />
+        <CheckboxFilterSection
+          title="Project Type"
+          paramKey="project_type"
+          options={projectTypes.map((t) => ({ value: t, label: t }))}
+          selected={parseCsvParam(searchParams.get("project_type") ?? undefined)}
+          onToggle={(v) => toggleCsvValue("project_type", v)}
+        />
+        <CheckboxFilterSection
+          title="Municipality"
+          paramKey="municipality"
+          options={municipalities.map((m) => ({ value: m, label: m }))}
+          selected={parseCsvParam(searchParams.get("municipality") ?? undefined)}
+          onToggle={(v) => toggleCsvValue("municipality", v)}
+          defaultOpen={false}
+          scrollable
+        />
 
-      <RangeFilterSection
-        title="Budget"
-        paramMinKey="revenue_min"
-        paramMaxKey="revenue_max"
-        bounds={revenueBounds}
-        step={1000}
-        prefix="₱"
-      />
-      <RangeFilterSection
-        title="Risk Probability"
-        paramMinKey="risk_min"
-        paramMaxKey="risk_max"
-        bounds={RISK_PROBABILITY_BOUNDS}
-        step={1}
-        suffix="%"
-      />
+        <RangeFilterSection
+          title="Budget"
+          paramMinKey="revenue_min"
+          paramMaxKey="revenue_max"
+          bounds={revenueBounds}
+          step={1000}
+          prefix="₱"
+        />
+        <RangeFilterSection
+          title="Risk Probability"
+          paramMinKey="risk_min"
+          paramMaxKey="risk_max"
+          bounds={RISK_PROBABILITY_BOUNDS}
+          step={1}
+          suffix="%"
+        />
+      </div>
     </aside>
   );
 }
