@@ -81,7 +81,7 @@ export function ManualEntryForm() {
           <Label htmlFor="status">Status</Label>
           <select
             id="status"
-            className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
+            className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
             value={form.status}
             onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as ProjectStatus }))}
           >

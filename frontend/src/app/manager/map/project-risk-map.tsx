@@ -51,13 +51,22 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
   const plottable = projects.filter((p) => p.municipality);
 
   return (
-    <div className="flex flex-col gap-3">
-      <MapContainer
-        center={ILOILO_PROVINCE_CENTER}
-        zoom={ILOILO_PROVINCE_DEFAULT_ZOOM}
-        scrollWheelZoom
-        style={{ height: "520px", width: "100%", borderRadius: "0.5rem" }}
-      >
+    // Phase 20: the map fills whatever height its ancestor Card gives it
+    // (see page.tsx's shared `lg:h-[700px]` Card + `min-h-0 flex-1`
+    // CardContent) instead of a hardcoded 520px -- `min-h-0` on this
+    // wrapper and the inner MapContainer div is required for the
+    // percentage height below to resolve; without it, a flex child's
+    // default `min-height: auto` would refuse to shrink below its
+    // content's natural size and the whole chain would just fall back to
+    // Leaflet's own intrinsic sizing.
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="min-h-0 flex-1">
+        <MapContainer
+          center={ILOILO_PROVINCE_CENTER}
+          zoom={ILOILO_PROVINCE_DEFAULT_ZOOM}
+          scrollWheelZoom
+          style={{ height: "100%", width: "100%", borderRadius: "0.5rem" }}
+        >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -96,9 +105,10 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
             </Marker>
           ))}
         </MarkerClusterGroup>
-      </MapContainer>
+        </MapContainer>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+      <div className="flex shrink-0 flex-wrap items-center gap-4 text-xs text-slate-500">
         {(["Low", "Medium", "High", "Critical"] as const).map((tier) => (
           <span key={tier} className="flex items-center gap-1.5">
             <span

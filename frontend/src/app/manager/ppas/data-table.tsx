@@ -163,7 +163,7 @@ export function PpasDataTable<TData>({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
         <PpaSearchBar />
         <div className="flex items-center gap-3">
           <span className="shrink-0 text-sm text-slate-500">{totalCount.toLocaleString()} project(s)</span>
@@ -212,12 +212,15 @@ export function PpasDataTable<TData>({
         </div>
       </div>
 
-      {/* Phase 17: capped to roughly 15 visible rows with its own vertical
-          scroll, rather than letting a full 50-row page push the whole
-          page tall -- the header stays `sticky` within this scroll
-          region so column names never scroll out of view while browsing
-          the rest of the page. */}
-      <div className="max-h-[560px] overflow-y-auto">
+      {/* Phase 17: its own vertical scroll instead of letting a full
+          50-row page push the whole page tall -- the header stays
+          `sticky` within this scroll region so column names never scroll
+          out of view while browsing the rest of the page. Phase 20:
+          `min-h-0 flex-1` (was a hardcoded `max-h-[560px]`) so this fills
+          whatever's left of the parent Card's shared `lg:h-[700px]`
+          instead of the Card's total height being however tall 560px of
+          rows + the toolbar + pagination happen to add up to. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <Table>
           <TableHeader className="sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -255,7 +258,7 @@ export function PpasDataTable<TData>({
       </div>
 
       {totalCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
           <span>
             Showing {from + 1}–{Math.min(from + pageSize, totalCount)} of {totalCount}
           </span>

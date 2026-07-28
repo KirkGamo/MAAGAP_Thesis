@@ -50,12 +50,21 @@ const RISK_PROBABILITY_BOUNDS: Bounds = { min: 0, max: 100 };
  *
  * Phase 19: the "Filters" / Reset header row stays outside the scroll
  * region (always visible), while the section list below it fills whatever
- * space remains and scrolls internally. The sidebar's own outer height is
- * no longer a hardcoded pixel value -- page.tsx's row wrapper uses
- * `lg:items-stretch` so this <aside> and its sibling (the table OR map
- * card, whichever is showing) are always exactly the same height, driven
- * by CSS flexbox rather than duplicating a magic number that would drift
- * out of sync the moment either side's layout changes.
+ * space remains and scrolls internally.
+ *
+ * Phase 20: switched from matching the table/map card's height via
+ * `lg:items-stretch` (flexbox stretch alignment) to a shared literal
+ * height (`lg:h-[700px]`, also applied to both Card wrappers in page.tsx)
+ * -- stretch alignment turned out to equalize toward whichever sibling's
+ * own *natural, unconstrained* content height was tallest, so expanding
+ * enough filter sections made the sidebar itself the tallest element and
+ * it grew past the table/map instead of being capped by it. A shared
+ * fixed height sidesteps that entirely: every section list here scrolls
+ * internally (`overflow-y-auto`) once content exceeds the fixed budget,
+ * so no amount of expanded sections can ever push the sidebar taller than
+ * its siblings again. All filter sections also default to collapsed now
+ * (see FilterSection's `defaultOpen`), so this only engages when a
+ * Manager actually opens several sections at once.
  */
 export function PpaFilterSidebar({
   riskTiers,
@@ -98,7 +107,7 @@ export function PpaFilterSidebar({
   const hasActiveFilters = PPA_FILTER_PARAM_KEYS.some((key) => searchParams.get(key));
 
   return (
-    <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-brand-navy/10 bg-white shadow-md lg:w-64">
+    <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-brand-navy/10 bg-white shadow-md lg:h-[700px] lg:w-64">
       <div className="flex shrink-0 items-center justify-between p-4 pb-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
         {hasActiveFilters && (
@@ -112,12 +121,12 @@ export function PpaFilterSidebar({
         )}
       </div>
 
-      {/* lg:flex-1 + lg:min-h-0 lets this fill whatever height page.tsx's
-          `lg:items-stretch` row gives the <aside> (i.e. the table/map
-          card's height) and scroll internally. Below the lg breakpoint the
-          sidebar stacks above the table instead of sitting beside it, so
-          it falls back to a plain fixed cap instead of trying to match a
-          sibling it's no longer next to. */}
+      {/* lg:flex-1 + lg:min-h-0 fills whatever's left of the <aside>'s
+          fixed 700px at the lg breakpoint and scrolls internally once
+          content overflows it. Below lg, the sidebar stacks above the
+          table instead of sitting beside it, so it falls back to a plain
+          cap instead of the same fixed value (700px would be excessive
+          on a phone-width screen where everything is stacked). */}
       <div className="max-h-[420px] overflow-y-auto px-4 pb-4 lg:max-h-none lg:min-h-0 lg:flex-1">
         <CheckboxFilterSection
           title="Status"
@@ -174,7 +183,7 @@ export function PpaFilterSidebar({
 function FilterSection({
   title,
   children,
-  defaultOpen = true,
+  defaultOpen = false,
 }: {
   title: string;
   children: React.ReactNode;
@@ -205,7 +214,7 @@ function CheckboxFilterSection({
   options,
   selected,
   onToggle,
-  defaultOpen = true,
+  defaultOpen = false,
   scrollable = false,
 }: {
   title: string;
@@ -355,7 +364,7 @@ function NumberField({
           onChange={(e) => onChange(Number(e.target.value))}
           onBlur={onCommit}
           onKeyDown={(e) => e.key === "Enter" && onCommit()}
-          className="h-8 w-full min-w-0 bg-transparent text-sm focus-visible:outline-none"
+          className="h-8 w-full min-w-0 bg-transparent text-sm text-slate-900 focus-visible:outline-none"
         />
         {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
       </div>

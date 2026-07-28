@@ -64,6 +64,12 @@ interface PpasPageProps {
  * "Import Projects" is now a slide-out panel (ppa-import-panel.tsx) instead
  * of a Link to /manager/import, so importing no longer navigates away from
  * whatever filters/page/view the Manager was looking at.
+ * Phase 20: the table/map Card and the filter sidebar all share one fixed
+ * `lg:h-[700px]`, with `flex flex-col` + a `min-h-0 flex-1` content region
+ * inside each so their (differently-shaped) real content fits/scrolls
+ * within that budget instead of dictating it -- see ppa-filter-sidebar.tsx
+ * for why this replaced an earlier flexbox-stretch approach that let an
+ * expanded sidebar grow taller than its sibling.
  */
 export default async function PpasPage({ searchParams }: PpasPageProps) {
   const params = await searchParams;
@@ -161,7 +167,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <PpaFilterSidebar
           riskTiers={RISK_TIERS}
           statuses={STATUSES}
@@ -174,8 +180,8 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
           <PpaActiveFilters />
 
           {view === "table" ? (
-            <Card className="border-brand-navy/10 p-0">
-              <CardContent className="p-0">
+            <Card className="flex flex-col overflow-hidden border-brand-navy/10 p-0 lg:h-[700px]">
+              <CardContent className="flex min-h-0 flex-1 flex-col p-0">
                 {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
                 <PpasDataTable
                   columns={ppaColumns}
@@ -190,11 +196,11 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
               </CardContent>
             </Card>
           ) : (
-            <Card className="p-0">
-              <div className="border-b border-brand-navy/10 px-5 py-3">
+            <Card className="flex flex-col overflow-hidden p-0 lg:h-[700px]">
+              <div className="shrink-0 border-b border-brand-navy/10 px-5 py-3">
                 <PpaSearchBar />
               </div>
-              <CardHeader>
+              <CardHeader className="shrink-0">
                 <CardTitle>
                   {(projects ?? []).length} project(s) on the map
                   {totalCount > MAP_MARKER_LIMIT && ` (top ${MAP_MARKER_LIMIT} of ${totalCount} by risk)`}
@@ -207,7 +213,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
                     ` Showing the ${MAP_MARKER_LIMIT} riskiest matches only -- narrow the filters to see the rest.`}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex min-h-0 flex-1 flex-col">
                 {error && <p className="text-sm text-red-600">{error.message}</p>}
                 <MapLoader projects={(projects as MapProject[]) ?? []} />
               </CardContent>

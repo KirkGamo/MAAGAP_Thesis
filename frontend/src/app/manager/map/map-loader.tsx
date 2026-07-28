@@ -9,7 +9,7 @@ import type { MapProject } from "./types";
 const ProjectRiskMap = dynamic(() => import("./project-risk-map").then((m) => m.ProjectRiskMap), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[520px] w-full items-center justify-center rounded-md bg-slate-100 text-sm text-slate-400">
+    <div className="flex h-full min-h-[300px] w-full items-center justify-center rounded-md bg-slate-100 text-sm text-slate-400">
       Loading map...
     </div>
   ),

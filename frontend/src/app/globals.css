@@ -18,6 +18,15 @@
  * tailwind.config.ts's `theme.extend.colors` would have.
  */
 :root {
+  /* Phase 20 fix: this is a light-only themed dashboard (no dark palette
+     was ever designed for it), but this value was left unset, so browsers
+     with a dark OS/browser preference fell back to auto-dark-styling every
+     native form control (checkboxes, <select>, the date-input calendar
+     icon, scrollbars) -- e.g. rendering white-on-white text inside the
+     Import Projects panel's inputs. Forcing `light` here keeps native
+     control rendering consistent regardless of the visitor's OS setting. */
+  color-scheme: light;
+
   --background: #ffffff;
   --foreground: #171717;
 
@@ -52,12 +61,16 @@
   --color-brand-surface: var(--color-brand-surface);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Phase 20 fix: this leftover Next.js-scaffold dark-mode override was the
+ * actual root cause of "invisible white text" reports across the app --
+ * on a visitor with a dark browser/OS preference, --foreground flipped to
+ * #ededed (near-white), and any component relying on inherited body text
+ * color rather than an explicit Tailwind text-* class (Label, the native
+ * <select> in manual-entry-form.tsx, typed <input> values, etc.) rendered
+ * that near-white text on this app's always-white Card/Input backgrounds.
+ * This dashboard has no dark theme, so the override is removed rather than
+ * fixed -- every text color here is meant to be the light-mode one always.
+ */
 
 body {
   background: var(--background);
