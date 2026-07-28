@@ -4,6 +4,7 @@ import { Badge, riskTierVariant } from "@/components/ui/badge";
 import { DeployScheduleButton } from "./deploy-schedule-button";
 import { ScheduleMapLoader } from "./schedule-map-loader";
 import { DayFilter } from "./day-filter";
+import { ScheduleEditor } from "./schedule-editor";
 import type { ScheduleMapPoint } from "./schedule-map";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
@@ -50,9 +51,20 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   const { data: rows } = await supabase
     .from("inspector_schedules")
     .select(
-      "id, scheduled_day, week_of, cluster, inspector:profiles!inspector_schedules_inspector_id_fkey(full_name), project:projects(project_key, name_of_project, municipality, risk_tier)"
+      "id, inspector_id, scheduled_day, week_of, cluster, inspector:profiles!inspector_schedules_inspector_id_fkey(full_name), project:projects(project_key, name_of_project, municipality, risk_tier)"
     )
     .order("scheduled_day");
+
+  // For the "reassign inspector" <select> and the "add assignment" form --
+  // only active inspectors are offered, matching the Inspectors tab's own
+  // active/inactive gate (an inactive inspector can't log in, so assigning
+  // them work would be pointless).
+  const { data: activeInspectors } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("role", "inspector")
+    .eq("active", true)
+    .order("full_name");
 
   const byInspector = new Map<string, typeof rows>();
   for (const row of rows ?? []) {
@@ -89,6 +101,21 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       };
     });
 
+  const editableAssignments = (rows ?? []).map((row) => {
+    const project = row.project as unknown as {
+      project_key: string;
+      name_of_project: string;
+    } | null;
+    return {
+      id: row.id,
+      projectKey: project?.project_key ?? "unknown",
+      projectName: project?.name_of_project ?? "Unknown project",
+      inspectorId: row.inspector_id,
+      scheduledDay: row.scheduled_day,
+      cluster: row.cluster,
+    };
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -108,11 +135,24 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
             <CardDescription>
               Run <code>ml-service/optimization_engine.py</code> and click{" "}
               <span className="font-medium">Deploy latest schedule</span> to publish its
-              output here.
+              output here — or add assignments manually below.
             </CardDescription>
           </CardHeader>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Adjust this week&apos;s schedule</CardTitle>
+          <CardDescription>
+            Not happy with the optimizer&apos;s result? Reassign an inspector or day, remove an
+            assignment, or add one manually.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScheduleEditor assignments={editableAssignments} inspectors={activeInspectors ?? []} />
+        </CardContent>
+      </Card>
 
       {byInspector.size > 0 && (
         <Card>

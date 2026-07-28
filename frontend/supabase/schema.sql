@@ -153,7 +153,15 @@ create table if not exists public.inspector_schedules (
   scheduled_day text not null check (scheduled_day in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri')),
   week_of date not null,
   cluster text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Phase 12.2: a given project should not be double-booked for the same
+  -- day/week -- regardless of which inspector it's assigned to. This also
+  -- gives the manual schedule-editing feature (actions/schedule.ts) a safe
+  -- target for "reassign this project's day/inspector" without first
+  -- deleting the old row: an UPDATE that collides with another existing
+  -- assignment now fails loudly (23505) instead of silently creating a
+  -- duplicate visit.
+  unique (project_id, scheduled_day, week_of)
 );
 
 alter table public.inspector_schedules enable row level security;
