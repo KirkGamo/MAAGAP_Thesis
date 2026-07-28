@@ -211,6 +211,18 @@ def compute_proxy_completion_dates(
     # precedent as the mon_row_id de-duplication in run()).
     liq_date_by_mon_row = link.groupby("mon_row_id")["liq_date"].max()
     liq_aligned = liq_date_by_mon_row.reindex(monitoring_raw.index)
+    # Defensive re-cast: when `link` is empty (no crosswalk rows at all, or
+    # none surviving the dropna above) or `liq_date_by_mon_row` ends up
+    # entirely NaN, some pandas/numpy builds infer liq_aligned as float64
+    # rather than datetime64[ns] -- observed in practice on a Windows
+    # environment (though not reproduced under Linux/pandas 2.2-2.3 here),
+    # most likely from Windows numpy's int32-by-default indexing behavior
+    # flowing through .map()/.groupby(). Concatenating a float64 all-NaN
+    # column with mon_dates' datetime64[ns] column and calling .max(axis=1)
+    # then raises "Cannot cast DatetimeArray to dtype float64" instead of
+    # silently returning NaT. Forcing liq_aligned through pd.to_datetime()
+    # guarantees datetime64[ns] regardless of how it was inferred.
+    liq_aligned = pd.to_datetime(liq_aligned, errors="coerce")
 
     proxy = pd.concat([mon_dates, liq_aligned], axis=1).max(axis=1)
     return proxy
