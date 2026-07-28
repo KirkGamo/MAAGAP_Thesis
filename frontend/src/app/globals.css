@@ -62,5 +62,8 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Phase 15 fix: --font-sans (Geist, wired up above via @theme inline)
+     was defined but never applied here -- the app was silently rendering
+     in the browser's default Arial the whole time. */
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }

@@ -6,7 +6,10 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
     <div
       ref={ref}
       className={cn(
-        "rounded-lg border border-brand-navy/10 bg-white text-slate-950 shadow-sm",
+        // Phase 15: matched to tremor/card.tsx's rounded-xl/shadow-md so
+        // the two Card families read as one design system rather than
+        // visibly different radii/shadow weights page-to-page.
+        "rounded-xl border border-brand-navy/10 bg-white text-slate-950 shadow-md",
         className
       )}
       {...props}
