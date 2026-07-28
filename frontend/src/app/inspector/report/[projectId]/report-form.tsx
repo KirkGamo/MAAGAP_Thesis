@@ -146,7 +146,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
         <Label htmlFor="status_observed">Status observed</Label>
         <select
           id="status_observed"
-          className="h-12 rounded-md border border-slate-200 bg-white px-3 text-base"
+          className="h-12 rounded-md border border-brand-navy/10 bg-white px-3 text-base"
           value={statusObserved}
           onChange={(e) => setStatusObserved(e.target.value as ProjectStatus)}
         >
@@ -177,7 +177,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
         <textarea
           id="remarks"
           rows={4}
-          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-base"
+          className="rounded-md border border-brand-navy/10 bg-white px-3 py-2 text-base"
           placeholder="Anything the office should know about this visit..."
           value={remarks}
           onChange={(e) => setRemarks(e.target.value)}

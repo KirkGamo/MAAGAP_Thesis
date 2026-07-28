@@ -30,7 +30,7 @@ export function ReportsFilters({ inspectors }: ReportsFiltersProps) {
         className="max-w-xs"
       />
       <select
-        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+        className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm"
         defaultValue={searchParams.get("inspector") ?? ""}
         onChange={(e) => setParam("inspector", e.target.value)}
       >

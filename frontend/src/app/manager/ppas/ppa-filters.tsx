@@ -38,7 +38,7 @@ export function PpaFilters({ riskTiers, statuses }: PpaFiltersProps) {
         className="max-w-xs"
       />
       <select
-        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+        className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm"
         defaultValue={searchParams.get("risk_tier") ?? ""}
         onChange={(e) => setParam("risk_tier", e.target.value)}
       >
@@ -50,7 +50,7 @@ export function PpaFilters({ riskTiers, statuses }: PpaFiltersProps) {
         ))}
       </select>
       <select
-        className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+        className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm"
         defaultValue={searchParams.get("status") ?? ""}
         onChange={(e) => setParam("status", e.target.value)}
       >

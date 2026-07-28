@@ -16,10 +16,10 @@ export default async function InspectorLayout({
   const profile = await requireRole(["inspector"]);
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-slate-50">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-brand-surface">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-navy/10 bg-white px-4 py-3">
         <div>
-          <p className="text-sm font-semibold text-slate-900">MAAGAP</p>
+          <p className="text-sm font-semibold text-brand-navy">MAAGAP</p>
           <p className="text-xs text-slate-500">{profile.full_name ?? "Inspector"}</p>
         </div>
         <SignOutButton />

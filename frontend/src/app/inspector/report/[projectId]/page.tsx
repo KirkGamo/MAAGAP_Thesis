@@ -25,7 +25,7 @@ export default async function SubmitReportPage({ params }: ReportPageProps) {
         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
           {project.project_key}
         </p>
-        <h1 className="text-xl font-semibold text-slate-900">{project.name_of_project}</h1>
+        <h1 className="text-xl font-semibold text-brand-navy">{project.name_of_project}</h1>
         <p className="text-sm text-slate-500">{project.location}</p>
       </div>
 

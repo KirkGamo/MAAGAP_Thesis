@@ -138,7 +138,7 @@ export function ScheduleEditor({
                 </TableCell>
                 <TableCell>
                   <select
-                    className="h-8 rounded-md border border-slate-200 px-2 text-sm"
+                    className="h-8 rounded-md border border-brand-navy/10 px-2 text-sm"
                     value={a.inspectorId ?? ""}
                     disabled={isPending}
                     onChange={(e) => handleInspectorChange(a.id, e.target.value)}
@@ -153,7 +153,7 @@ export function ScheduleEditor({
                 </TableCell>
                 <TableCell>
                   <select
-                    className="h-8 rounded-md border border-slate-200 px-2 text-sm"
+                    className="h-8 rounded-md border border-brand-navy/10 px-2 text-sm"
                     value={a.scheduledDay}
                     disabled={isPending}
                     onChange={(e) => handleDayChange(a.id, e.target.value)}
@@ -195,7 +195,7 @@ export function ScheduleEditor({
         </TableBody>
       </Table>
 
-      <div className="flex flex-col gap-2 rounded-md border border-dashed border-slate-200 p-3">
+      <div className="flex flex-col gap-2 rounded-md border border-dashed border-brand-navy/20 p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
           Add assignment
         </p>
@@ -207,7 +207,7 @@ export function ScheduleEditor({
             className="h-8 w-56 text-sm"
           />
           <select
-            className="h-8 rounded-md border border-slate-200 px-2 text-sm"
+            className="h-8 rounded-md border border-brand-navy/10 px-2 text-sm"
             value={newInspectorId}
             onChange={(e) => setNewInspectorId(e.target.value)}
           >
@@ -219,7 +219,7 @@ export function ScheduleEditor({
             ))}
           </select>
           <select
-            className="h-8 rounded-md border border-slate-200 px-2 text-sm"
+            className="h-8 rounded-md border border-brand-navy/10 px-2 text-sm"
             value={newDay}
             onChange={(e) => setNewDay(e.target.value)}
           >

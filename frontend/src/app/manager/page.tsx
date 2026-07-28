@@ -166,8 +166,8 @@ export default async function ManagerOverviewPage() {
       </Card>
 
       <Card>
-        <p className="font-semibold text-gray-900">Next steps</p>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="font-semibold text-brand-navy">Next steps</p>
+        <p className="mt-2 text-sm text-slate-500">
           Use <span className="font-medium text-brand-navy">Program, Projects, and Activities (PPAs)</span>{" "}
           to import new monitoring data, review the full project list, and switch to a map view;{" "}
           <span className="font-medium text-brand-navy">Schedule</span> to see the latest

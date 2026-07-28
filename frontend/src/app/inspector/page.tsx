@@ -44,7 +44,7 @@ export default async function InspectorTodayPage() {
         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
           Today &middot; {today}
         </p>
-        <h1 className="text-xl font-semibold text-slate-900">Your route</h1>
+        <h1 className="text-xl font-semibold text-brand-navy">Your route</h1>
       </div>
 
       {(!assignments || assignments.length === 0) && (
