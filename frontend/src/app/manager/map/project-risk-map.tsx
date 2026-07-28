@@ -1,8 +1,14 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+// react-leaflet-cluster v4.1.3+ requires these CSS imports manually
+// (see its README's "Breaking Changes in v3.0.0") rather than bundling
+// them automatically, to avoid Next.js build issues.
+import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import L from "leaflet";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import MarkerClusterGroup from "react-leaflet-cluster";
 import Link from "next/link";
 import {
   ILOILO_PROVINCE_CENTER,
@@ -76,26 +82,35 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {plottable.map((project) => (
-          <Marker
-            key={project.id}
-            position={jitteredCoordinates(project.municipality, project.project_key)}
-            icon={riskDivIcon(project.risk_tier)}
-          >
-            <Popup>
-              <div className="flex flex-col gap-1 text-sm">
-                <Link href={`/manager/backlog/${project.id}`} className="font-medium hover:underline">
-                  {project.name_of_project}
-                </Link>
-                <span className="text-slate-500">{project.municipality}</span>
-                <span>
-                  {project.risk_tier ?? "Unscored"}
-                  {project.risk_probability != null && ` · P=${project.risk_probability.toFixed(2)}`}
-                </span>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {/* Phase 11, Task 4: cluster the pins so a ~1,000-project Western
+            Visayas view stays legible/performant at province-wide zoom
+            levels instead of rendering (and re-painting on every pan/zoom)
+            up to 1,000 individual DOM markers at once. chunkedLoading
+            defers clustering work across animation frames so it doesn't
+            block the main thread on the initial render of a large project
+            set. */}
+        <MarkerClusterGroup chunkedLoading>
+          {plottable.map((project) => (
+            <Marker
+              key={project.id}
+              position={jitteredCoordinates(project.municipality, project.project_key)}
+              icon={riskDivIcon(project.risk_tier)}
+            >
+              <Popup>
+                <div className="flex flex-col gap-1 text-sm">
+                  <Link href={`/manager/backlog/${project.id}`} className="font-medium hover:underline">
+                    {project.name_of_project}
+                  </Link>
+                  <span className="text-slate-500">{project.municipality}</span>
+                  <span>
+                    {project.risk_tier ?? "Unscored"}
+                    {project.risk_probability != null && ` · P=${project.risk_probability.toFixed(2)}`}
+                  </span>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MarkerClusterGroup>
       </MapContainer>
 
       <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">

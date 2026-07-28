@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/tremor/card";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { Tracker, type TrackerBlockProps } from "@/components/tremor/tracker";
-import { BarChart } from "@/components/tremor/bar-chart";
 import type { RiskTier } from "@/types/database";
 
 const TIER_ORDER: RiskTier[] = ["Critical", "High", "Medium", "Low"];
@@ -24,28 +23,25 @@ const TIER_TRACKER_COLOR: Record<RiskTier, string> = {
   Low: "bg-emerald-600",
 };
 
-// Tremor's BarChart colors bars by category name, drawing from a fixed
-// palette of named colors (see components/tremor/chart-utils.ts) rather
-// than arbitrary hex/Tailwind classes -- that fixed set has no "red", so
-// "amber" (this app's Chapter 3 alert color) and "emerald" (this app's
-// existing "safe/low-risk" color everywhere else -- Tracker above, the
-// Risk Map's pins, badge.tsx) are the closest available match.
-const HIGH_RISK_CATEGORY = "High/Critical";
-const LOW_RISK_CATEGORY = "Low/Medium";
-const MAX_MUNICIPALITIES_SHOWN = 10;
 const MAX_TRACKER_BLOCKS = 120;
 
 /**
- * Manager overview: Phase 10 replaces the hand-built KPI cards with
- * genuine Tremor Raw components (Card, a small Metric primitive built in
- * Tremor Raw's own conventions since Tremor Raw doesn't ship one -- see
- * components/tremor/metric.tsx's comment -- Tracker, and BarChart). Same
- * live (ongoing) project population `ml-service/optimization_engine.py`
- * scores; a scheduled job/webhook keeps `projects` in sync with the ML
- * service's scoring output (see actions/submit-report.ts's docstring for
- * the feedback loop that refreshes these scores, and
- * scripts/seed_supabase.py for how the table is populated from the batch
- * pipeline's output).
+ * Manager overview: Phase 10 replaced the hand-built KPI cards with genuine
+ * Tremor Raw components (Card, a small Metric primitive built in Tremor
+ * Raw's own conventions since Tremor Raw doesn't ship one -- see
+ * components/tremor/metric.tsx's comment -- and Tracker).
+ *
+ * PHASE 11: the municipality BarChart and Risk Map that used to live on
+ * this page/its own /manager/map route both moved to the new Monitoring
+ * tab (see app/manager/monitoring/page.tsx) — this page keeps the
+ * per-tier counts and the Tracker distribution strip, which are genuinely
+ * "at a glance" overview content, while the two municipality/spatial
+ * views (which both answer "where" rather than "how many") live together
+ * one tab over. The three headline KPIs (Total Active Projects, Critical
+ * Risk Load, Optimized Inspector Capacity) that used to implicitly live
+ * here now live in the shared sticky header above every tab (see
+ * ../layout.tsx), since they're meant to stay visible regardless of which
+ * tab a Manager is on.
  */
 export default async function ManagerOverviewPage() {
   const supabase = await createClient();
@@ -63,33 +59,6 @@ export default async function ManagerOverviewPage() {
     if (tier) counts[tier] += 1;
   }
   const totalScored = rows.length;
-
-  // Group by municipality: how many High/Critical vs. Low/Medium projects
-  // in each. Projects with no resolved municipality (see
-  // src/lib/municipality-coordinates.ts / optimization_engine.py's
-  // resolve_municipality "Unmapped" fallback) are excluded from this
-  // chart -- there's no meaningful bar to plot them under -- rather than
-  // silently lumped into a misleading catch-all category.
-  const byMunicipality = new Map<string, { high: number; low: number }>();
-  for (const row of rows) {
-    const municipality = row.municipality;
-    const tier = row.risk_tier as RiskTier | null;
-    if (!municipality || !tier) continue;
-    const bucket = byMunicipality.get(municipality) ?? { high: 0, low: 0 };
-    if (tier === "High" || tier === "Critical") bucket.high += 1;
-    else bucket.low += 1;
-    byMunicipality.set(municipality, bucket);
-  }
-  const municipalityChartData = Array.from(byMunicipality.entries())
-    .map(([municipality, { high, low }]) => ({
-      municipality,
-      [HIGH_RISK_CATEGORY]: high,
-      [LOW_RISK_CATEGORY]: low,
-      total: high + low,
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, MAX_MUNICIPALITIES_SHOWN)
-    .map(({ total: _total, ...rest }) => rest);
 
   // Tracker: one block per scored project (capped for render/legibility),
   // colored by risk tier -- a compact "at a glance" distribution strip
@@ -133,39 +102,12 @@ export default async function ManagerOverviewPage() {
       </Card>
 
       <Card>
-        <MetricLabel>
-          High/Critical vs. Low/Medium risk projects by municipality (top {MAX_MUNICIPALITIES_SHOWN})
-        </MetricLabel>
-        {municipalityChartData.length > 0 ? (
-          <BarChart
-            className="mt-4"
-            data={municipalityChartData}
-            index="municipality"
-            categories={[HIGH_RISK_CATEGORY, LOW_RISK_CATEGORY]}
-            colors={["amber", "emerald"]}
-            // No valueFormatter prop: this page is a Server Component, and
-            // functions (including inline arrow functions) cannot be passed
-            // as props across the server/client boundary to BarChart (a
-            // "use client" component) — React only allows Server Actions
-            // ("use server" functions) to cross that boundary. BarChart's
-            // own default, `(value) => value.toString()`, is functionally
-            // identical to what was passed here, so it's simply omitted
-            // rather than worked around.
-            yAxisWidth={40}
-          />
-        ) : (
-          <p className="mt-3 text-sm text-slate-400">
-            No scored projects with a resolved municipality yet.
-          </p>
-        )}
-      </Card>
-
-      <Card>
         <p className="font-semibold text-gray-900">Next steps</p>
         <p className="mt-2 text-sm text-gray-500">
-          Use <span className="font-medium text-brand-navy">Import Projects</span> to bring in
-          new monitoring data, <span className="font-medium text-brand-navy">Backlog</span> to
-          review and filter every tracked project, and{" "}
+          Use <span className="font-medium text-brand-navy">Import Projects</span> (top right) to
+          bring in new monitoring data, <span className="font-medium text-brand-navy">Monitoring</span>{" "}
+          to see the municipality breakdown and risk map, <span className="font-medium text-brand-navy">Backlog</span>{" "}
+          to review and filter every tracked project, and{" "}
           <span className="font-medium text-brand-navy">Schedule</span> to deploy the latest
           PuLP-optimized inspector routes.
         </p>
