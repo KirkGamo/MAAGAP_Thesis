@@ -30,7 +30,7 @@ export async function requireRole(allowed: UserRole[]) {
   const userId = userData.user.id;
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name, role")
+    .select("id, full_name, role, active")
     .eq("id", userId)
     .single();
 
@@ -45,6 +45,18 @@ export async function requireRole(allowed: UserRole[]) {
       "[requireRole] Could not load profile for user %s:", userId, profileError
     );
     redirect("/login");
+  }
+
+  // Phase 12: a Manager-deactivated account (see the new Inspectors tab)
+  // is signed out entirely rather than just blocked from one portal --
+  // "deactivated" should mean "can't get in anywhere", not "can log in
+  // but sees an empty screen". Sign-out happens here (not earlier, in
+  // proxy.ts) for the same reason role checks live here and not in
+  // proxy.ts: Next.js 16's guidance keeps authorization logic out of the
+  // more restricted Proxy runtime (see proxy.ts's docstring).
+  if (!profile.active) {
+    await supabase.auth.signOut();
+    redirect("/login?deactivated=1");
   }
 
   if (!allowed.includes(profile.role)) {

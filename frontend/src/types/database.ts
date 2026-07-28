@@ -43,18 +43,21 @@ export type Database = {
           id: string; // references auth.users.id
           full_name: string | null;
           role: UserRole;
+          active: boolean;
           created_at: string;
         };
         Insert: {
           id: string;
           full_name?: string | null;
           role?: UserRole;
+          active?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
           full_name?: string | null;
           role?: UserRole;
+          active?: boolean;
           created_at?: string;
         };
         Relationships: [];

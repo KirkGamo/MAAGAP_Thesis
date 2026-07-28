@@ -15,6 +15,13 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text,
   role user_role not null default 'inspector',
+  -- Phase 12: gates portal access (see lib/auth.ts's requireRole()) and
+  -- lets a Manager deactivate an Inspector from the new Inspectors tab
+  -- without deleting their account/history (inspector_schedules and
+  -- monitoring_reports both foreign-key to this row -- deleting it would
+  -- cascade-delete real field-report history). Defaults true so every
+  -- existing/new account stays usable unless explicitly deactivated.
+  active boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -54,6 +61,16 @@ $$;
 create policy "profiles: managers read all"
   on public.profiles for select
   using (public.is_manager());
+
+-- Managers can update every profile (Phase 12: needed for the Inspectors
+-- tab's activate/deactivate toggle). No UPDATE policy on profiles existed
+-- before this -- the only prior write path was handle_new_user()'s
+-- trigger, which is security definer and bypasses RLS entirely, so this
+-- gap was never hit until a Manager-initiated update was needed.
+create policy "profiles: managers update all"
+  on public.profiles for update
+  using (public.is_manager())
+  with check (public.is_manager());
 
 -- Auto-create a profile row (defaulting to 'inspector') whenever a new
 -- auth.users row is created. Promote a user to 'manager' manually via the
