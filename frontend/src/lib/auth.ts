@@ -41,9 +41,20 @@ export async function requireRole(allowed: UserRole[]) {
     // supabase/fix_rls_recursion.sql) without this, and that's exactly
     // what made the Phase 8.5 login loop hard to diagnose from the
     // request log alone.
-    console.error(
-      "[requireRole] Could not load profile for user %s:", userId, profileError
-    );
+    //
+    // PostgrestError instances log as "{}" via console.error's default
+    // object formatting once they cross the Server Component/dev-overlay
+    // boundary (their real fields aren't own-enumerable by the time
+    // they're serialized for the browser console) -- pulling out
+    // message/code/details/hint explicitly avoids that opacity, which is
+    // exactly the class of bug this log line exists to prevent in the
+    // first place.
+    console.error("[requireRole] Could not load profile for user %s:", userId, {
+      message: profileError?.message,
+      code: profileError?.code,
+      details: profileError?.details,
+      hint: profileError?.hint,
+    });
     redirect("/login");
   }
 
