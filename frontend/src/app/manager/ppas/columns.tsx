@@ -43,6 +43,10 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
   {
     accessorKey: "name_of_project",
     header: "Project",
+    // Phase 16: the one column the Toggle Columns control (data-table.tsx)
+    // can't hide -- with every other column hidden this is still enough to
+    // identify a row and follow its link.
+    enableHiding: false,
     cell: ({ row }) => (
       <div className="flex items-center gap-2.5">
         <span

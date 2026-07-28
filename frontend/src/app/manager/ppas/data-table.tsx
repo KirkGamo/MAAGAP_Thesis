@@ -1,12 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type VisibilityState,
 } from "@tanstack/react-table";
+import { Search, Download, SlidersHorizontal, Check } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -22,6 +27,8 @@ export interface PpaTableParams {
   q?: string;
   risk_tier?: string;
   status?: string;
+  project_type?: string;
+  municipality?: string;
   view?: string;
 }
 
@@ -33,11 +40,14 @@ interface PpasDataTableProps<TData> {
   totalCount: number;
   pageSize: number;
   params: PpaTableParams;
+  exportHref: string;
 }
 
+const COLUMN_VISIBILITY_STORAGE_KEY = "maagap-ppa-column-visibility";
+
 /** Rebuilds the same "rewrite the URL, only change `page`" href every other
- * PPAs control uses (ppa-filters.tsx, view-toggle.tsx) -- duplicated here
- * rather than passed down as a prop function from the Server Component
+ * PPAs control uses (ppa-filter-sidebar.tsx, view-toggle.tsx) -- duplicated
+ * here rather than passed down as a prop function from the Server Component
  * page, since Server -> Client Component props can't carry functions (see
  * Phase 10's fix for the same class of error on BarChart's valueFormatter). */
 function buildHref(params: PpaTableParams, targetPage: number): string {
@@ -45,6 +55,8 @@ function buildHref(params: PpaTableParams, targetPage: number): string {
   if (params.q) next.set("q", params.q);
   if (params.risk_tier) next.set("risk_tier", params.risk_tier);
   if (params.status) next.set("status", params.status);
+  if (params.project_type) next.set("project_type", params.project_type);
+  if (params.municipality) next.set("municipality", params.municipality);
   if (params.view) next.set("view", params.view);
   if (targetPage > 1) next.set("page", String(targetPage));
   const qs = next.toString();
@@ -71,6 +83,41 @@ function getPageNumbers(current: number, total: number): (number | "ellipsis")[]
   return pages;
 }
 
+/** Free-text search input -- rewrites the `q` URL param, same pattern the
+ * filter sidebar uses. Lives in this file (rather than its own
+ * ppa-search-bar.tsx, which this replaces) because the Toggle Columns
+ * control right next to it needs the same TanStack `table` instance this
+ * component already builds, and splitting them apart would mean lifting
+ * table state up a level for no real benefit. */
+function SearchInput() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  function setQuery(value: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value) next.set("q", value);
+    else next.delete("q");
+    next.delete("page");
+    router.push(`/manager/ppas?${next.toString()}`);
+  }
+
+  return (
+    <div className="relative w-full max-w-sm">
+      <Search
+        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+        aria-hidden="true"
+      />
+      <input
+        type="text"
+        placeholder="Search by project name..."
+        defaultValue={searchParams.get("q") ?? ""}
+        onChange={(e) => setQuery(e.target.value)}
+        className="h-9 w-full rounded-md border border-brand-navy/10 bg-white pl-9 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40"
+      />
+    </div>
+  );
+}
+
 /**
  * Phase 13: the shadcn/ui "DataTable" pattern (TanStack Table for column
  * definitions + rendering) applied to the PPAs tab, replacing a hand-rolled
@@ -82,6 +129,15 @@ function getPageNumbers(current: number, total: number): (number | "ellipsis")[]
  * dashboard already solved with .range()-based pagination. TanStack Table
  * here is a rendering/column layer over server-paginated data, not a
  * second data-fetching layer.
+ *
+ * Phase 16 adds a toolbar above the table: the free-text search input
+ * (moved in from the now-deleted ppa-search-bar.tsx), a live row count, a
+ * "Toggle Columns" dropdown (TanStack's built-in `columnVisibility` state,
+ * persisted to localStorage so the Manager's column choices survive a
+ * reload -- purely a display preference, not data, so localStorage is the
+ * right tool here unlike in a sandboxed artifact), and an Export link that
+ * downloads a CSV of every row matching the current filters via
+ * export/route.ts.
  */
 export function PpasDataTable<TData>({
   columns,
@@ -91,18 +147,97 @@ export function PpasDataTable<TData>({
   totalCount,
   pageSize,
   params,
+  exportHref,
 }: PpasDataTableProps<TData>) {
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+  // Read the saved column-visibility preference once on mount. Done in an
+  // effect (not useState's initializer) because localStorage isn't
+  // available during server-side rendering, and this table is otherwise
+  // rendered inside a Server Component page -- reading it eagerly would
+  // cause a hydration mismatch.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COLUMN_VISIBILITY_STORAGE_KEY);
+      if (saved) setColumnVisibility(JSON.parse(saved));
+    } catch {
+      // Corrupt or inaccessible localStorage -- fall back to every column
+      // visible, which is the same as never having saved a preference.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLUMN_VISIBILITY_STORAGE_KEY, JSON.stringify(columnVisibility));
+    } catch {
+      // Storage full/unavailable (e.g. private browsing) -- the toggle
+      // still works for the current session, it just won't persist.
+    }
+  }, [columnVisibility]);
+
   const table = useReactTable({
     data,
     columns,
+    state: { columnVisibility },
+    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
   });
 
   const from = (page - 1) * pageSize;
   const rows = table.getRowModel().rows;
+  const visibleColumnCount = table.getVisibleLeafColumns().length;
 
   return (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
+        <SearchInput />
+        <div className="flex items-center gap-3">
+          <span className="shrink-0 text-sm text-slate-500">{totalCount.toLocaleString()} project(s)</span>
+
+          <DropdownMenuPrimitive.Root>
+            <DropdownMenuPrimitive.Trigger asChild>
+              <Button variant="outline" size="sm">
+                <SlidersHorizontal className="size-4" aria-hidden="true" />
+                Columns
+              </Button>
+            </DropdownMenuPrimitive.Trigger>
+            <DropdownMenuPrimitive.Portal>
+              <DropdownMenuPrimitive.Content
+                align="end"
+                sideOffset={8}
+                className="z-50 w-48 rounded-lg border border-brand-navy/10 bg-white p-1 shadow-lg"
+              >
+                {table
+                  .getAllLeafColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => (
+                    <DropdownMenuPrimitive.CheckboxItem
+                      key={column.id}
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(checked) => column.toggleVisibility(!!checked)}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-brand-navy outline-none transition-colors data-[highlighted]:bg-brand-surface"
+                    >
+                      <span className="flex size-4 items-center justify-center">
+                        <DropdownMenuPrimitive.ItemIndicator>
+                          <Check className="size-4 text-brand-blue" aria-hidden="true" />
+                        </DropdownMenuPrimitive.ItemIndicator>
+                      </span>
+                      {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
+                    </DropdownMenuPrimitive.CheckboxItem>
+                  ))}
+              </DropdownMenuPrimitive.Content>
+            </DropdownMenuPrimitive.Portal>
+          </DropdownMenuPrimitive.Root>
+
+          <Button asChild variant="outline" size="sm">
+            <a href={exportHref}>
+              <Download className="size-4" aria-hidden="true" />
+              Export
+            </a>
+          </Button>
+        </div>
+      </div>
+
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -130,7 +265,7 @@ export function PpasDataTable<TData>({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={columns.length} className="p-5 text-center text-slate-400">
+              <TableCell colSpan={visibleColumnCount} className="p-5 text-center text-slate-400">
                 No projects match the current filters.
               </TableCell>
             </TableRow>

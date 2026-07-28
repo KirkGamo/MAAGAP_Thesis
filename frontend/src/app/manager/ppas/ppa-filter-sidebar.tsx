@@ -8,28 +8,46 @@ import { cn } from "@/lib/utils";
 interface PpaFilterSidebarProps {
   riskTiers: readonly string[];
   statuses: readonly { value: string; label: string }[];
+  projectTypes: readonly string[];
+  municipalities: string[];
 }
 
 /**
  * Phase 16: dedicated left filter panel for the PPAs tab, replacing the
  * inline `<select>`s that used to sit in a top filter bar (ppa-filters.tsx,
  * now removed) -- matching the reference dashboard's "FILTERS" sidebar
- * pattern the user asked for. Free-text search moved to ppa-search-bar.tsx,
- * inside the table/map card itself, since it's a different kind of filter
+ * pattern the user asked for. Free-text search lives in the table
+ * toolbar (data-table.tsx) instead, since it's a different kind of filter
  * (searches text, doesn't facet a fixed set of values) and the reference
  * keeps it there too.
  *
- * Still just rewrites URL search params -- risk_tier/status stay
+ * Still just rewrites URL search params -- every facet here stays
  * single-select (matching the Supabase .eq() query in page.tsx), rendered
  * as a vertical pill list rather than a <select>, not real multi-select
  * checkboxes like the reference's facets. Multi-select would need
  * .in(...) query changes; out of scope for a visual pass.
+ *
+ * Municipality and Project Type were added on top of the original Risk
+ * Tier/Status pair, per the user's ask for "more filters based on the
+ * available data" -- both are real columns on `projects` (see
+ * types/database.ts) that weren't filterable at all before this. The
+ * Municipality list comes from a live distinct-values query in page.tsx
+ * rather than a hardcoded list, so it never drifts from what's actually
+ * in the database; it defaults to collapsed since it can run to 40+
+ * options and would otherwise dominate the sidebar.
  */
-export function PpaFilterSidebar({ riskTiers, statuses }: PpaFilterSidebarProps) {
+export function PpaFilterSidebar({
+  riskTiers,
+  statuses,
+  projectTypes,
+  municipalities,
+}: PpaFilterSidebarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeRiskTier = searchParams.get("risk_tier") ?? "";
   const activeStatus = searchParams.get("status") ?? "";
+  const activeProjectType = searchParams.get("project_type") ?? "";
+  const activeMunicipality = searchParams.get("municipality") ?? "";
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -67,6 +85,34 @@ export function PpaFilterSidebar({ riskTiers, statuses }: PpaFilterSidebarProps)
           />
         ))}
       </FilterSection>
+      <FilterSection title="Project Type">
+        <FilterPill label="All types" active={!activeProjectType} onClick={() => setParam("project_type", "")} />
+        {projectTypes.map((t) => (
+          <FilterPill
+            key={t}
+            label={t}
+            active={activeProjectType === t}
+            onClick={() => setParam("project_type", t)}
+          />
+        ))}
+      </FilterSection>
+      <FilterSection title="Municipality" defaultOpen={false}>
+        <FilterPill
+          label="All municipalities"
+          active={!activeMunicipality}
+          onClick={() => setParam("municipality", "")}
+        />
+        <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+          {municipalities.map((m) => (
+            <FilterPill
+              key={m}
+              label={m}
+              active={activeMunicipality === m}
+              onClick={() => setParam("municipality", m)}
+            />
+          ))}
+        </div>
+      </FilterSection>
     </aside>
   );
 }
@@ -74,11 +120,13 @@ export function PpaFilterSidebar({ riskTiers, statuses }: PpaFilterSidebarProps)
 function FilterSection({
   title,
   children,
+  defaultOpen = true,
 }: {
   title: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="border-b border-brand-navy/10 py-3 last:border-0">
       <button

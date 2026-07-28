@@ -4,11 +4,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 const SKELETON_ROW_COUNT = 8;
 
 /** Phase 16: loading.tsx for the PPAs tab -- overrides ../loading.tsx.
- * Shaped like the real page (see page.tsx): heading + Import button, then
- * a left filter-sidebar placeholder alongside a table card with a
- * search-bar header, row placeholders, and a pagination-footer
- * placeholder, so the wireframe doesn't visibly jump once the real
- * sidebar/table/pagination arrive. */
+ * Shaped like the real page (see page.tsx): heading + view toggle + Import
+ * button in one row, then a left filter-sidebar placeholder (now with
+ * four facet sections instead of two) alongside a table card whose
+ * toolbar placeholder covers the search input, row count, Toggle Columns
+ * button, and Export button all in one row, so the wireframe doesn't
+ * visibly jump once the real controls arrive. */
 export default function PpasLoading() {
   return (
     <div className="flex flex-col gap-6">
@@ -17,21 +18,24 @@ export default function PpasLoading() {
           <Skeleton className="h-7 w-96" />
           <Skeleton className="h-4 w-72" />
         </div>
-        <Skeleton className="h-10 w-36" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-36" />
+        </div>
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <Skeleton className="h-56 w-full rounded-xl lg:w-56 lg:shrink-0" />
+        <Skeleton className="h-80 w-full rounded-xl lg:w-56 lg:shrink-0" />
 
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <div className="flex justify-end">
-            <Skeleton className="h-9 w-32" />
-          </div>
-
+        <div className="min-w-0 flex-1">
           <Card className="border-brand-navy/10 p-0">
             <div className="flex items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
               <Skeleton className="h-9 w-full max-w-sm" />
-              <Skeleton className="h-4 w-24 shrink-0" />
+              <div className="flex shrink-0 items-center gap-3">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-9 w-24" />
+                <Skeleton className="h-9 w-24" />
+              </div>
             </div>
             <CardContent className="flex flex-col gap-3 p-5">
               {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
