@@ -24,6 +24,13 @@
  *      true) — full_name is threaded through via the invite's `data`
  *      option, which handle_new_user() reads via
  *      `raw_user_meta_data ->> 'full_name'`.
+ *
+ *   3. setInspectorSlug(): also the regular RLS-respecting client. Maps a
+ *      real profile to one of optimization_engine.py's fixed synthetic
+ *      roster slots ("Inspector_1".."Inspector_6") -- see
+ *      profiles.inspector_slug's column comment in schema.sql. This is
+ *      the missing link actions/deploy-schedule.ts needs to translate the
+ *      PuLP solve's CSV output into real inspector_schedules rows.
  */
 
 import { revalidatePath } from "next/cache";
@@ -42,6 +49,32 @@ export async function toggleInspectorActive(
   const { error } = await supabase.from("profiles").update({ active }).eq("id", profileId);
 
   if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/manager/inspectors");
+  return { success: true };
+}
+
+export async function setInspectorSlug(
+  profileId: string,
+  slug: string
+): Promise<InspectorActionResult> {
+  const trimmed = slug.trim();
+
+  const { error } = await (await createClient())
+    .from("profiles")
+    .update({ inspector_slug: trimmed ? trimmed : null })
+    .eq("id", profileId);
+
+  if (error) {
+    // A unique-constraint violation (23505) means someone already claimed
+    // this slug -- surface that plainly rather than a raw Postgres error
+    // string, since this is the one mistake a Manager is likely to make
+    // here (typo-ing the same slug for two different people).
+    if (error.code === "23505") {
+      return { success: false, error: `"${trimmed}" is already assigned to another inspector.` };
+    }
     return { success: false, error: error.message };
   }
 

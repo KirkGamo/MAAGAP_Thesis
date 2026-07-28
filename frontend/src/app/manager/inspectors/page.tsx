@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { InviteInspectorForm } from "./invite-inspector-form";
 import { ActiveToggle } from "./active-toggle";
+import { SlugField } from "./slug-field";
 
 /**
  * Phase 12: Inspectors tab. Lists every Inspector-role profile with an
@@ -25,13 +26,19 @@ import { ActiveToggle } from "./active-toggle";
  * either — it lives on auth.users, not profiles, and surfacing it here
  * would need a second Admin API round trip for a field this tab doesn't
  * otherwise need.
+ *
+ * Phase 12.1 adds an "Optimization slot" column (inspector_slug) -- this
+ * is what makes "Deploy latest schedule" (the Schedule tab's button) able
+ * to actually work: without a real profile mapped to each
+ * "Inspector_1".."Inspector_6" slot the PuLP solve outputs, there is no
+ * way to know which real person a given row of the schedule belongs to.
  */
 export default async function InspectorsPage() {
   const supabase = await createClient();
 
   const { data: inspectors, error } = await supabase
     .from("profiles")
-    .select("id, full_name, active, created_at")
+    .select("id, full_name, active, inspector_slug, created_at")
     .eq("role", "inspector")
     .order("full_name");
 
@@ -48,6 +55,13 @@ export default async function InspectorsPage() {
 
       <InviteInspectorForm />
 
+      <p className="text-xs text-slate-400">
+        Assign each inspector an &quot;Optimization slot&quot; (e.g. <code>Inspector_1</code>)
+        matching ml-service/optimization_engine.py&apos;s roster labels — this is what lets the
+        Schedule tab&apos;s &quot;Deploy latest schedule&quot; button know which real person each
+        row of the optimizer&apos;s output belongs to.
+      </p>
+
       <Card className="border-brand-navy/10 p-0">
         <CardHeader className="border-b border-brand-navy/10 px-5 py-4">
           <CardTitle>{inspectors?.length ?? 0} inspector(s)</CardTitle>
@@ -59,6 +73,7 @@ export default async function InspectorsPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Joined</TableHead>
+                <TableHead>Optimization slot</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -70,13 +85,16 @@ export default async function InspectorsPage() {
                   </TableCell>
                   <TableCell>{new Date(inspector.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
+                    <SlugField profileId={inspector.id} slug={inspector.inspector_slug} />
+                  </TableCell>
+                  <TableCell>
                     <ActiveToggle profileId={inspector.id} active={inspector.active} />
                   </TableCell>
                 </TableRow>
               ))}
               {(inspectors ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-slate-400">
+                  <TableCell colSpan={4} className="text-center text-slate-400">
                     No inspectors yet — use &quot;Add inspector&quot; above.
                   </TableCell>
                 </TableRow>

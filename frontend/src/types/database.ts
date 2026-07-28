@@ -44,6 +44,7 @@ export type Database = {
           full_name: string | null;
           role: UserRole;
           active: boolean;
+          inspector_slug: string | null;
           created_at: string;
         };
         Insert: {
@@ -51,6 +52,7 @@ export type Database = {
           full_name?: string | null;
           role?: UserRole;
           active?: boolean;
+          inspector_slug?: string | null;
           created_at?: string;
         };
         Update: {
@@ -58,6 +60,7 @@ export type Database = {
           full_name?: string | null;
           role?: UserRole;
           active?: boolean;
+          inspector_slug?: string | null;
           created_at?: string;
         };
         Relationships: [];

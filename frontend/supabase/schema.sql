@@ -22,6 +22,17 @@ create table if not exists public.profiles (
   -- cascade-delete real field-report history). Defaults true so every
   -- existing/new account stays usable unless explicitly deactivated.
   active boolean not null default true,
+  -- Phase 12.1: maps a real Inspector profile to one of
+  -- ml-service/optimization_engine.py's fixed synthetic roster slots
+  -- ("Inspector_1".."Inspector_6", see that file's INSPECTOR_COUNT/
+  -- INSPECTOR_IDS constants). The PuLP solve plans against a fixed number
+  -- of budgeted inspector slots without knowing which real person fills
+  -- each one -- this column is that missing link, letting
+  -- actions/deploy-schedule.ts translate the optimizer's CSV output into
+  -- real inspector_schedules rows. Nullable + unique: not every profile
+  -- needs a slot (only the ones actually deployed against), and two
+  -- profiles can't claim the same slot.
+  inspector_slug text unique,
   created_at timestamptz not null default now()
 );
 
