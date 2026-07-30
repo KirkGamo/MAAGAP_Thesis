@@ -106,6 +106,66 @@ def _extract_positive_class(shap_output) -> np.ndarray:
     return arr
 
 
+_xgboost_shap_patch_applied = False
+
+
+def _patch_shap_for_xgboost_base_score_format() -> None:
+    """Works around a real incompatibility between xgboost>=~2.1's model
+    serialization and every current shap release (through 0.49.1, as of
+    this writing): xgboost now always writes `base_score` into its UBJSON
+    model dump as a bracketed single-element array string (e.g. "[5E-1]"),
+    not a plain scalar -- a change made to support future multi-output
+    models. shap's XGBTreeModelLoader does `float(learner_model_param
+    ["base_score"])` unconditionally, which raises `ValueError: could not
+    convert string to float: '[5E-1]'` for every xgboost model trained
+    under this pipeline's pinned xgboost>=2.0, regardless of hyperparameters
+    -- reproduced here even against a trivial 5-feature toy model, so it is
+    not specific to this project's feature set.
+
+    Verified fix: intercept immediately after shap decodes the model's
+    UBJSON buffer (before its own `float()` cast) and strip the brackets if
+    present. This is deliberately NOT a reimplementation of shap's loader
+    (which is ~140 lines and would be a maintenance hazard to fork) -- it
+    wraps the single already-modular decode function shap itself calls, so
+    the patch surface is minimal. Verified additive-consistency after
+    patching: sum(shap_values) + expected_value reproduces the model's
+    actual predict_proba() output exactly, for every row checked.
+
+    Idempotent and RF-agnostic -- only touched when an xgboost model is
+    actually explained, and safe to call more than once."""
+    global _xgboost_shap_patch_applied
+    if _xgboost_shap_patch_applied:
+        return
+
+    import re as _re
+    import shap.explainers._tree as _shap_tree
+
+    def _strip_scalar_brackets(value):
+        if isinstance(value, str):
+            m = _re.match(r"^\[\s*([\d.eE+\-]+)\s*\]$", value.strip())
+            if m:
+                return m.group(1)
+        return value
+
+    _original_decode_ubjson_buffer = _shap_tree.decode_ubjson_buffer
+
+    def _patched_decode_ubjson_buffer(fd):
+        result = _original_decode_ubjson_buffer(fd)
+        try:
+            learner_model_param = result["learner"]["learner_model_param"]
+            if "base_score" in learner_model_param:
+                learner_model_param["base_score"] = _strip_scalar_brackets(
+                    learner_model_param["base_score"]
+                )
+        except (KeyError, TypeError):
+            pass  # unexpected shape -- let shap's own code surface the error normally
+        return result
+
+    _shap_tree.decode_ubjson_buffer = _patched_decode_ubjson_buffer
+    _xgboost_shap_patch_applied = True
+    logger.info("Applied shap/xgboost base_score UBJSON compatibility patch.")
+
+
 def compute_shap_contributions(
     rf, xgb, X: pd.DataFrame, kept_columns: list[str],
 ) -> np.ndarray:
@@ -113,6 +173,8 @@ def compute_shap_contributions(
     and XGBoost's SHAP contributions to their own P(RedFlag) output, both in
     probability-space units (see module docstring)."""
     import shap
+
+    _patch_shap_for_xgboost_base_score_format()
 
     background = _load_background_sample(kept_columns)
 
