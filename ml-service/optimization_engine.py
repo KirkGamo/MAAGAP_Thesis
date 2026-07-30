@@ -313,12 +313,38 @@ def score_ongoing_projects() -> pd.DataFrame:
 
     location_lookup = inference_df.set_index("project_key")["LOCATION"]
     name_lookup = inference_df.set_index("project_key")["NAME OF PROJECT"]
+    status_lookup = inference_df.set_index("project_key")["STATUS"]
     merged["location_raw"] = merged["project_key"].map(location_lookup)
     merged["project_name"] = merged["project_key"].map(name_lookup)
     merged["municipality"] = merged["location_raw"].apply(resolve_municipality)
     merged["cluster"] = merged["municipality"].map(MUNICIPALITY_CLUSTERS).fillna(UNKNOWN_CLUSTER)
 
+    # These projects land here (inference.csv, not test.csv) purely because
+    # no direct or proxy completion date could be resolved for RedFlag
+    # labeling -- NOT because their STATUS says they're still in progress.
+    # A large share (measured ~70%) of this "unresolved" population actually
+    # has a STATUS confirming completion (see seed_supabase.py's map_status()
+    # fix and COMPLETED_STATUS_SUBSTRINGS in feature_engineering.py for the
+    # same "complet" convention). meta_prob/risk_tier for these rows is a
+    # genuine model prediction -- useful as a retrospective/audit signal on
+    # the dashboard -- but scheduling a field-inspector visit to a project
+    # that's already finished is not an actionable recommendation (see this
+    # module's own docstring). Flagged here so select_priority_projects()
+    # can exclude them from the scheduling candidate pool without touching
+    # the dashboard's risk_tier/meta_prob values, which are computed above
+    # and unaffected by this flag.
+    merged["status_raw"] = merged["project_key"].map(status_lookup)
+    merged["status_confirms_completed"] = (
+        merged["status_raw"].astype(str).str.lower().str.contains("complet", na=False)
+    )
+
     logger.info("Risk tier distribution across scored ongoing projects:\n%s", merged["risk_tier"].value_counts())
+    logger.info(
+        "%d of %d scored ongoing projects have a STATUS confirming completion despite "
+        "lacking a resolvable RedFlag date -- excluded from scheduling in select_priority_projects(), "
+        "kept on the dashboard as a predicted (unverified) risk signal.",
+        int(merged["status_confirms_completed"].sum()), len(merged),
+    )
     return merged
 
 
@@ -335,6 +361,16 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
     """
     Selects the scheduling candidate pool from the scored ongoing-project
     population.
+
+    COMPLETED-STATUS EXCLUSION: projects whose raw STATUS confirms they're
+    already completed (they only ended up in the "unresolved" population
+    because no direct/proxy completion date could be resolved for RedFlag
+    labeling -- see score_ongoing_projects()'s status_confirms_completed
+    flag) are excluded here, before both the tier filter and the fallback
+    pool. Their meta_prob/risk_tier is still a real model prediction and is
+    still shown on the dashboard as a retrospective/audit signal, but
+    recommending a field-inspector visit to a project that's already
+    finished is not actionable, and this module's own docstring says so.
 
     FALLBACK BEHAVIOR (documented, not silent): the meta-learner's current
     baseline — trained on only 3 positive OOF examples, per
@@ -353,7 +389,17 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
     for the current small-sample baseline, not a substitute for the
     threshold recalibration recommended in the remediation report.
     """
-    priority = scored_df[scored_df["risk_tier"].isin(TARGET_TIERS)].copy()
+    n_completed = int(scored_df.get("status_confirms_completed", pd.Series(False, index=scored_df.index)).sum())
+    if n_completed:
+        logger.info(
+            "Excluding %d STATUS-confirmed-completed project(s) from the scheduling candidate "
+            "pool -- their risk_tier/meta_prob is a prediction shown on the dashboard as an "
+            "audit signal, not an actionable 'still needs a site visit' recommendation.",
+            n_completed,
+        )
+    schedulable = scored_df[~scored_df.get("status_confirms_completed", pd.Series(False, index=scored_df.index))]
+
+    priority = schedulable[schedulable["risk_tier"].isin(TARGET_TIERS)].copy()
     priority = priority[priority["cluster"] != UNKNOWN_CLUSTER]  # cannot geographically schedule an unmapped site
 
     if len(priority) < MIN_PRIORITY_PROJECTS_FOR_SCHEDULING:
@@ -365,7 +411,7 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
             "fallback rows are tagged 'Relative-Risk (fallback)', not a real Chapter 3 tier.",
             len(priority), FALLBACK_POOL_SIZE,
         )
-        fallback = scored_df[scored_df["cluster"] != UNKNOWN_CLUSTER].copy()
+        fallback = schedulable[schedulable["cluster"] != UNKNOWN_CLUSTER].copy()
         fallback = fallback.sort_values("meta_prob", ascending=False).head(FALLBACK_POOL_SIZE)
         fallback["risk_tier"] = "Relative-Risk (fallback)"
         priority = fallback
