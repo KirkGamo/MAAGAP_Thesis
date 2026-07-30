@@ -126,7 +126,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
   let query = supabase
     .from("projects")
     .select(
-      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, amount_php, project_type, latitude, longitude",
+      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, amount_php, project_type, latitude, longitude, date_last_monitored",
       { count: "exact" }
     )
     .order("risk_probability", { ascending: false, nullsFirst: false });
