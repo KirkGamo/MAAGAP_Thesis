@@ -308,6 +308,25 @@ def load_core_sheets(workbook_path: Path) -> dict[str, pd.DataFrame]:
         except Exception as exc:
             raise RuntimeError(f"Failed to read sheet '{sheet_name}': {exc}") from exc
 
+        # Some source sheets carry a leftover column whose header cell was
+        # "cleared" in Excel by typing/pasting spaces rather than truly
+        # deleting it (observed on MONITORING REPORT Con: a whitespace-only
+        # header immediately left of "No.", holding a near-duplicate row
+        # index). pandas reads that as a real, non-null column name, so it
+        # survives dropna(how="all") and silently rides into the modeling
+        # feature set as an arbitrary numeric ID -- a genuine data-leakage
+        # risk, not just a cosmetic issue. Strip whitespace-only headers to
+        # an explicit empty string here so they can be dropped uniformly.
+        df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+        blank_header_cols = [c for c in df.columns if isinstance(c, str) and c == ""]
+        if blank_header_cols:
+            logger.warning(
+                "Sheet '%s': dropping %d column(s) with a blank/whitespace-only "
+                "header (likely a stray row-index column) — %s",
+                sheet_name, len(blank_header_cols), blank_header_cols,
+            )
+            df = df.drop(columns=blank_header_cols)
+
         # Drop fully-empty columns/rows introduced by merged header cells.
         df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
 

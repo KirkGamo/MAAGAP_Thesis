@@ -102,7 +102,17 @@ def build_feature_matrix(
     column absent from `df` with 0 — so train/test/inference always present
     the model with an identical feature schema.
     """
-    candidate_cols = [c for c in df.columns if c not in EXCLUDE_COLS]
+    # Defense-in-depth: preprocess.py's load_core_sheets() now strips and
+    # drops whitespace-only column headers at the source (a stray
+    # near-duplicate row-index column was previously slipping through with a
+    # blank/space-only name, evading EXCLUDE_COLS entirely since no one could
+    # type an invisible string into a denylist, and ending up as a real —
+    # and meaningless — predictive feature). Guard here too in case any
+    # future ingestion path skips that step.
+    candidate_cols = [
+        c for c in df.columns
+        if c not in EXCLUDE_COLS and not (isinstance(c, str) and c.strip() == "")
+    ]
     X = df[candidate_cols]
 
     non_numeric = [c for c in X.columns if not (pd.api.types.is_numeric_dtype(X[c]) or pd.api.types.is_bool_dtype(X[c]))]
