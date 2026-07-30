@@ -140,13 +140,24 @@ def _to_iso_date(value) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # STATUS -> project_status enum mapping. Mirrors the substring-matching
 # style already established in feature_engineering.py's
-# COMPLETED_STATUS_SUBSTRINGS/ONGOING_STATUS_SUBSTRINGS (Phase 6/7), rather
-# than inventing a new convention. Every row in inference.csv is, by
-# construction, part of the ongoing/unresolved population (RedFlag is NaN
-# here) -- so "on_going" is the correct default, and this only needs to
-# special-case the two statuses that mean something more specific:
-# genuinely not-yet-started work, and pre-implementation procurement.
+# COMPLETED_STATUS_SUBSTRINGS/ONGOING_STATUS_SUBSTRINGS (Phase 6/7).
+#
+# BUG FIX (found via a user report — PRJ_15573 showed "On-going" on the
+# dashboard despite its raw STATUS reading "Completed/ Fuctional"): this
+# function used to assume every row in inference.csv is, by construction,
+# part of the ongoing/unresolved population, since RedFlag is NaN there --
+# and defaulted straight to "on_going" without ever checking for a
+# "complet*" substring. That assumption conflates two different things:
+# RedFlag being unscored (no usable completion DATE to measure slippage
+# against a standard, e.g. `has_completion_date` is False for PRJ_15573)
+# does NOT mean the project isn't complete -- field monitors can and do
+# report a project as "Completed/Functional" without an administrative
+# completion date ever being entered. The raw STATUS text already told us
+# the true status; the mapper just wasn't looking at it for this case.
+# Fixed by checking COMPLETED_SUBSTRINGS first, matching
+# feature_engineering.py's own COMPLETED_STATUS_SUBSTRINGS = ["complet"].
 # ---------------------------------------------------------------------------
+COMPLETED_SUBSTRINGS = ["complet"]
 BIDDING_SUBSTRINGS = ["bid", "procure", "philgeps", "canvass", "ntp", "notice to proceed"]
 NOT_YET_IMPLEMENTED_SUBSTRINGS = ["not implement", "not yet implement", "not-implement", "unimplemented"]
 
@@ -155,6 +166,8 @@ def map_status(status_raw: str) -> str:
     if not isinstance(status_raw, str) or not status_raw.strip():
         return "on_going"
     s = status_raw.lower()
+    if any(sub in s for sub in COMPLETED_SUBSTRINGS):
+        return "completed"
     if any(sub in s for sub in NOT_YET_IMPLEMENTED_SUBSTRINGS):
         return "not_yet_implemented"
     if any(sub in s for sub in BIDDING_SUBSTRINGS):
