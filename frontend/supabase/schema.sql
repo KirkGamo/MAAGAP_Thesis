@@ -103,8 +103,13 @@ create trigger on_auth_user_created
 -- ---------------------------------------------------------------------
 -- projects: mirrors the ml-service's project_key / risk-scoring output
 -- ---------------------------------------------------------------------
+-- 'refunded': the fund transfer for this activity/PPA was returned rather
+-- than liquidated against completed work (see Fund Transfer Con's Amount
+-- Refunded column and the monitoring sheet's STATUS values like "Refunded"/
+-- "For refund of full amount"). Distinct from not_yet_implemented -- a
+-- refunded activity's funds are gone, it isn't awaiting a future start.
 create type project_status as enum (
-  'not_yet_implemented', 'on_going', 'completed', 'for_bidding'
+  'not_yet_implemented', 'on_going', 'completed', 'for_bidding', 'refunded'
 );
 
 create table if not exists public.projects (
@@ -117,6 +122,12 @@ create table if not exists public.projects (
   status project_status not null default 'not_yet_implemented',
   date_released date,
   date_of_completion date,
+  -- Most recent DATE MONITORED from the source monitoring sheet for this
+  -- project (see add_projects_date_last_monitored.sql and
+  -- scripts/seed_supabase.py's build_project_rows()). Distinct from
+  -- monitoring_reports.visited_at, which tracks NEW reports filed through
+  -- this app, not historical field visits from the raw dataset.
+  date_last_monitored date,
   project_type text not null default 'Unclassified'
     check (project_type in ('Infrastructure', 'Non-Infrastructure', 'Unclassified')),
   risk_tier text

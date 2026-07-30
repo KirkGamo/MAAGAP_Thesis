@@ -325,25 +325,30 @@ def score_ongoing_projects() -> pd.DataFrame:
     # A large share (measured ~70%) of this "unresolved" population actually
     # has a STATUS confirming completion (see seed_supabase.py's map_status()
     # fix and COMPLETED_STATUS_SUBSTRINGS in feature_engineering.py for the
-    # same "complet" convention). meta_prob/risk_tier for these rows is a
-    # genuine model prediction -- useful as a retrospective/audit signal on
-    # the dashboard -- but scheduling a field-inspector visit to a project
-    # that's already finished is not an actionable recommendation (see this
-    # module's own docstring). Flagged here so select_priority_projects()
-    # can exclude them from the scheduling candidate pool without touching
-    # the dashboard's risk_tier/meta_prob values, which are computed above
-    # and unaffected by this flag.
+    # same "complet" convention). A smaller share has a STATUS confirming the
+    # fund transfer was refunded rather than implemented ("Refunded"/"For
+    # refund of full amount" -- same map_status() fix). meta_prob/risk_tier
+    # for these rows is a genuine model prediction -- useful as a
+    # retrospective/audit signal on the dashboard -- but scheduling a
+    # field-inspector visit to a project that's already finished OR whose
+    # funds were returned is not an actionable recommendation (see this
+    # module's own docstring; there's nothing left to inspect on-site in
+    # either case). Flagged here so select_priority_projects() can exclude
+    # them from the scheduling candidate pool without touching the
+    # dashboard's risk_tier/meta_prob values, which are computed above and
+    # unaffected by this flag.
     merged["status_raw"] = merged["project_key"].map(status_lookup)
-    merged["status_confirms_completed"] = (
-        merged["status_raw"].astype(str).str.lower().str.contains("complet", na=False)
+    status_lower = merged["status_raw"].astype(str).str.lower()
+    merged["status_excludes_scheduling"] = (
+        status_lower.str.contains("complet", na=False) | status_lower.str.contains("refund", na=False)
     )
 
     logger.info("Risk tier distribution across scored ongoing projects:\n%s", merged["risk_tier"].value_counts())
     logger.info(
-        "%d of %d scored ongoing projects have a STATUS confirming completion despite "
+        "%d of %d scored ongoing projects have a STATUS confirming completion or refund despite "
         "lacking a resolvable RedFlag date -- excluded from scheduling in select_priority_projects(), "
         "kept on the dashboard as a predicted (unverified) risk signal.",
-        int(merged["status_confirms_completed"].sum()), len(merged),
+        int(merged["status_excludes_scheduling"].sum()), len(merged),
     )
     return merged
 
@@ -362,15 +367,17 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
     Selects the scheduling candidate pool from the scored ongoing-project
     population.
 
-    COMPLETED-STATUS EXCLUSION: projects whose raw STATUS confirms they're
-    already completed (they only ended up in the "unresolved" population
-    because no direct/proxy completion date could be resolved for RedFlag
-    labeling -- see score_ongoing_projects()'s status_confirms_completed
-    flag) are excluded here, before both the tier filter and the fallback
-    pool. Their meta_prob/risk_tier is still a real model prediction and is
-    still shown on the dashboard as a retrospective/audit signal, but
-    recommending a field-inspector visit to a project that's already
-    finished is not actionable, and this module's own docstring says so.
+    COMPLETED/REFUNDED-STATUS EXCLUSION: projects whose raw STATUS confirms
+    they're already completed OR that their fund transfer was refunded
+    (they only ended up in the "unresolved" population because no direct/
+    proxy completion date could be resolved for RedFlag labeling -- see
+    score_ongoing_projects()'s status_excludes_scheduling flag) are excluded
+    here, before both the tier filter and the fallback pool. Their
+    meta_prob/risk_tier is still a real model prediction and is still shown
+    on the dashboard as a retrospective/audit signal, but recommending a
+    field-inspector visit to a project that's already finished or whose
+    funds were returned is not actionable, and this module's own docstring
+    says so.
 
     FALLBACK BEHAVIOR (documented, not silent): the meta-learner's current
     baseline — trained on only 3 positive OOF examples, per
@@ -389,15 +396,15 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
     for the current small-sample baseline, not a substitute for the
     threshold recalibration recommended in the remediation report.
     """
-    n_completed = int(scored_df.get("status_confirms_completed", pd.Series(False, index=scored_df.index)).sum())
-    if n_completed:
+    n_excluded = int(scored_df.get("status_excludes_scheduling", pd.Series(False, index=scored_df.index)).sum())
+    if n_excluded:
         logger.info(
-            "Excluding %d STATUS-confirmed-completed project(s) from the scheduling candidate "
-            "pool -- their risk_tier/meta_prob is a prediction shown on the dashboard as an "
-            "audit signal, not an actionable 'still needs a site visit' recommendation.",
-            n_completed,
+            "Excluding %d STATUS-confirmed-completed/refunded project(s) from the scheduling "
+            "candidate pool -- their risk_tier/meta_prob is a prediction shown on the dashboard as "
+            "an audit signal, not an actionable 'still needs a site visit' recommendation.",
+            n_excluded,
         )
-    schedulable = scored_df[~scored_df.get("status_confirms_completed", pd.Series(False, index=scored_df.index))]
+    schedulable = scored_df[~scored_df.get("status_excludes_scheduling", pd.Series(False, index=scored_df.index))]
 
     priority = schedulable[schedulable["risk_tier"].isin(TARGET_TIERS)].copy()
     priority = priority[priority["cluster"] != UNKNOWN_CLUSTER]  # cannot geographically schedule an unmapped site

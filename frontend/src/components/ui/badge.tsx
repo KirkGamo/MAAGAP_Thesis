@@ -23,6 +23,7 @@ const badgeVariants = cva(
         statusCompleted: "border-transparent bg-emerald-100 text-emerald-800",
         statusForBidding: "border-transparent bg-amber-100 text-amber-800",
         statusNotYetImplemented: "border-transparent bg-slate-100 text-slate-600",
+        statusRefunded: "border-transparent bg-rose-100 text-rose-800",
       },
     },
     defaultVariants: {
@@ -71,6 +72,8 @@ export function statusVariant(
       return "statusForBidding";
     case "not_yet_implemented":
       return "statusNotYetImplemented";
+    case "refunded":
+      return "statusRefunded";
     default:
       return "secondary";
   }

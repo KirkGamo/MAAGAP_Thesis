@@ -20,6 +20,7 @@ export interface PpaRow {
   risk_probability: number | null;
   amount_php: number | null;
   project_type: string | null;
+  date_last_monitored: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -27,6 +28,7 @@ const STATUS_LABELS: Record<string, string> = {
   for_bidding: "For Bidding",
   on_going: "On-going",
   completed: "Completed",
+  refunded: "Refunded",
 };
 
 /**
@@ -128,6 +130,26 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
         </Badge>
       ) : (
         "—"
+      ),
+  },
+  {
+    // Most recent DATE MONITORED from the source monitoring sheet (see
+    // add_projects_date_last_monitored.sql / seed_supabase.py's
+    // build_project_rows()) -- distinct from monitoring_reports.visited_at,
+    // which only tracks NEW reports filed through this app.
+    accessorKey: "date_last_monitored",
+    header: "Last Monitored",
+    cell: ({ row }) =>
+      row.original.date_last_monitored ? (
+        <span className="text-slate-600">
+          {new Date(row.original.date_last_monitored).toLocaleDateString("en-PH", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+      ) : (
+        <span className="text-slate-400">—</span>
       ),
   },
   {

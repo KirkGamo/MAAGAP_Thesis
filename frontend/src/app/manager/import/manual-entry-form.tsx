@@ -12,6 +12,7 @@ const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: "for_bidding", label: "For Bidding" },
   { value: "on_going", label: "On-going" },
   { value: "completed", label: "Completed / Functional" },
+  { value: "refunded", label: "Refunded" },
 ];
 
 const emptyForm = {

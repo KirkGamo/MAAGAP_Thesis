@@ -156,10 +156,22 @@ def _to_iso_date(value) -> Optional[str]:
 # the true status; the mapper just wasn't looking at it for this case.
 # Fixed by checking COMPLETED_SUBSTRINGS first, matching
 # feature_engineering.py's own COMPLETED_STATUS_SUBSTRINGS = ["complet"].
+#
+# BUG FIX 2 (found via a user report against the raw monitoring sheet): a
+# handful of rows have STATUS values like "Refunded" or "For refund of full
+# amount" -- the activity's fund transfer was returned rather than
+# liquidated against completed work. None of the checks below matched these
+# (they aren't "complet*", "not implement*", or a bidding term), so they
+# fell through to the "on_going" default -- misleading, since a refunded
+# activity's funds are gone; it isn't ongoing work awaiting completion.
+# Added a dedicated "refunded" project_status value (see
+# supabase/add_refunded_status.sql) and a REFUND_SUBSTRINGS check, checked
+# before the on_going fallback.
 # ---------------------------------------------------------------------------
 COMPLETED_SUBSTRINGS = ["complet"]
 BIDDING_SUBSTRINGS = ["bid", "procure", "philgeps", "canvass", "ntp", "notice to proceed"]
 NOT_YET_IMPLEMENTED_SUBSTRINGS = ["not implement", "not yet implement", "not-implement", "unimplemented"]
+REFUND_SUBSTRINGS = ["refund"]
 
 
 def map_status(status_raw: str) -> str:
@@ -168,6 +180,8 @@ def map_status(status_raw: str) -> str:
     s = status_raw.lower()
     if any(sub in s for sub in COMPLETED_SUBSTRINGS):
         return "completed"
+    if any(sub in s for sub in REFUND_SUBSTRINGS):
+        return "refunded"
     if any(sub in s for sub in NOT_YET_IMPLEMENTED_SUBSTRINGS):
         return "not_yet_implemented"
     if any(sub in s for sub in BIDDING_SUBSTRINGS):
@@ -248,6 +262,11 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
             "status": map_status(row.get("STATUS")),
             "date_released": _to_iso_date(row.get("DATE RELEASED")),
             "date_of_completion": _to_iso_date(row.get("Date  of Completion")),
+            # See add_projects_date_last_monitored.sql -- inference.csv is
+            # one-row-per-project, so this row's own DATE MONITORED already
+            # is that project's most recent/only known monitoring date (no
+            # multi-visit aggregation needed).
+            "date_last_monitored": _to_iso_date(row.get("DATE MONITORED")),
             "project_type": resolve_project_type(row),
             "risk_tier": score["risk_tier"] if score else None,
             "risk_probability": round(float(score["meta_prob"]), 4) if score else None,

@@ -26,6 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
   for_bidding: "For Bidding",
   on_going: "On-going",
   completed: "Completed",
+  refunded: "Refunded",
 };
 
 type ProjectRow = Database["public"]["Tables"]["projects"]["Row"];
@@ -125,6 +126,13 @@ function buildRiskIndicators(
         }, based on a monitoring visit logged in the source dataset -- but no Inspector has filed a follow-up report through this app yet, so it doesn't appear in "Monitoring reports" below.`,
         flagged: false,
       });
+    } else if (project.status === "refunded") {
+      indicators.push({
+        label: "Field verification",
+        detail:
+          "Historical records mark this project's fund transfer as Refunded -- the funds were returned rather than implemented, so no on-site progress was ever expected. No Inspector report has been filed through this app for it.",
+        flagged: false,
+      });
     } else {
       indicators.push({
         label: "Field verification",
@@ -222,6 +230,17 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         <h1 className="text-2xl font-semibold text-brand-navy">{project.name_of_project}</h1>
         <p className="text-sm text-slate-500">
           {project.project_key} · {project.location}
+          {project.date_last_monitored && (
+            <>
+              {" "}
+              · Last monitored{" "}
+              {new Date(project.date_last_monitored).toLocaleDateString("en-PH", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </>
+          )}
         </p>
       </div>
 
@@ -242,22 +261,32 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
               </span>
             )}
           </div>
-          {/* Phase 22 follow-up: a project marked Completed in historical
-              records can still carry a high risk_tier -- the model is
-              scoring "was this delivered on schedule", not "is this
-              currently at risk", and a late-but-finished project is exactly
+          {/* Phase 22 follow-up: a project marked Completed (or, as of the
+              "refunded" status addition, Refunded) in historical records can
+              still carry a high risk_tier -- the model is scoring "was this
+              delivered on schedule", not "is this currently at risk," and a
+              late-but-finished (or abandoned/refunded) project is exactly
               what a high score correctly describes. That distinction isn't
               obvious from the badge alone, so spell it out here rather than
-              leaving the Critical badge looking like it contradicts
-              "Completed" (see optimization_engine.py's
-              status_confirms_completed exclusion -- this project is already
-              excluded from inspector-visit scheduling for the same reason). */}
+              leaving the badge looking like it contradicts the status (see
+              optimization_engine.py's status_excludes_scheduling exclusion
+              -- this project is already excluded from inspector-visit
+              scheduling for the same reason). */}
           {project.status === "completed" && (
             <p className="rounded-md border border-brand-blue/20 bg-brand-blue/5 px-3 py-2 text-sm text-slate-600">
               This project is marked <span className="font-medium">Completed</span> in historical
               records. The score above reflects how much its recorded timeline slipped against a
               standard schedule -- not current, ongoing risk -- and this project is not included
               in the inspector-visit scheduling recommendations for that reason.
+            </p>
+          )}
+          {project.status === "refunded" && (
+            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-slate-600">
+              This project&apos;s fund transfer is marked <span className="font-medium">Refunded</span>{" "}
+              in historical records -- the funds were returned rather than implemented. The score
+              above still reflects the model&apos;s read of the available data, but this project is
+              not included in the inspector-visit scheduling recommendations, since there is no
+              active work to verify on-site.
             </p>
           )}
         </CardContent>

@@ -23,6 +23,7 @@ export const STATUSES = [
   { value: "for_bidding", label: "For Bidding" },
   { value: "on_going", label: "On-going" },
   { value: "completed", label: "Completed" },
+  { value: "refunded", label: "Refunded" },
 ] as const;
 export const PROJECT_TYPES = ["Infrastructure", "Non-Infrastructure", "Unclassified"] as const;
 

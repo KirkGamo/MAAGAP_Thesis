@@ -60,11 +60,22 @@ const STATUS_MAP: Record<string, ProjectStatus> = {
   "not yet implemented": "not_yet_implemented",
   "not implemented": "not_yet_implemented",
   "for bidding": "for_bidding",
+  refunded: "refunded",
+  "for refund": "refunded",
+  "for refund of full amount": "refunded",
 };
 
 function normalizeStatus(raw: string | undefined): ProjectStatus {
   if (!raw) return "not_yet_implemented";
-  return STATUS_MAP[raw.trim().toLowerCase()] ?? "not_yet_implemented";
+  const cleaned = raw.trim().toLowerCase();
+  if (STATUS_MAP[cleaned]) return STATUS_MAP[cleaned];
+  // Substring fallback for "refund" specifically -- the source data has
+  // several free-text variants ("For refund of full amount", "Refunded",
+  // etc.; see scripts/seed_supabase.py's map_status() for the same check
+  // against the ML pipeline's data) that a fixed lookup table won't cover
+  // exhaustively.
+  if (cleaned.includes("refund")) return "refunded";
+  return STATUS_MAP[cleaned] ?? "not_yet_implemented";
 }
 
 /**

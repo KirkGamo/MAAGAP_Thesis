@@ -46,7 +46,8 @@ export type ProjectStatus =
   | "not_yet_implemented"
   | "on_going"
   | "completed"
-  | "for_bidding";
+  | "for_bidding"
+  | "refunded";
 
 export type Database = {
   __InternalSupabase: {
@@ -92,6 +93,13 @@ export type Database = {
           status: ProjectStatus;
           date_released: string | null;
           date_of_completion: string | null;
+          // Most recent DATE MONITORED recorded for this project in the
+          // source monitoring sheet (see scripts/seed_supabase.py's
+          // build_project_rows() -- inference.csv is one-row-per-project,
+          // so this is that row's own DATE MONITORED, not an aggregate
+          // across multiple visits). Distinct from monitoring_reports'
+          // visited_at, which tracks NEW reports filed through this app.
+          date_last_monitored: string | null;
           project_type: "Infrastructure" | "Non-Infrastructure" | "Unclassified";
           risk_tier: RiskTier | null;
           risk_probability: number | null;
