@@ -87,6 +87,16 @@ EXCLUDE_COLS = [
     "No.", "FUNDS RELEASED TO:",
     "T_actual_days", "T_standard_days", "NegativeSlippage_pct",
     "has_completion_date", "completion_date_is_proxy", "extension_approved", "contractor_id",
+    # D_start is the resolved (DATE RELEASED, falling back to DATE MONITORED)
+    # datetime used to derive release_month/release_quarter/days_since_release/
+    # is_wet_season_release in feature_engineering.py -- it's housekeeping for
+    # building those features, not itself a model input (datetime64 dtype
+    # would be dropped by the non-numeric check below anyway, but excluding
+    # it explicitly keeps the "Dropping N unexpected non-numeric column(s)"
+    # warning clean). date_released_is_proxy mirrors completion_date_is_proxy's
+    # exclusion -- a data-provenance flag about how a date was resolved, not
+    # a feature the model should condition its risk prediction on.
+    "D_start", "date_released_is_proxy",
 ]
 
 

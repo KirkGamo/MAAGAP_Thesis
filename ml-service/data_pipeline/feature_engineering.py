@@ -298,6 +298,21 @@ def construct_target_variable(
       - project_type == 'Unclassified' (no defined T_standard), or
       - no completion date — direct or proxy (see below) — is available.
 
+    D_start (with the DATE MONITORED fallback already applied) and a
+    date_released_is_proxy flag are persisted onto the returned dataframe so
+    engineer_features() (Step 9) can derive release_month/release_quarter/
+    days_since_release/is_wet_season_release from the SAME resolved date
+    used here, instead of silently recomputing from the raw, sometimes-
+    unparseable DATE RELEASED column. Before this fix, ~1,282 rows with an
+    invalid DATE RELEASED (e.g. a bare literal year like "2016" instead of
+    an Excel date serial — see preprocess.py's EXCEL_SERIAL_MIN/MAX check)
+    got RedFlag computed correctly via the DATE MONITORED fallback, but
+    every release-date-derived FEATURE for those same rows was NaN (or, for
+    is_wet_season_release, a silently wrong False rather than NaN) — an
+    inconsistency between how the target and the features handled the same
+    defect, caught via a user question about the raw "2016"-style values
+    visible in the source spreadsheet.
+
     PHASE 3 CORRECTION (preserved): a project without a recorded completion
     date and whose STATUS does not confirm it is finished is ONGOING, not a
     confirmed delay — it never receives a fabricated or "provisional" label.
@@ -323,9 +338,12 @@ def construct_target_variable(
         from elapsed time — only from what STATUS itself says.
     """
     df = monitoring.copy()
-    d_start = pd.to_datetime(df["DATE RELEASED"], errors="coerce")
+    d_start_direct = pd.to_datetime(df["DATE RELEASED"], errors="coerce")
     d_start_fallback = pd.to_datetime(df["DATE MONITORED"], errors="coerce")
-    d_start = d_start.fillna(d_start_fallback)
+    d_start = d_start_direct.fillna(d_start_fallback)
+    date_released_is_proxy = d_start_direct.isna() & d_start.notna()
+    df["D_start"] = d_start
+    df["date_released_is_proxy"] = date_released_is_proxy
     d_end_direct = pd.to_datetime(df["Date  of Completion"], errors="coerce")
 
     status_clean = df.get("STATUS_clean", pd.Series("", index=df.index))
@@ -422,6 +440,8 @@ def construct_target_variable(
         "rows_total": len(df),
         "rows_labeled": labeled,
         "rows_labeled_via_proxy_date": n_proxy_recovered,
+        "rows_date_released_recovered_via_date_monitored": int(date_released_is_proxy.sum()),
+        "rows_still_missing_d_start": int(d_start.isna().sum()),
         "rows_ongoing_no_completion_date": n_ongoing,
         "rows_completed_status_but_unrecoverable_date": n_completed_status_unrecovered,
         "rows_genuinely_ongoing_status": n_genuinely_ongoing,
@@ -537,19 +557,40 @@ def engineer_features(
 ) -> pd.DataFrame:
     """
     One-hot encodes normalized categoricals, extracts temporal features from
-    DATE RELEASED, and (if available) joins the synthetic contractor table —
-    per Chapter 3's Feature Engineering protocol.
+    the project's start date, and (if available) joins the synthetic
+    contractor table — per Chapter 3's Feature Engineering protocol.
+
+    Uses D_start (DATE RELEASED, falling back to DATE MONITORED — the same
+    resolved date construct_target_variable() already computes for RedFlag)
+    rather than recomputing straight from the raw, sometimes-unparseable
+    DATE RELEASED column, if D_start is present on `df` (Step 6 always runs
+    before this in `run()`). This fixes a prior inconsistency where ~1,282
+    rows with an invalid DATE RELEASED (e.g. a bare literal year like "2016"
+    instead of an Excel serial date) got a correct RedFlag label via the
+    DATE MONITORED fallback, but NaN release-date features regardless.
     """
     df = df.copy()
-    released = pd.to_datetime(df["DATE RELEASED"], errors="coerce")
+    if "D_start" in df.columns:
+        released = pd.to_datetime(df["D_start"], errors="coerce")
+    else:
+        # Fallback for callers that invoke this function directly without
+        # construct_target_variable() having run first (e.g. isolated tests).
+        released = pd.to_datetime(df["DATE RELEASED"], errors="coerce")
 
     df["release_month"] = released.dt.month
     df["release_quarter"] = released.dt.quarter
     df["days_since_release"] = (DATASET_HORIZON - released).dt.days
     # Philippine wet season is approximately June-November; this is a coarse
     # proxy pending real PAGASA integration (Data Audit Report, Section 5) —
-    # NOT an actual weather observation.
-    df["is_wet_season_release"] = released.dt.month.isin([6, 7, 8, 9, 10, 11])
+    # NOT an actual weather observation. Rows where `released` itself is
+    # unresolvable (no DATE RELEASED and no DATE MONITORED — a small
+    # residual population; see report.target_construction's
+    # rows_still_missing_d_start) get NaN here, not a silently wrong False:
+    # a project with genuinely unknown release timing is not the same claim
+    # as "confirmed released outside wet season."
+    is_wet = released.dt.month.isin([6, 7, 8, 9, 10, 11]).astype(float)
+    is_wet[released.isna()] = np.nan
+    df["is_wet_season_release"] = is_wet
 
     df["municipality_canonical"] = df["LOCATION"].astype(str).map(
         lambda s: canonicalize_municipality(s.split(",")[-1])
