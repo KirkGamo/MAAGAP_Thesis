@@ -103,12 +103,36 @@ function buildRiskIndicators(
 
   const latestReport = reports[0];
   if (!latestReport) {
-    indicators.push({
-      label: "Field verification",
-      detail:
-        "No monitoring reports filed yet -- no on-site progress has been recorded for this project.",
-      flagged: true,
-    });
+    // A blank live-app inspector history does NOT mean this project has no
+    // monitoring history at all -- `status`/`date_of_completion` come from
+    // the historical MONITORING REPORT Con sheet (a monitoring visit
+    // recorded there is exactly what established this project's status),
+    // it's just that no Inspector has filed a NEW report through this app
+    // yet. Saying "no monitoring reports" outright is misleading for a
+    // project whose historical record already says Completed -- distinguish
+    // the two rather than implying zero monitoring ever happened.
+    if (project.status === "completed") {
+      indicators.push({
+        label: "Field verification",
+        detail: `Historical records mark this project Completed${
+          project.date_of_completion
+            ? ` as of ${new Date(project.date_of_completion).toLocaleDateString("en-PH", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}`
+            : ""
+        }, based on a monitoring visit logged in the source dataset -- but no Inspector has filed a follow-up report through this app yet, so it doesn't appear in "Monitoring reports" below.`,
+        flagged: false,
+      });
+    } else {
+      indicators.push({
+        label: "Field verification",
+        detail:
+          "No monitoring reports filed yet -- no on-site progress has been recorded for this project.",
+        flagged: true,
+      });
+    }
   } else {
     indicators.push({
       label: "Field verification",
@@ -205,16 +229,36 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         <CardHeader>
           <CardTitle>Risk assessment</CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center gap-4">
-          {project.risk_tier ? (
-            <Badge variant={riskTierVariant(project.risk_tier)}>{project.risk_tier}</Badge>
-          ) : (
-            <span className="text-sm text-slate-400">Not yet scored</span>
-          )}
-          {project.risk_probability != null && (
-            <span className="text-sm text-slate-600">
-              P(RedFlag) = {project.risk_probability.toFixed(3)}
-            </span>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-4">
+            {project.risk_tier ? (
+              <Badge variant={riskTierVariant(project.risk_tier)}>{project.risk_tier}</Badge>
+            ) : (
+              <span className="text-sm text-slate-400">Not yet scored</span>
+            )}
+            {project.risk_probability != null && (
+              <span className="text-sm text-slate-600">
+                P(RedFlag) = {project.risk_probability.toFixed(3)}
+              </span>
+            )}
+          </div>
+          {/* Phase 22 follow-up: a project marked Completed in historical
+              records can still carry a high risk_tier -- the model is
+              scoring "was this delivered on schedule", not "is this
+              currently at risk", and a late-but-finished project is exactly
+              what a high score correctly describes. That distinction isn't
+              obvious from the badge alone, so spell it out here rather than
+              leaving the Critical badge looking like it contradicts
+              "Completed" (see optimization_engine.py's
+              status_confirms_completed exclusion -- this project is already
+              excluded from inspector-visit scheduling for the same reason). */}
+          {project.status === "completed" && (
+            <p className="rounded-md border border-brand-blue/20 bg-brand-blue/5 px-3 py-2 text-sm text-slate-600">
+              This project is marked <span className="font-medium">Completed</span> in historical
+              records. The score above reflects how much its recorded timeline slipped against a
+              standard schedule -- not current, ongoing risk -- and this project is not included
+              in the inspector-visit scheduling recommendations for that reason.
+            </p>
           )}
         </CardContent>
       </Card>
