@@ -630,6 +630,49 @@ def canonicalize_municipality(raw: str) -> str:
     return cleaned.title()
 
 
+BARANGAY_MATCH_SCORE_CUTOFF = 70
+"""
+Minimum RapidFuzz token_sort_ratio for two barangay strings to be treated as
+"the same barangay" during crosswalk linking (see the barangay-conflict veto
+in fuzzy_link_cascading). Deliberately looser than FUZZY_SCORE_CUTOFF_DEFAULT
+(project names), since barangay strings carry more incidental formatting
+noise (a "Brgy."/"Barangay" prefix, trailing school/landmark qualifiers) that
+isn't meaningful for identity — the goal here is only to catch a clear
+mismatch (different barangay entirely), not to require near-identical text.
+"""
+
+
+def _normalize_barangay(raw) -> str:
+    """
+    Light normalization for barangay-name comparison only (no reference-list
+    canonicalization, unlike canonicalize_municipality — there is no
+    authoritative barangay list in this project). Strips a leading
+    "Brgy."/"Barangay" label and collapses whitespace/case so that
+    "Brgy. Balicua" and "Balicua" compare as equal, without pretending to
+    resolve every formatting variant.
+    """
+    text = _normalize_text(raw)
+    if not text:
+        return ""
+    text = re.sub(r"^(brgy\.?|barangay)\s*", "", text).strip()
+    return text
+
+
+def _barangay_conflicts(a: str, b: str) -> bool:
+    """
+    True only when BOTH sides have a non-empty normalized barangay string and
+    they clearly do not refer to the same place (fuzzy score below
+    BARANGAY_MATCH_SCORE_CUTOFF). If either side is missing/blank, this
+    returns False (no veto) — consistent with this pipeline's existing
+    pattern for year_tolerance, where a missing value is a "kept but
+    unverified" match rather than an automatic rejection, since barangay data
+    is not populated on every sheet/row.
+    """
+    if not a or not b:
+        return False
+    return fuzz.token_sort_ratio(a, b) < BARANGAY_MATCH_SCORE_CUTOFF
+
+
 def fuzzy_link_cascading(
     left: pd.DataFrame,
     right: pd.DataFrame,
@@ -642,6 +685,8 @@ def fuzzy_link_cascading(
     year_right: str,
     id_left: str,
     id_right: str,
+    barangay_left: Optional[str] = None,
+    barangay_right: Optional[str] = None,
     score_cutoff: int = FUZZY_SCORE_CUTOFF_DEFAULT,
     year_tolerance: int = YEAR_TOLERANCE_DEFAULT,
 ) -> pd.DataFrame:
@@ -651,7 +696,11 @@ def fuzzy_link_cascading(
     Pass 1 (exact): rows whose (normalized project name, canonical
     municipality, fiscal year) triple is byte-identical on both sides are
     linked immediately at score=100, method='exact', and removed from
-    consideration for Pass 2. This is fast and has no false-positive risk.
+    consideration for Pass 2 — UNLESS `_barangay_conflicts()` vetoes the
+    candidate (see below), in which case the pair is left for Pass 2 (or may
+    end up unmatched) rather than silently merged. This is fast and, once the
+    barangay veto is applied, has no known false-positive risk from same-
+    name/same-municipality/same-year projects in different barangays.
 
     Pass 2 (fuzzy): remaining rows are blocked by CANONICAL MUNICIPALITY ONLY
     (not year — see YEAR_TOLERANCE_DEFAULT's comment for why year is
@@ -660,13 +709,26 @@ def fuzzy_link_cascading(
     token_sort_ratio finds the best-matching project name above
     `score_cutoff`, and the match is kept only if the two records' fiscal
     years are within `year_tolerance` of each other (or either year is
-    missing, in which case the match is kept but flagged).
+    missing, in which case the match is kept but flagged) AND the barangay
+    veto does not fire.
 
-    This two-pass, municipality-canonicalized, year-tolerant design is the
-    fix for the v1 crosswalk's 18.2% linkage rate, which was suppressed by
-    (a) blocking on raw/unstandardized municipality strings and (b) requiring
-    an exact year match between sheets that legitimately record different
-    calendar years for the same project's lifecycle events.
+    Barangay veto (added after Data Audit follow-up DQ-4b — see CHANGELOG/
+    commit history): a real case surfaced where two distinct "Public Address
+    System" projects in different Tubungan barangays (Morcillas vs. Balicua),
+    same municipality and fiscal year, were merged into one project_key by
+    Pass 1's exact match, since barangay was not part of the key. When both
+    `barangay_left`/`barangay_right` are supplied and both sides have a
+    non-empty barangay string for a given row pair, the pair is rejected
+    unless the barangay strings fuzzy-match above BARANGAY_MATCH_SCORE_CUTOFF.
+    Passing None for either barangay argument disables the veto entirely for
+    that call (used when a sheet has no reliable barangay field).
+
+    This two-pass, municipality-canonicalized, year-tolerant, barangay-
+    verified design is the fix for the v1 crosswalk's 18.2% linkage rate,
+    which was suppressed by (a) blocking on raw/unstandardized municipality
+    strings and (b) requiring an exact year match between sheets that
+    legitimately record different calendar years for the same project's
+    lifecycle events.
 
     Returns a DataFrame with columns [left_id, right_id, match_score,
     match_method, municipality_block, year_left, year_right]. Blocks that
@@ -681,6 +743,8 @@ def fuzzy_link_cascading(
     R["_name"] = R[name_right].map(_normalize_text)
     R["_muni"] = R[muni_right].map(canonicalize_municipality)
     R["_year"] = pd.to_numeric(R[year_right], errors="coerce")
+    L["_brgy"] = L[barangay_left].map(_normalize_barangay) if barangay_left else ""
+    R["_brgy"] = R[barangay_right].map(_normalize_barangay) if barangay_right else ""
 
     matches = []
 
@@ -693,12 +757,20 @@ def fuzzy_link_cascading(
 
     matched_left_idx = set()
     matched_right_idx = set()
+    barangay_vetoes = 0
     for lidx, key in zip(L.index, L["_exact_key"]):
         if not key[0] or not key[1] or pd.isna(key[2]):
             continue
         candidates = [r for r in right_by_exact_key.get(key, []) if r not in matched_right_idx]
-        if candidates:
-            ridx = candidates[0]
+        chosen = None
+        for ridx in candidates:
+            if _barangay_conflicts(L.at[lidx, "_brgy"], R.at[ridx, "_brgy"]):
+                barangay_vetoes += 1
+                continue
+            chosen = ridx
+            break
+        if chosen is not None:
+            ridx = chosen
             matches.append({
                 "left_id": L.at[lidx, id_left], "right_id": R.at[ridx, id_right],
                 "match_score": 100, "match_method": "exact",
@@ -728,22 +800,28 @@ def fuzzy_link_cascading(
                 query = L.at[li, "_name"]
                 if not query:
                     continue
-                result = process.extractOne(
-                    query, choices, scorer=fuzz.token_sort_ratio, score_cutoff=score_cutoff
+                # Consider several ranked candidates (not just the top one) so a
+                # barangay-veto or year-tolerance rejection can fall through to
+                # the next-best name match within the same municipality block,
+                # rather than giving up on the row entirely.
+                ranked = process.extract(
+                    query, choices, scorer=fuzz.token_sort_ratio, score_cutoff=score_cutoff, limit=5
                 )
-                if result is None:
-                    continue
-                _, score, pos = result
-                ly = L.at[li, "_year"]
-                ry = right_block.at[pos, "_year"]
-                if pd.notna(ly) and pd.notna(ry) and abs(ly - ry) > year_tolerance:
-                    continue  # candidate rejected: years too far apart to be the same project
-                matches.append({
-                    "left_id": L.at[li, id_left],
-                    "right_id": right_block.at[pos, id_right],
-                    "match_score": score, "match_method": "fuzzy",
-                    "municipality_block": muni, "year_left": ly, "year_right": ry,
-                })
+                for _, score, pos in ranked:
+                    ly = L.at[li, "_year"]
+                    ry = right_block.at[pos, "_year"]
+                    if pd.notna(ly) and pd.notna(ry) and abs(ly - ry) > year_tolerance:
+                        continue  # candidate rejected: years too far apart to be the same project
+                    if _barangay_conflicts(L.at[li, "_brgy"], right_block.at[pos, "_brgy"]):
+                        barangay_vetoes += 1
+                        continue  # candidate rejected: different barangay, same name/muni/year
+                    matches.append({
+                        "left_id": L.at[li, id_left],
+                        "right_id": right_block.at[pos, id_right],
+                        "match_score": score, "match_method": "fuzzy",
+                        "municipality_block": muni, "year_left": ly, "year_right": ry,
+                    })
+                    break
         except Exception as exc:  # defensive: one bad block must not kill the run
             skipped_blocks += 1
             logger.warning("  skipped block (muni=%s) due to error: %s", muni, exc)
@@ -751,6 +829,11 @@ def fuzzy_link_cascading(
 
     if skipped_blocks:
         logger.warning("  %d block(s) skipped during fuzzy linking", skipped_blocks)
+    if barangay_vetoes:
+        logger.info(
+            "  %d candidate pair(s) rejected by the barangay veto (same name/municipality/year, "
+            "different barangay)", barangay_vetoes,
+        )
 
     return pd.DataFrame(
         matches,
@@ -776,8 +859,11 @@ def build_project_crosswalk(
     mon = sheets["monitoring"].reset_index().rename(columns={"index": "mon_row_id"})
 
     # MONITORING REPORT Con stores location as a single "Barangay, Municipality"
-    # string; approximate the municipality as the text after the last comma.
+    # string; approximate the municipality as the text after the last comma,
+    # and the barangay as everything before it (used only for the barangay
+    # veto below, not as a match/block key on its own).
     mon["municipality_proxy"] = mon["LOCATION"].astype(str).map(lambda s: s.split(",")[-1])
+    mon["barangay_proxy"] = mon["LOCATION"].astype(str).map(lambda s: s.split(",")[0])
 
     ft_liq = fuzzy_link_cascading(
         ft, liq,
@@ -785,6 +871,7 @@ def build_project_crosswalk(
         muni_left="Municipality", muni_right="Municipality",
         year_left="Year", year_right="Year of Fund Transfer",
         id_left="ft_row_id", id_right="liq_row_id",
+        barangay_left="Barangay", barangay_right="Barangay",
         score_cutoff=score_cutoff, year_tolerance=year_tolerance,
     ).rename(columns={"left_id": "ft_row_id", "right_id": "liq_row_id", "match_score": "ft_liq_score",
                        "match_method": "ft_liq_method"})
@@ -795,6 +882,7 @@ def build_project_crosswalk(
         muni_left="Municipality", muni_right="municipality_proxy",
         year_left="Year", year_right="Year",
         id_left="ft_row_id", id_right="mon_row_id",
+        barangay_left="Barangay", barangay_right="barangay_proxy",
         score_cutoff=score_cutoff, year_tolerance=year_tolerance,
     ).rename(columns={"left_id": "ft_row_id", "right_id": "mon_row_id", "match_score": "ft_mon_score",
                        "match_method": "ft_mon_method"})
