@@ -57,7 +57,9 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from("projects")
-    .select("project_key, name_of_project, municipality, project_type, status, risk_tier, risk_probability")
+    .select(
+      "project_key, name_of_project, municipality, project_type, amount_php, status, risk_tier, risk_probability"
+    )
     .order("risk_probability", { ascending: false, nullsFirst: false });
 
   query = applyPpaFilters(query, params, municipalities);
@@ -72,6 +74,7 @@ export async function GET(request: NextRequest) {
     "Project Name",
     "Municipality",
     "Project Type",
+    "Budget (PHP)",
     "Status",
     "Risk Tier",
     "P(RedFlag)",
@@ -82,6 +85,7 @@ export async function GET(request: NextRequest) {
       csvField(p.name_of_project),
       csvField(p.municipality),
       csvField(p.project_type),
+      csvField(p.amount_php),
       csvField(p.status),
       csvField(p.risk_tier),
       csvField(p.risk_probability != null ? `${(p.risk_probability * 100).toFixed(1)}%` : ""),

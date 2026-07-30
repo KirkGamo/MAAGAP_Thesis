@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PpaSearchBar } from "./ppa-search-bar";
+import { PpaControlsToggle } from "./ppa-controls-toggle";
 
 export interface PpaTableParams {
   q?: string;
@@ -34,6 +35,7 @@ export interface PpaTableParams {
   risk_min?: string;
   risk_max?: string;
   view?: string;
+  controls?: string;
 }
 
 interface PpasDataTableProps<TData> {
@@ -66,6 +68,7 @@ function buildHref(params: PpaTableParams, targetPage: number): string {
   if (params.risk_min) next.set("risk_min", params.risk_min);
   if (params.risk_max) next.set("risk_max", params.risk_max);
   if (params.view) next.set("view", params.view);
+  if (params.controls) next.set("controls", params.controls);
   if (targetPage > 1) next.set("page", String(targetPage));
   const qs = next.toString();
   return qs ? `/manager/ppas?${qs}` : "/manager/ppas";
@@ -164,7 +167,10 @@ export function PpasDataTable<TData>({
   return (
     <>
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-brand-navy/10 px-5 py-3">
-        <PpaSearchBar />
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <PpaControlsToggle />
+          <PpaSearchBar />
+        </div>
         <div className="flex items-center gap-3">
           <span className="shrink-0 text-sm text-slate-500">{totalCount.toLocaleString()} project(s)</span>
 

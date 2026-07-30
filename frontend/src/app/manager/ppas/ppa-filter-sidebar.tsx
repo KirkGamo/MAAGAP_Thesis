@@ -94,13 +94,15 @@ export function PpaFilterSidebar({
     setCsvParam(key, Array.from(active));
   }
 
-  // Preserves `view` (a display mode, not a filter) but drops every other
-  // param, including `page` -- resetting filters always goes back to
-  // page 1.
+  // Preserves `view` and `controls` (display modes, not filters) but drops
+  // every other param, including `page` -- resetting filters always goes
+  // back to page 1.
   function resetAll() {
     const next = new URLSearchParams();
     const view = searchParams.get("view");
+    const controls = searchParams.get("controls");
     if (view) next.set("view", view);
+    if (controls) next.set("controls", controls);
     router.push(next.toString() ? `/manager/ppas?${next.toString()}` : "/manager/ppas");
   }
 

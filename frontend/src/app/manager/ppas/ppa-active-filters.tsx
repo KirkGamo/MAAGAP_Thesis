@@ -51,7 +51,9 @@ export function PpaActiveFilters() {
   function clearAll() {
     const next = new URLSearchParams();
     const view = searchParams.get("view");
+    const controls = searchParams.get("controls");
     if (view) next.set("view", view);
+    if (controls) next.set("controls", controls);
     push(next);
   }
 

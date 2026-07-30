@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { PpaFilterSidebar } from "./ppa-filter-sidebar";
 import { PpaActiveFilters } from "./ppa-active-filters";
 import { PpaSearchBar } from "./ppa-search-bar";
+import { PpaControlsToggle } from "./ppa-controls-toggle";
 import { PpaImportPanel } from "./ppa-import-panel";
 import { ViewToggle, type PpaView } from "./view-toggle";
 import { MapLoader } from "../map/map-loader";
@@ -28,6 +29,7 @@ interface PpasPageProps {
     PpaFilterParams & {
       view?: string;
       page?: string;
+      controls?: string;
     }
   >;
 }
@@ -70,6 +72,11 @@ interface PpasPageProps {
  * within that budget instead of dictating it -- see ppa-filter-sidebar.tsx
  * for why this replaced an earlier flexbox-stretch approach that let an
  * expanded sidebar grow taller than its sibling.
+ * Phase 21: a `controls` URL param (not a filter -- preserved the same way
+ * `view` is) can hide PpaFilterSidebar entirely so the table/map can use
+ * the full row width; see ppa-controls-toggle.tsx. Budget and Project
+ * Type, already filterable, are now visible table columns too (see
+ * columns.tsx) -- both were added to the `.select(...)` below.
  */
 export default async function PpasPage({ searchParams }: PpasPageProps) {
   const params = await searchParams;
@@ -119,7 +126,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
   let query = supabase
     .from("projects")
     .select(
-      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, latitude, longitude",
+      "id, project_key, name_of_project, municipality, status, risk_tier, risk_probability, amount_php, project_type, latitude, longitude",
       { count: "exact" }
     )
     .order("risk_probability", { ascending: false, nullsFirst: false });
@@ -133,6 +140,8 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
   const totalCount = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  const controlsHidden = params.controls === "hidden";
+
   const tableParams = {
     q: params.q,
     risk_tier: params.risk_tier,
@@ -144,9 +153,12 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
     risk_min: params.risk_min,
     risk_max: params.risk_max,
     view: params.view,
+    controls: params.controls,
   };
   const exportHref = `/manager/ppas/export?${new URLSearchParams(
-    Object.entries(tableParams).filter(([key, v]) => Boolean(v) && key !== "view") as [string, string][]
+    Object.entries(tableParams).filter(
+      ([key, v]) => Boolean(v) && key !== "view" && key !== "controls"
+    ) as [string, string][]
   ).toString()}`;
 
   return (
@@ -168,13 +180,15 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <PpaFilterSidebar
-          riskTiers={RISK_TIERS}
-          statuses={STATUSES}
-          projectTypes={PROJECT_TYPES}
-          municipalities={municipalities}
-          revenueBounds={revenueBounds}
-        />
+        {!controlsHidden && (
+          <PpaFilterSidebar
+            riskTiers={RISK_TIERS}
+            statuses={STATUSES}
+            projectTypes={PROJECT_TYPES}
+            municipalities={municipalities}
+            revenueBounds={revenueBounds}
+          />
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <PpaActiveFilters />
@@ -197,7 +211,8 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
             </Card>
           ) : (
             <Card className="flex flex-col overflow-hidden p-0 lg:h-[700px]">
-              <div className="shrink-0 border-b border-brand-navy/10 px-5 py-3">
+              <div className="flex shrink-0 items-center gap-3 border-b border-brand-navy/10 px-5 py-3">
+                <PpaControlsToggle />
                 <PpaSearchBar />
               </div>
               <CardHeader className="shrink-0">
