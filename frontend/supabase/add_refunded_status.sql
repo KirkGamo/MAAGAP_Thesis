@@ -8,12 +8,20 @@
 -- work. Run this against the live Supabase project (SQL Editor) before
 -- re-running scripts/seed_supabase.py with the updated map_status().
 --
--- NOTE: ALTER TYPE ... ADD VALUE cannot run inside the same transaction as
--- a later statement that uses the new value, but this file only adds the
--- value -- run it as its own statement/script, which the Supabase SQL
--- Editor already does.
-
+-- NOTE: Postgres will not let a newly added enum value be USED in the same
+-- transaction that added it, and the Supabase SQL Editor runs an entire
+-- script as one transaction -- so running the ALTER and a verification
+-- SELECT together in one execution fails with "unsafe use of new value
+-- ... New enum values must be committed before they can be used", even
+-- though the SELECT below doesn't reference 'refunded' by name (querying
+-- the enum's full range still counts as a "use").
+--
+-- Run ONLY the statement below first (select just this line and execute
+-- it, or run this file with the verification query commented/removed).
 alter type project_status add value if not exists 'refunded';
 
--- Verify:
-select enum_range(null::project_status);
+-- Then, once that has committed, run this as a SEPARATE query execution
+-- (a new query tab, or paste-and-run after the ALTER above has finished)
+-- to verify:
+--
+--   select enum_range(null::project_status);
