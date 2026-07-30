@@ -638,6 +638,25 @@ def assemble_lstm_sequences(
         mask         bool array,    shape (n_projects, max_seq_len) — True
                      where a real (non-padding) event is present
         project_keys list of project_key strings, aligned with axis 0
+
+    ZERO-EVENT PROJECTS (fixed from a prior version that silently dropped
+    them): a project with no recorded fund-transfer, liquidation, or
+    monitoring-visit event used to be skipped entirely via `continue` --
+    which meant it never received an LSTM OOF/test prediction, and
+    train_meta_learner.py could only train and evaluate on the (much
+    smaller) subset of projects with a matching LSTM row, discarding the
+    majority of tabular-scored projects at the meta-learner stage. Every
+    project in the crosswalk now gets an entry: a genuinely-empty event
+    history becomes an all-padding sequence (identical to the padding used
+    for real sequences shorter than max_seq_len) with an all-False mask.
+    Keras's Masking(mask_value=-1.0) layer, given a fully-masked sample,
+    skips every timestep and the LSTM's output for that sample is its zero
+    initial state -- a real, well-defined value (not NaN or an error), and
+    a genuinely different signal from any sample with real event history.
+    This is tracked separately in `report.sequence_assembly` (
+    n_projects_zero_event) rather than silently folded into
+    "coverage_pct", so "every project gets a row" is not confused with
+    "every project has real history".
     """
     ft_date = pd.to_datetime(fund_transfer["Date"], errors="coerce")
     ft_amount = pd.to_numeric(fund_transfer["Amount"], errors="coerce")
@@ -651,6 +670,7 @@ def assemble_lstm_sequences(
 
     n_features = 3
     sequences, masks, project_keys = [], [], []
+    n_zero_event = 0
 
     for _, row in crosswalk.iterrows():
         events = []
@@ -670,11 +690,6 @@ def assemble_lstm_sequences(
             i = int(mon_idx)
             events.append((mon_date.at[i], 2, float(mon_amount.at[i]) if pd.notna(mon_amount.at[i]) else 0.0))
 
-        if not events:
-            continue
-
-        events.sort(key=lambda e: e[0])
-        anchor_date = events[0][0]
         # Padding is filled with -1, not 0: event_type=0 is a legitimate value
         # (a fund-release event), so padding with zeros would be indistinguishable
         # from a real release event at day 0 with amount 0 to a Keras
@@ -683,9 +698,18 @@ def assemble_lstm_sequences(
         # an unambiguous padding sentinel for train_lstm.py.
         seq = np.full((max_seq_len, n_features), -1.0, dtype=np.float32)
         mask = np.zeros(max_seq_len, dtype=bool)
-        for step_i, (event_date, event_type, amount) in enumerate(events[:max_seq_len]):
-            seq[step_i] = [event_type, float((event_date - anchor_date).days), amount]
-            mask[step_i] = True
+
+        if not events:
+            # No real event history for this project -- emit the all-padding
+            # sequence built above as-is (all-False mask) rather than
+            # dropping the project. See this function's docstring.
+            n_zero_event += 1
+        else:
+            events.sort(key=lambda e: e[0])
+            anchor_date = events[0][0]
+            for step_i, (event_date, event_type, amount) in enumerate(events[:max_seq_len]):
+                seq[step_i] = [event_type, float((event_date - anchor_date).days), amount]
+                mask[step_i] = True
 
         sequences.append(seq)
         masks.append(mask)
@@ -694,16 +718,23 @@ def assemble_lstm_sequences(
     sequences_arr = np.stack(sequences) if sequences else np.zeros((0, max_seq_len, n_features), dtype=np.float32)
     masks_arr = np.stack(masks) if masks else np.zeros((0, max_seq_len), dtype=bool)
 
+    n_with_real_events = len(project_keys) - n_zero_event
     report.sequence_assembly = {
         "n_projects_with_sequence": len(project_keys),
         "n_projects_total_in_crosswalk": len(crosswalk),
         "coverage_pct": round(len(project_keys) / len(crosswalk) * 100, 1) if len(crosswalk) else 0.0,
+        "n_projects_with_real_events": n_with_real_events,
+        "n_projects_zero_event": n_zero_event,
+        "real_event_pct": round(n_with_real_events / len(crosswalk) * 100, 1) if len(crosswalk) else 0.0,
         "max_seq_len": max_seq_len,
         "n_features_per_step": n_features,
     }
     logger.info(
-        "Step 10: assembled %d/%d project sequences (%.1f%% coverage)",
-        len(project_keys), len(crosswalk), report.sequence_assembly["coverage_pct"],
+        "Step 10: assembled %d/%d project sequences (100%% coverage -- every crosswalk project now "
+        "gets a row); %d (%.1f%%) have real event history, %d get an all-padding placeholder for "
+        "genuinely empty history (see assemble_lstm_sequences docstring)",
+        len(project_keys), len(crosswalk), n_with_real_events,
+        report.sequence_assembly["real_event_pct"], n_zero_event,
     )
     return sequences_arr, masks_arr, project_keys
 

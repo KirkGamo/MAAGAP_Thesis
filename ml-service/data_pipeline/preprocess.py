@@ -345,6 +345,95 @@ def load_core_sheets(workbook_path: Path) -> dict[str, pd.DataFrame]:
 
 
 # ==============================================================================
+# STEP 1B — Fold in the two supplementary monitoring sheets
+# ==============================================================================
+
+# 20% NTA Monitored and SEF Monitored track the same kind of PPDO field-
+# monitoring records as MONITORING REPORT Con (same core columns: project
+# name, location, amount, status, dates, remarks) under a different fund
+# source, but were never joined into the modeling population -- an initial
+# gap noted in the methodology report's "Known Limitations" section. Both
+# sheets are small (22 and 87 rows respectively, ~1.25% of the combined
+# monitoring population) and have minor schema differences from the main
+# sheet, harmonized here:
+#   - AMOUNT -> AMOUNT (Php); DATE OF COMPLETION -> Date  of Completion
+#     (renamed to match the main sheet's exact column names).
+#   - Neither sheet has a DATE RELEASED column. NTA's "Funding Source/Year"
+#     is too inconsistent to parse reliably (observed values mix genuine
+#     funding-source labels with what look like stray Excel date serials
+#     and plain date strings — e.g. "20% NTA CY 2022", "45055",
+#     "12/25/2023" all appear in the same column). SEF has a CHECK DATE
+#     column that might seem like a plausible DATE RELEASED substitute, but
+#     a check-issuance date is not verified to mean the same thing as a
+#     fund-release date, and assuming so would be the kind of unjustified
+#     equivalence this pipeline has deliberately avoided elsewhere (see
+#     REMARKS's liquidation-status-not-delay-justification caveat,
+#     is_wet_season_release's weather-proxy caveat). DATE RELEASED is left
+#     NaN for every row from both sheets and Year is left NaN too (Step 7
+#     already imputes Year for the small number of rows missing it from the
+#     main sheet); D_start correctly falls back to DATE MONITORED for these
+#     rows via construct_target_variable()'s existing fallback.
+#   - A `source_sheet` column is added to every row (including the main
+#     sheet's) recording which of the three sheets it came from, so this
+#     merge is auditable rather than silently blending provenance.
+SUPPLEMENTARY_SHEET_COLUMN_RENAMES: dict[str, dict[str, str]] = {
+    "nta_monitored": {"NO": "No.", "AMOUNT": "AMOUNT (Php)", "DATE OF COMPLETION": "Date  of Completion"},
+    "sef_monitored": {"NO": "No.", "AMOUNT": "AMOUNT (Php)", "DATE OF COMPLETION": "Date  of Completion"},
+}
+MONITORING_SCHEMA_COLUMNS = [
+    "No.", "DATE MONITORED", "NAME OF PROJECT", "LOCATION", "AMOUNT (Php)",
+    "DATE RELEASED", "FUNDS RELEASED TO:", "STATUS", "Date  of Completion",
+    "REMARKS", "FILE NAME", "Year",
+]
+
+
+def fold_in_supplementary_sheets(sheets: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """Harmonizes 20% NTA Monitored and SEF Monitored onto MONITORING REPORT
+    Con's schema and appends them, so they flow through type coercion,
+    entity-resolution crosswalk building, categorical normalization, and
+    project-type classification (Steps 2-5) exactly like the main sheet's
+    rows -- including a chance at LSTM sequence linkage via the crosswalk,
+    which a bolt-on merge after Step 5 would have missed entirely."""
+    mon = sheets["monitoring"].copy()
+    mon["source_sheet"] = CORE_SHEETS["monitoring"]
+
+    harmonized_parts = [mon]
+    for key in ("nta_monitored", "sef_monitored"):
+        if key not in sheets:
+            continue
+        df = sheets[key].copy()
+        n_before = len(df)
+        df = df[df["NAME OF PROJECT"].notna()].copy()
+        n_dropped = n_before - len(df)
+        if n_dropped:
+            logger.info(
+                "Step 1B: dropped %d row(s) from '%s' with no NAME OF PROJECT "
+                "(header/unit-label remnants, not real project records)",
+                n_dropped, CORE_SHEETS[key],
+            )
+        df = df.rename(columns=SUPPLEMENTARY_SHEET_COLUMN_RENAMES.get(key, {}))
+        for col in MONITORING_SCHEMA_COLUMNS:
+            if col not in df.columns:
+                df[col] = np.nan
+        df = df[MONITORING_SCHEMA_COLUMNS].copy()
+        df["source_sheet"] = CORE_SHEETS[key]
+        logger.info(
+            "Step 1B: folding %d row(s) from '%s' into the monitoring population",
+            len(df), CORE_SHEETS[key],
+        )
+        harmonized_parts.append(df)
+
+    merged = pd.concat(harmonized_parts, ignore_index=True, sort=False)
+    logger.info(
+        "Step 1B: monitoring population is now %d rows (%d from the main sheet, %d folded in)",
+        len(merged), len(mon), len(merged) - len(mon),
+    )
+    sheets = dict(sheets)
+    sheets["monitoring"] = merged
+    return sheets
+
+
+# ==============================================================================
 # STEP 2 — Type coercion
 # ==============================================================================
 
@@ -858,6 +947,7 @@ def run_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     sheets = load_core_sheets(input_path)
+    sheets = fold_in_supplementary_sheets(sheets)
     sheets = apply_type_coercion(sheets, report)
     crosswalk = build_project_crosswalk(sheets, report, score_cutoff=fuzzy_score_cutoff, year_tolerance=year_tolerance)
     sheets = apply_categorical_normalization(sheets, report)

@@ -97,6 +97,11 @@ EXCLUDE_COLS = [
     # exclusion -- a data-provenance flag about how a date was resolved, not
     # a feature the model should condition its risk prediction on.
     "D_start", "date_released_is_proxy",
+    # Added when 20% NTA Monitored / SEF Monitored were folded into the main
+    # monitoring population (preprocess.py's fold_in_supplementary_sheets) --
+    # a provenance label ("MONITORING REPORT Con" / "20% NTA Monitored" /
+    # "SEF Monitored"), not a feature the model should condition on.
+    "source_sheet",
 ]
 
 
