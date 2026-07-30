@@ -170,12 +170,23 @@ def top_contributing_features(
 ) -> list[dict]:
     """Ranks one row's per-feature contributions by |value| and returns the
     top `top_n` as JSON-serializable dicts, ready to store in Supabase's
-    `projects.shap_top_features` (jsonb) column and render as a bar chart."""
-    order = np.argsort(-np.abs(contributions_row))[:top_n]
+    `projects.shap_top_features` (jsonb) column and render as a bar chart.
+
+    Guards against NaN in both the SHAP contributions themselves and the
+    raw feature values: `build_feature_matrix()` only fills 0.0 for columns
+    entirely ABSENT from a row's source data, not per-cell NaN within a
+    column that does exist (e.g. `historical_delay_rate` for a project with
+    no contractor history) -- some engineered columns genuinely contain NaN
+    at inference time, and JSON (unlike Python) has no NaN literal, so an
+    un-sanitized NaN reaching json.dumps(..., allow_nan=False) (as httpx's
+    request encoder uses) raises ValueError and fails the ENTIRE upsert
+    batch, not just the one project."""
+    clean_contributions = np.nan_to_num(contributions_row, nan=0.0)
+    order = np.argsort(-np.abs(clean_contributions))[:top_n]
     results: list[dict] = []
     for idx in order:
         column = kept_columns[idx]
-        value = float(contributions_row[idx])
+        value = float(clean_contributions[idx])
         entry = {
             "feature": column,
             "label": humanize_feature_name(column),
@@ -183,7 +194,8 @@ def top_contributing_features(
             "direction": "increases_risk" if value > 0 else "decreases_risk",
         }
         if feature_values_row is not None and column in feature_values_row.index:
-            entry["raw_value"] = float(feature_values_row[column])
+            raw_value = float(feature_values_row[column])
+            entry["raw_value"] = raw_value if np.isfinite(raw_value) else None
         results.append(entry)
     return results
 

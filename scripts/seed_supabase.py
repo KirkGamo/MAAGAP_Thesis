@@ -97,15 +97,22 @@ def _load_frontend_env_local() -> None:
 def _clean_nan(value):
     """json/postgrest can't serialize numpy NaN/NaT -- normalize to None.
 
-    `shap_top_features` (Phase 22) is a list of dicts, not a scalar --
-    `pd.isna()` on a list/dict raises "the truth value of an array is
-    ambiguous" rather than returning False, so those types must be
-    short-circuited past the scalar NaN checks below instead of falling
-    into them."""
+    Recurses into lists/dicts (Phase 22's `shap_top_features` is a list of
+    {feature, label, shap_value, direction, raw_value} dicts, and
+    raw_value in particular can legitimately be NaN -- e.g.
+    historical_delay_rate for a project with no contractor history) rather
+    than trusting them as already-clean, since a single un-sanitized NaN
+    anywhere in the batch payload fails httpx's json.dumps(...,
+    allow_nan=False) for the ENTIRE batch, not just one row. `pd.isna()`
+    on a list/dict raises "the truth value of an array is ambiguous"
+    rather than returning False, so those types must be handled by
+    recursing, not by falling into the scalar checks below."""
     if value is None:
         return None
-    if isinstance(value, (list, dict)):
-        return value
+    if isinstance(value, list):
+        return [_clean_nan(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _clean_nan(v) for k, v in value.items()}
     if isinstance(value, float) and np.isnan(value):
         return None
     if pd.isna(value):
