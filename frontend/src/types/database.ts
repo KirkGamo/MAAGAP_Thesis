@@ -26,6 +26,22 @@ export type UserRole = "manager" | "inspector";
 
 export type RiskTier = "Low" | "Medium" | "High" | "Critical";
 
+/** One entry of `projects.shap_top_features` (jsonb) -- shape written by
+ * ml-service/inference/explain.py's `top_contributing_features()`, kept in
+ * sync with it by hand since Supabase can't generate types from a jsonb
+ * column's application-level shape. `shap_value` is the mean of Random
+ * Forest's and XGBoost's probability-space SHAP contribution for this
+ * feature (see explain.py's module docstring for why it's scoped to those
+ * two base learners, and why it's a mean rather than a formal decomposition
+ * of the full three-model stack). */
+export interface ShapFeature {
+  feature: string;
+  label: string;
+  shap_value: number;
+  direction: "increases_risk" | "decreases_risk";
+  raw_value?: number;
+}
+
 export type ProjectStatus =
   | "not_yet_implemented"
   | "on_going"
@@ -83,6 +99,7 @@ export type Database = {
           created_at: string;
           latitude: number | null; // geocoded from `location` -- see scripts/geocode_projects.py
           longitude: number | null;
+          shap_top_features: ShapFeature[] | null; // see ShapFeature's own doc comment
         };
         Insert: Partial<Database["public"]["Tables"]["projects"]["Row"]> & {
           project_key: string;

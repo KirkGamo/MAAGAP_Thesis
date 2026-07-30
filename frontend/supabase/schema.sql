@@ -138,7 +138,11 @@ create table if not exists public.projects (
   -- job (the geocoding script already sanity-checks against Iloilo's
   -- bounding box before writing).
   latitude numeric check (latitude between -90 and 90),
-  longitude numeric check (longitude between -180 and 180)
+  longitude numeric check (longitude between -180 and 180),
+  -- Phase 22: see add_projects_shap_top_features.sql for the full rationale
+  -- -- top SHAP-contributing features behind risk_tier/risk_probability,
+  -- written by scripts/seed_supabase.py and ml-service's live rescore path.
+  shap_top_features jsonb
 );
 
 alter table public.projects enable row level security;

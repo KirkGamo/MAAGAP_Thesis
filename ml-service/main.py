@@ -16,9 +16,10 @@ Environment variables:
     SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
                                  Optional. If both are set, a successful
                                  re-score also best-effort PATCHes the
-                                 project's `risk_tier`/`risk_probability`
-                                 columns in Supabase so the Next.js frontend
-                                 reflects it immediately. If unset, the
+                                 project's `risk_tier`/`risk_probability`/
+                                 `shap_top_features` columns in Supabase so
+                                 the Next.js frontend reflects it
+                                 immediately. If unset, the
                                  refreshed score still persists locally to
                                  artifacts/live_scores.json and is available
                                  via GET /api/v1/live-score/{project_key} —
@@ -138,10 +139,17 @@ def _run_rescore(payload: UpdateMonitoringPayload) -> None:
         # actions/submit-report.ts before this webhook ever fires.
         logger.info("Photo attached to %s's monitoring report: %s", payload.project_key, payload.photo_url)
 
-    _maybe_patch_supabase(payload.project_key, result.risk_tier, result.meta_prob)
+    _maybe_patch_supabase(
+        payload.project_key, result.risk_tier, result.meta_prob, result.shap_top_features
+    )
 
 
-def _maybe_patch_supabase(project_key: str, risk_tier: Optional[str], risk_probability: Optional[float]) -> None:
+def _maybe_patch_supabase(
+    project_key: str,
+    risk_tier: Optional[str],
+    risk_probability: Optional[float],
+    shap_top_features: Optional[list] = None,
+) -> None:
     """Best-effort push of the refreshed score back into Supabase's
     `projects` table, so the Manager Portal's backlog/map views reflect it
     without waiting on a full pipeline re-run. No-ops with a log line if
@@ -162,10 +170,12 @@ def _maybe_patch_supabase(project_key: str, risk_tier: Optional[str], risk_proba
     try:
         from supabase import create_client
 
+        update_payload = {"risk_tier": risk_tier, "risk_probability": risk_probability}
+        if shap_top_features is not None:
+            update_payload["shap_top_features"] = shap_top_features
+
         client = create_client(url, service_role_key)
-        client.table("projects").update(
-            {"risk_tier": risk_tier, "risk_probability": risk_probability}
-        ).eq("project_key", project_key).execute()
+        client.table("projects").update(update_payload).eq("project_key", project_key).execute()
         logger.info("Patched Supabase projects row for %s.", project_key)
     except Exception:
         logger.exception("Best-effort Supabase patch failed for %s (non-fatal).", project_key)

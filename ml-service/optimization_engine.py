@@ -222,17 +222,36 @@ def resolve_municipality(location_raw: str) -> str:
 def score_tabular(inference_df: pd.DataFrame) -> pd.DataFrame:
     """Apply the saved Random Forest and XGBoost models to the ongoing-project
     feature matrix, reusing build_feature_matrix()'s exact column handling
-    from train_trees.py so the feature schema matches training exactly."""
+    from train_trees.py so the feature schema matches training exactly.
+
+    Also computes each project's top SHAP-contributing features (see
+    inference/explain.py) in the same pass, batched across every row at
+    once -- this is the actual canonical scoring path for the ~4,000+
+    already-seeded ongoing projects (via scripts/seed_supabase.py), so this
+    is where a Manager's "why this classification?" data for most projects
+    on the dashboard actually comes from."""
     kept_columns = json.load(open(ARTIFACTS_DIR / "tabular_feature_columns.json"))
     X_inf, _ = build_feature_matrix(inference_df, keep_columns=kept_columns)
 
     rf = joblib.load(ARTIFACTS_DIR / "random_forest.joblib")
     xgb = joblib.load(ARTIFACTS_DIR / "xgboost.joblib")
 
+    from inference.explain import explain_batch
+
+    try:
+        shap_top_features = explain_batch(rf, xgb, X_inf, kept_columns)
+    except Exception:
+        logger.exception(
+            "SHAP explanation batch failed -- continuing with risk_tier/risk_probability "
+            "scored normally, but shap_top_features will be left NULL for this batch."
+        )
+        shap_top_features = [None] * len(X_inf)
+
     return pd.DataFrame({
         "project_key": inference_df["project_key"].values,
         "random_forest_prob": rf.predict_proba(X_inf)[:, 1],
         "xgboost_prob": xgb.predict_proba(X_inf)[:, 1],
+        "shap_top_features": shap_top_features,
     })
 
 

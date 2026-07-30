@@ -114,6 +114,11 @@ class LiveScoreResult:
     random_forest_prob: Optional[float] = None
     xgboost_prob: Optional[float] = None
     lstm_prob: Optional[float] = None
+    # Phase 22: top SHAP-contributing features for this one project (mean of
+    # Random Forest's/XGBoost's probability-space contributions -- see
+    # inference/explain.py). None if SHAP computation itself failed; a live
+    # rescore should never fail outright just because its explanation did.
+    shap_top_features: Optional[list] = None
     message: str = ""
 
 
@@ -305,6 +310,22 @@ def score_project(
     rf_prob = float(rf.predict_proba(X)[:, 1][0])
     xgb_prob = float(xgb.predict_proba(X)[:, 1][0])
 
+    # Relative import (not `from inference.explain import ...`) since this
+    # module IS part of the `inference` package -- avoids depending on
+    # ml-service/ being on sys.path, which is guaranteed when main.py's
+    # FastAPI app runs but not necessarily true for every other caller.
+    from .explain import explain_single_row
+
+    try:
+        shap_top_features = explain_single_row(rf, xgb, X, kept_columns)
+    except Exception:
+        logger.exception(
+            "SHAP explanation failed for %s -- continuing with the re-score itself, "
+            "shap_top_features will be left unset for this update.",
+            project_key,
+        )
+        shap_top_features = None
+
     lstm_prob: Optional[float] = None
     rebuilt = _rebuild_lstm_sequence(project_key, observed_at, amount_spent or 0.0)
     if rebuilt is not None:
@@ -335,6 +356,7 @@ def score_project(
     _persist_live_score(
         project_key=project_key, risk_tier=risk_tier, meta_prob=meta_prob,
         rf_prob=rf_prob, xgb_prob=xgb_prob, lstm_prob=lstm_prob,
+        shap_top_features=shap_top_features,
         status_observed=status_observed, percent_complete=percent_complete,
         amount_spent=amount_spent, observed_at=observed_at,
     )
@@ -342,6 +364,7 @@ def score_project(
     return LiveScoreResult(
         project_key=project_key, found=True, risk_tier=risk_tier, meta_prob=meta_prob,
         random_forest_prob=rf_prob, xgboost_prob=xgb_prob, lstm_prob=lstm_prob,
+        shap_top_features=shap_top_features,
         message="Re-scored successfully.",
     )
 

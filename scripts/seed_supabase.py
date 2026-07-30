@@ -95,9 +95,17 @@ def _load_frontend_env_local() -> None:
 
 
 def _clean_nan(value):
-    """json/postgrest can't serialize numpy NaN/NaT -- normalize to None."""
+    """json/postgrest can't serialize numpy NaN/NaT -- normalize to None.
+
+    `shap_top_features` (Phase 22) is a list of dicts, not a scalar --
+    `pd.isna()` on a list/dict raises "the truth value of an array is
+    ambiguous" rather than returning False, so those types must be
+    short-circuited past the scalar NaN checks below instead of falling
+    into them."""
     if value is None:
         return None
+    if isinstance(value, (list, dict)):
+        return value
     if isinstance(value, float) and np.isnan(value):
         return None
     if pd.isna(value):
@@ -183,7 +191,9 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
 
     try:
         scored = score_ongoing_projects()
-        scored_lookup = scored.set_index("project_key")[["risk_tier", "meta_prob"]].to_dict("index")
+        scored_lookup = scored.set_index("project_key")[
+            ["risk_tier", "meta_prob", "shap_top_features"]
+        ].to_dict("index")
     except Exception:
         logger.exception(
             "score_ongoing_projects() failed (likely missing ml-service/artifacts/*.joblib or "
@@ -221,6 +231,13 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
             "project_type": resolve_project_type(row),
             "risk_tier": score["risk_tier"] if score else None,
             "risk_probability": round(float(score["meta_prob"]), 4) if score else None,
+            # Phase 22: top SHAP-contributing features (mean of Random
+            # Forest's and XGBoost's probability-space contributions -- see
+            # ml-service/inference/explain.py) for the "why this
+            # classification?" panel on the project detail page. Left NULL
+            # for the same unscored population risk_tier/risk_probability
+            # already leave NULL (no LSTM sequence coverage, etc.).
+            "shap_top_features": score.get("shap_top_features") if score else None,
         })
 
     logger.info(

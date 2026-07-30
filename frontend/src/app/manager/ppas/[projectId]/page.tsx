@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Database } from "@/types/database";
+import { ShapChart } from "./shap-chart";
 
 interface ProjectDetailPageProps {
   params: Promise<{ projectId: string }>;
@@ -36,25 +37,24 @@ interface RiskIndicator {
 }
 
 /**
- * Phase 22: "why was this project classified this way" indicators, added
- * per an explicit request to explain the risk tier on this page. This is
- * deliberately NOT a claim of per-project feature attribution (e.g. SHAP
- * values) -- the ml-service pipeline (Random Forest + XGBoost + LSTM into
- * a multinomial logistic regression meta-learner) doesn't compute or store
- * one anywhere (checked ml-service/ for a shap/explain/feature_importance
- * module and the `projects` table for an explanation column; neither
- * exists). Fabricating a numeric attribution breakdown here would misstate
- * what the model actually produces, which this project's own guidelines
- * are explicit about avoiding.
+ * Phase 22 (original): "why was this project classified this way"
+ * indicators. At the time this was written, ml-service had no SHAP/
+ * feature-importance module and `projects` had no explanation column, so
+ * this intentionally stuck to plain-language signals rather than
+ * fabricating a numeric attribution.
  *
- * Instead, this surfaces the *same real signals* the model consumes as
- * inputs for this specific project (see ml-service/data_pipeline/
- * feature_engineering.py's engineer_features()): release timing/wet-season
- * flag, elapsed time vs. implementation status, monitoring/field-
- * verification history, budget, and the categorical project type/
- * municipality inputs -- so a Manager can judge for themselves which ones
- * plausibly line up with the assigned tier, honestly labeled as inputs
- * rather than a decomposition of the probability itself.
+ * Phase 22 (follow-up): real per-project SHAP values now exist (see
+ * ml-service/inference/explain.py and the adjacent "Feature contributions
+ * (SHAP)" card, rendered via shap-chart.tsx from
+ * `project.shap_top_features`). This function is kept as a deliberately
+ * separate, plain-English companion -- not a duplicate -- surfacing the
+ * *same real signals* the model consumes as inputs (see ml-service/
+ * data_pipeline/feature_engineering.py's engineer_features()): release
+ * timing/wet-season flag, elapsed time vs. implementation status,
+ * monitoring/field-verification history, budget, and the categorical
+ * project type/municipality inputs. Useful on its own merits (readable
+ * without SHAP literacy, and still populated for older projects whose
+ * `shap_top_features` hasn't been backfilled yet).
  */
 function buildRiskIndicators(
   project: ProjectRow,
@@ -219,23 +219,18 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         </CardContent>
       </Card>
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader>
-          <CardTitle>Why this classification?</CardTitle>
+          <CardTitle>Why this classification? (plain-English signals)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-slate-500">
-            The prediction pipeline (a Random Forest + XGBoost + LSTM stacking ensemble feeding a
-            multinomial logistic regression meta-learner) doesn&apos;t compute or store a
-            per-project feature-attribution breakdown (e.g. SHAP values) -- see /manager/models for
-            the model&apos;s aggregate accuracy/precision/recall instead. What follows are the same
-            real signals the model consumes as inputs for this specific project, so you can judge
-            which ones plausibly line up with the assigned tier; they are inputs the model saw, not
-            a mathematical decomposition of the
-            {project.risk_probability != null
-              ? ` ${(project.risk_probability * 100).toFixed(1)}%`
-              : ""}{" "}
-            P(RedFlag) figure itself.
+            These are the same real signals the model consumes as inputs for this specific
+            project -- release timing, elapsed time vs. status, field-verification history,
+            budget, and its categorical inputs -- described in plain language rather than as
+            raw numbers. See &quot;Feature contributions (SHAP)&quot; alongside this card for
+            the actual measured contribution of the model&apos;s tree-based half.
           </p>
           <ul className="flex flex-col gap-2">
             {buildRiskIndicators(project, reports ?? []).map((indicator) => (
@@ -261,6 +256,30 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           </ul>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Feature contributions (SHAP)</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-slate-500">
+            Mean of Random Forest&apos;s and XGBoost&apos;s SHAP contributions to their own
+            P(RedFlag) output, in percentage points (pp) -- red pushes toward higher risk,
+            green pushes toward lower risk. Scoped to the two tree-based base learners; the
+            LSTM sequence model isn&apos;t included (see /manager/models for why).
+          </p>
+          {project.shap_top_features && project.shap_top_features.length > 0 ? (
+            <ShapChart features={project.shap_top_features} />
+          ) : (
+            <p className="text-sm text-slate-400">
+              Not yet computed for this project -- SHAP values are attached the next time this
+              project is scored (either the next full pipeline/seed run, or its next field
+              monitoring update).
+            </p>
+          )}
+        </CardContent>
+      </Card>
+      </div>
 
       <Card>
         <CardHeader>
