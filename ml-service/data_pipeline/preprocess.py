@@ -42,7 +42,7 @@ import numpy as np
 import pandas as pd
 
 try:
-    from rapidfuzz import fuzz, process
+    from rapidfuzz import fuzz, process, utils as rapidfuzz_utils
 except ImportError as exc:  # pragma: no cover - fail fast with a clear message
     raise ImportError(
         "rapidfuzz is required for Step 3 (entity resolution). "
@@ -494,12 +494,27 @@ def canonicalize_municipality(raw: str) -> str:
     cutoff, so unrecognized text degrades gracefully rather than raising.
     Results are cached (`lru_cache`) since the same handful of strings recur
     across tens of thousands of rows.
+
+    `processor=rapidfuzz_utils.default_process` is deliberate, not a
+    default left in place -- without it, `cleaned` (already lowercased by
+    `_normalize_text`) was being compared character-for-character against
+    MUNICIPALITY_REFERENCE's Title Case entries with no case folding of
+    ITS side, which silently cost 10-15 WRatio points on every comparison
+    (e.g. "sta. barbara" vs "Santa Barbara" scored only 72 -- below the 80
+    cutoff -- but 88 once both sides are case/punctuation-normalized the
+    same way). That gap was large enough to push many genuinely-correct
+    matches (abbreviations like "Sta."/"Sto.", hyphens in "Miag-ao", stray
+    periods in "Elem.Sch.") below the cutoff and into "Unmapped" even
+    though the right municipality was clearly the best candidate.
+    `default_process` also strips punctuation and extra whitespace, which
+    is exactly the additional normalization that recovers those cases.
     """
     cleaned = _normalize_text(raw)
     if not cleaned:
         return ""
     result = process.extractOne(
         cleaned, MUNICIPALITY_REFERENCE, scorer=fuzz.WRatio,
+        processor=rapidfuzz_utils.default_process,
         score_cutoff=MUNICIPALITY_CANONICALIZATION_CUTOFF,
     )
     if result is not None:

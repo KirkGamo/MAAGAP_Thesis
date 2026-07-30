@@ -158,6 +158,12 @@ MUNICIPALITY_CLUSTERS: dict[str, str] = {
     "Concepcion": "North Coastal", "Estancia": "North Coastal", "Balasan": "North Coastal",
     "Batad": "North Coastal", "Carles": "North Coastal", "San Dionisio": "North Coastal",
     "Ajuy": "North Coastal", "Sara": "North Coastal",
+    # Lemery borders Balasan/San Dionisio/Batad (all North Coastal) on three
+    # sides -- placeholder-quality approximation, same caveat as the rest of
+    # this dict (see module docstring), added here rather than left
+    # "Unmapped" purely because MUNICIPALITY_REFERENCE (preprocess.py) had
+    # it and this dict didn't.
+    "Lemery": "North Coastal",
     # Central / Metro Iloilo cluster
     "Iloilo City": "Central Metro", "Pavia": "Central Metro", "Leganes": "Central Metro",
     "Zarraga": "Central Metro", "Santa Barbara": "Central Metro", "San Miguel": "Central Metro",
@@ -166,6 +172,11 @@ MUNICIPALITY_CLUSTERS: dict[str, str] = {
     "Igbaras": "Western Upland", "Guimbal": "Western Upland", "Tigbauan": "Western Upland",
     "San Joaquin": "Western Upland", "Miagao": "Western Upland", "Tubungan": "Western Upland",
     "Alimodian": "Western Upland", "Leon": "Western Upland", "Oton": "Western Upland",
+    # Same placeholder-quality caveat as Lemery above -- Maasin borders
+    # Alimodian/Leon (Western Upland) and Cabatuan/San Miguel (Central
+    # Metro); grouped here since it's conventionally treated as part of
+    # Iloilo's upland interior.
+    "Maasin": "Western Upland",
     # Eastern lowland cluster
     "Banate": "Eastern Lowland", "Barotac Nuevo": "Eastern Lowland", "Dingle": "Eastern Lowland",
     "Anilao": "Eastern Lowland", "Dueñas": "Eastern Lowland", "San Enrique": "Eastern Lowland",
