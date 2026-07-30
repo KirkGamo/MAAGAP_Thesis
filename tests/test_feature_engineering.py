@@ -246,3 +246,67 @@ def test_construct_target_variable_recovers_via_lag_corrected_proxy():
     assert report.target_construction["lag_correction_median_days"] == pytest.approx(15.0)
     assert report.target_construction["lag_correction_calibration_n"] == 2
     assert report.target_construction["rows_labeled_via_proxy_date"] == 1
+
+
+def test_construct_target_variable_clamp_overshoot_vs_raw_invalid():
+    """Phase 8 clamp: distinguishes rows where lag correction alone pushes a
+    credible raw proxy date non-credible (clamp at D_start+1, RedFlag=0 by
+    construction) from rows where even the RAW proxy date already precedes
+    D_start (no real event to anchor to -- stays unresolved, never clamped).
+    Same 15-day calibration lag as the sibling test above."""
+    monitoring = pd.DataFrame([
+        _make_monitoring_row(**{
+            "DATE RELEASED": "2024-01-01",
+            "Date  of Completion": "2024-03-01",
+            "DATE MONITORED": "2024-03-11",
+            "project_type": "Infrastructure",
+            "STATUS_clean": "completed/functional",
+        }),
+        _make_monitoring_row(**{
+            "DATE RELEASED": "2024-01-01",
+            "Date  of Completion": "2024-04-01",
+            "DATE MONITORED": "2024-04-21",
+            "project_type": "Infrastructure",
+            "STATUS_clean": "completed/functional",
+        }),
+        # Row 2: correction overshoot -- raw proxy (own DATE MONITORED) is
+        # 2024-01-10, 9 days after D_start (2024-01-01) -- a real, credible
+        # event after start. The 15-day median lag correction alone pulls
+        # it to 2023-12-26, before D_start -- non-credible only because of
+        # the flat correction. Should be CLAMPED to D_start+1 (2024-01-02),
+        # T_actual=1, RedFlag=0 (mechanically, not from evidence).
+        _make_monitoring_row(**{
+            "DATE RELEASED": "2024-01-01",
+            "DATE MONITORED": "2024-01-10",
+            "project_type": "Non-Infrastructure",
+            "STATUS_clean": "completed/functional",
+        }),
+        # Row 3: raw invalid -- own DATE MONITORED (2023-12-15) already
+        # precedes D_start (2024-01-01) before any lag correction is even
+        # applied. No real event to anchor to -- must stay unresolved, NOT
+        # clamped, regardless of STATUS confirming completion.
+        _make_monitoring_row(**{
+            "DATE RELEASED": "2024-01-01",
+            "DATE MONITORED": "2023-12-15",
+            "project_type": "Non-Infrastructure",
+            "STATUS_clean": "completed/functional",
+        }),
+    ])
+    liquidation = pd.DataFrame({"Date Submitted": pd.to_datetime([])})
+    crosswalk = pd.DataFrame({"mon_row_id": pd.Series(dtype="int64"), "liq_row_id": pd.Series(dtype="int64")})
+
+    report = FeatureEngineeringReport()
+    result = construct_target_variable(monitoring, liquidation, crosswalk, report)
+
+    # Row 2: clamped -- usable, but flagged as a construction artifact.
+    assert result.loc[2, "completion_date_is_proxy"] == True  # noqa: E712
+    assert result.loc[2, "completion_date_is_clamped"] == True  # noqa: E712
+    assert result.loc[2, "T_actual_days"] == 1
+    assert result.loc[2, "RedFlag"] == 0
+
+    # Row 3: raw invalid -- unresolved, never clamped.
+    assert result.loc[3, "completion_date_is_proxy"] == False  # noqa: E712
+    assert result.loc[3, "completion_date_is_clamped"] == False  # noqa: E712
+    assert pd.isna(result.loc[3, "RedFlag"])
+
+    assert report.target_construction["rows_labeled_via_clamped_proxy_date"] == 1

@@ -86,7 +86,8 @@ EXCLUDE_COLS = [
     "Date  of Completion", "REMARKS", "REMARKS_clean", "STATUS", "FILE NAME",
     "No.", "FUNDS RELEASED TO:",
     "T_actual_days", "T_standard_days", "NegativeSlippage_pct",
-    "has_completion_date", "completion_date_is_proxy", "extension_approved", "contractor_id",
+    "has_completion_date", "completion_date_is_proxy", "completion_date_is_clamped",
+    "extension_approved", "contractor_id",
     # D_start is the resolved (DATE RELEASED, falling back to DATE MONITORED)
     # datetime used to derive release_month/release_quarter/days_since_release/
     # is_wet_season_release in feature_engineering.py -- it's housekeeping for
@@ -243,6 +244,20 @@ def run(train_csv: Path, test_csv: Path, artifacts_dir: Path, n_splits: int = N_
             float(proxy_stats.loc[True, "mean"]) * 100 if True in proxy_stats.index else float("nan"),
             int(proxy_stats.loc[True, "count"]) if True in proxy_stats.index else 0,
         )
+
+    if "completion_date_is_clamped" in train_df.columns:
+        combined = pd.concat([train_df, test_df])
+        n_clamped = int(combined["completion_date_is_clamped"].sum())
+        if n_clamped:
+            logger.warning(
+                "PHASE 8 CLAMP CAVEAT: %d of the proxy-recovered rows above have a "
+                "D_start+1-day CLAMPED completion date (see feature_engineering.py's "
+                "construct_target_variable). RedFlag=0 for every one of these rows is a "
+                "mechanical artifact of T_actual=1 day always being below T_standard, NOT "
+                "an observed on-time completion — treat this subset's contribution to the "
+                "proxy RedFlag rate above as a downward-biased floor, not a measurement.",
+                n_clamped,
+            )
 
     X_train_full, _ = build_feature_matrix(train_df)
     y_train = train_df["RedFlag"].astype(int).to_numpy()

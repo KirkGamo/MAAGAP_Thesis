@@ -365,22 +365,59 @@ def construct_target_variable(
     median_lag_days, n_lag_calibration = compute_empirical_lag_days(d_end_direct, proxy_dates_raw)
     proxy_dates_corrected = proxy_dates_raw - pd.Timedelta(days=median_lag_days)
 
+    # PHASE 8 CLAMP (narrow, evidence-gated — see module docstring): a flat
+    # subtraction of the median lag can occasionally push a SHORT-duration
+    # project's corrected date back before its own D_start, which is not
+    # credible on its face. Diagnosing the ~2,362 rows this affected showed
+    # two distinct causes that must NOT be treated the same way:
+    #   - "correction overshoot" (n=1,260): the RAW, uncorrected proxy date
+    #     (the row's own DATE MONITORED, or linked liquidation submission
+    #     date) IS genuinely after D_start — the lag subtraction alone is
+    #     what pushes it non-credible. Here the raw evidence supports a real
+    #     completion event after D_start; only the correction's fixed
+    #     magnitude is the problem, so it is credible to clamp the corrected
+    #     date at D_start + 1 day rather than discard the row's real event.
+    #   - "raw invalid" (n=1,102): the RAW proxy date is already at or before
+    #     D_start, with no correction involved at all — the underlying
+    #     monitoring/liquidation record itself implies a nonsensical or
+    #     zero/negative-duration timeline (e.g. transposed or mis-keyed
+    #     dates). There is no real event here to anchor a clamp to, so these
+    #     rows are left unresolved exactly as before — clamping them would
+    #     assert a completion date that isn't backed by any actual record.
+    #
+    # Clamped rows get RedFlag=0 by construction (T_actual=1 day is always
+    # far below any T_standard), which is NOT an observed on-time completion
+    # — it is an artifact of pinning the date at D_start+1. These rows are
+    # marked via `completion_date_is_clamped` so downstream reporting and
+    # the methodology writeup can flag their RedFlag/NegativeSlippage_pct as
+    # proxy-constructed rather than evidence-based, and a reader can exclude
+    # or discount them if a stricter evidentiary standard is needed.
+    raw_proxy_after_start = proxy_dates_raw.notna() & d_start.notna() & (proxy_dates_raw > d_start)
+    correction_overshoot = (
+        missing_direct_date & is_completed_status & raw_proxy_after_start
+        & proxy_dates_corrected.notna() & (proxy_dates_corrected <= d_start)
+    )
+    clamped_date = d_start + pd.Timedelta(days=1)
+    proxy_dates_final = proxy_dates_corrected.where(~correction_overshoot, clamped_date)
+
     # Only a genuinely later event than D_start is a credible proxy for a
     # COMPLETION date; a "recovered" date earlier than or equal to D_start
     # would imply a non-positive project duration, which is not credible and
     # is treated as no-usable-proxy rather than silently accepted. This
-    # check is applied to the LAG-CORRECTED date, since correcting a proxy
-    # date can occasionally pull it back before D_start for very
-    # short-duration projects — those rows correctly fall back to
-    # "unresolved" rather than being forced through with an implausible
-    # (negative-duration) corrected date.
+    # check is applied to the LAG-CORRECTED (and, for the overshoot subset,
+    # clamped) date, since correcting a proxy date can occasionally pull it
+    # back before D_start for very short-duration projects — rows whose raw
+    # data itself is non-credible correctly fall back to "unresolved" rather
+    # than being forced through with an implausible (negative-duration)
+    # corrected date.
     proxy_usable = (
-        missing_direct_date & is_completed_status & proxy_dates_corrected.notna()
-        & d_start.notna() & (proxy_dates_corrected > d_start)
+        missing_direct_date & is_completed_status & proxy_dates_final.notna()
+        & d_start.notna() & (proxy_dates_final > d_start)
     )
 
     completion_date_is_proxy = proxy_usable
-    d_end = d_end_direct.where(~proxy_usable, proxy_dates_corrected)
+    completion_date_is_clamped = proxy_usable & correction_overshoot
+    d_end = d_end_direct.where(~proxy_usable, proxy_dates_final)
 
     t_standard = df["project_type"].map(STANDARD_DURATION_DAYS)  # NaN for Unclassified
     t_actual = (d_end - d_start).dt.days
@@ -413,6 +450,7 @@ def construct_target_variable(
     df["extension_approved"] = extension_approved
     df["has_completion_date"] = has_completion_date
     df["completion_date_is_proxy"] = completion_date_is_proxy
+    df["completion_date_is_clamped"] = completion_date_is_clamped
     df["RedFlag"] = red_flag
     df["NegativeSlippage_pct"] = negative_slippage_pct
 
@@ -420,6 +458,7 @@ def construct_target_variable(
     positive = int((red_flag == 1).sum())
     n_ongoing = int((~has_completion_date).sum())
     n_proxy_recovered = int(completion_date_is_proxy.sum())
+    n_proxy_clamped = int(completion_date_is_clamped.sum())
     n_completed_status_unrecovered = int(
         (missing_direct_date & is_completed_status & ~proxy_usable).sum()
     )
@@ -440,6 +479,7 @@ def construct_target_variable(
         "rows_total": len(df),
         "rows_labeled": labeled,
         "rows_labeled_via_proxy_date": n_proxy_recovered,
+        "rows_labeled_via_clamped_proxy_date": n_proxy_clamped,
         "rows_date_released_recovered_via_date_monitored": int(date_released_is_proxy.sum()),
         "rows_still_missing_d_start": int(d_start.isna().sum()),
         "rows_ongoing_no_completion_date": n_ongoing,
@@ -456,10 +496,11 @@ def construct_target_variable(
     logger.info(
         "Step 6: labeled %d/%d rows (%s%% RedFlag positive), of which %d recovered via a "
         "Phase 6 proxy completion date (lag-corrected by %.1f median days, calibrated on "
-        "%d rows); %d ongoing/unresolved -> routed to inference "
-        "(%d STATUS-completed-but-unrecoverable-date, %d genuinely ongoing/other)",
+        "%d rows; %d of those via the Phase 8 D_start+1 clamp — RedFlag=0 for these is a "
+        "construction artifact, not observed evidence); %d ongoing/unresolved -> routed to "
+        "inference (%d STATUS-completed-but-unrecoverable-date, %d genuinely ongoing/other)",
         labeled, len(df), report.target_construction["red_flag_positive_rate_pct"],
-        n_proxy_recovered, median_lag_days, n_lag_calibration,
+        n_proxy_recovered, median_lag_days, n_lag_calibration, n_proxy_clamped,
         n_ongoing, n_completed_status_unrecovered, n_genuinely_ongoing,
     )
     logger.info(
