@@ -81,41 +81,13 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
       </span>
     ),
   },
-  {
-    accessorKey: "status",
-    header: "Status",
-    cell: ({ row }) =>
-      row.original.status ? (
-        <Badge variant={statusVariant(row.original.status)}>
-          {STATUS_LABELS[row.original.status] ?? row.original.status}
-        </Badge>
-      ) : (
-        "—"
-      ),
-  },
-  {
-    accessorKey: "risk_tier",
-    header: "Risk Tier",
-    cell: ({ row }) =>
-      row.original.risk_tier ? (
-        <Badge variant={riskTierVariant(row.original.risk_tier)}>{row.original.risk_tier}</Badge>
-      ) : (
-        <span className="text-slate-400">Unscored</span>
-      ),
-  },
-  {
-    accessorKey: "risk_probability",
-    header: "P(RedFlag)",
-    cell: ({ row }) =>
-      row.original.risk_probability != null
-        ? `${(row.original.risk_probability * 100).toFixed(1)}%`
-        : "—",
-  },
-  // Phase 21: Budget and Project Type were already filterable (see
+  // Phase 22: Budget and Project Type were already filterable (see
   // filters.ts / ppa-filter-sidebar.tsx) but weren't visible as columns --
   // a Manager filtering by either had no way to actually see the value
   // that matched. amount_php/project_type were added to page.tsx's
-  // `.select(...)` alongside this.
+  // `.select(...)` alongside this. Also per explicit request, swapped into
+  // Status's and Risk Tier's old positions (Status/Risk Tier moved to
+  // where these used to sit, at the end).
   {
     accessorKey: "amount_php",
     header: "Budget",
@@ -136,6 +108,36 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
         <span className="text-slate-600">{row.original.project_type}</span>
       ) : (
         <span className="text-slate-400">Unclassified</span>
+      ),
+  },
+  {
+    accessorKey: "risk_probability",
+    header: "P(RedFlag)",
+    cell: ({ row }) =>
+      row.original.risk_probability != null
+        ? `${(row.original.risk_probability * 100).toFixed(1)}%`
+        : "—",
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) =>
+      row.original.status ? (
+        <Badge variant={statusVariant(row.original.status)}>
+          {STATUS_LABELS[row.original.status] ?? row.original.status}
+        </Badge>
+      ) : (
+        "—"
+      ),
+  },
+  {
+    accessorKey: "risk_tier",
+    header: "Risk Tier",
+    cell: ({ row }) =>
+      row.original.risk_tier ? (
+        <Badge variant={riskTierVariant(row.original.risk_tier)}>{row.original.risk_tier}</Badge>
+      ) : (
+        <span className="text-slate-400">Unscored</span>
       ),
   },
 ];

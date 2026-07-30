@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   flexRender,
@@ -38,7 +39,7 @@ export interface PpaTableParams {
   controls?: string;
 }
 
-interface PpasDataTableProps<TData> {
+interface PpasDataTableProps<TData extends { id: string }> {
   columns: ColumnDef<TData>[];
   data: TData[];
   page: number;
@@ -116,7 +117,7 @@ function getPageNumbers(current: number, total: number): (number | "ellipsis")[]
  * downloads a CSV of every row matching the current filters via
  * export/route.ts.
  */
-export function PpasDataTable<TData>({
+export function PpasDataTable<TData extends { id: string }>({
   columns,
   data,
   page,
@@ -126,6 +127,7 @@ export function PpasDataTable<TData>({
   params,
   exportHref,
 }: PpasDataTableProps<TData>) {
+  const router = useRouter();
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
   // Read the saved column-visibility preference once on mount. Done in an
@@ -244,7 +246,17 @@ export function PpasDataTable<TData>({
           <TableBody>
             {rows.length > 0 ? (
               rows.map((row) => (
-                <TableRow key={row.id}>
+                // Phase 22: the whole row navigates to the project detail
+                // page, not just the Project column's own <Link> (kept for
+                // keyboard nav / middle-click-to-open-in-new-tab) -- a
+                // click anywhere else in the row (Municipality, Status,
+                // etc.) previously did nothing, which is surprising once
+                // the row itself looks/feels clickable (cursor + hover).
+                <TableRow
+                  key={row.id}
+                  onClick={() => router.push(`/manager/ppas/${row.original.id}`)}
+                  className="cursor-pointer hover:bg-brand-surface"
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

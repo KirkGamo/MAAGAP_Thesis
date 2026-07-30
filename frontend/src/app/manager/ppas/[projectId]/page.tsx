@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, riskTierVariant } from "@/components/ui/badge";
+import { AlertTriangle, Info } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -10,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Database } from "@/types/database";
 
 interface ProjectDetailPageProps {
   params: Promise<{ projectId: string }>;
@@ -17,6 +19,126 @@ interface ProjectDetailPageProps {
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
 const SIGNED_URL_TTL_SECONDS = 60 * 10; // 10 minutes: only needs to outlive one page render
+
+const STATUS_LABELS: Record<string, string> = {
+  not_yet_implemented: "Not Yet Implemented",
+  for_bidding: "For Bidding",
+  on_going: "On-going",
+  completed: "Completed",
+};
+
+type ProjectRow = Database["public"]["Tables"]["projects"]["Row"];
+
+interface RiskIndicator {
+  label: string;
+  detail: string;
+  flagged: boolean;
+}
+
+/**
+ * Phase 22: "why was this project classified this way" indicators, added
+ * per an explicit request to explain the risk tier on this page. This is
+ * deliberately NOT a claim of per-project feature attribution (e.g. SHAP
+ * values) -- the ml-service pipeline (Random Forest + XGBoost + LSTM into
+ * a multinomial logistic regression meta-learner) doesn't compute or store
+ * one anywhere (checked ml-service/ for a shap/explain/feature_importance
+ * module and the `projects` table for an explanation column; neither
+ * exists). Fabricating a numeric attribution breakdown here would misstate
+ * what the model actually produces, which this project's own guidelines
+ * are explicit about avoiding.
+ *
+ * Instead, this surfaces the *same real signals* the model consumes as
+ * inputs for this specific project (see ml-service/data_pipeline/
+ * feature_engineering.py's engineer_features()): release timing/wet-season
+ * flag, elapsed time vs. implementation status, monitoring/field-
+ * verification history, budget, and the categorical project type/
+ * municipality inputs -- so a Manager can judge for themselves which ones
+ * plausibly line up with the assigned tier, honestly labeled as inputs
+ * rather than a decomposition of the probability itself.
+ */
+function buildRiskIndicators(
+  project: ProjectRow,
+  reports: { visited_at: string; percent_complete: number | null }[]
+): RiskIndicator[] {
+  const indicators: RiskIndicator[] = [];
+
+  if (project.date_released) {
+    const released = new Date(project.date_released);
+    const daysSinceRelease = Math.floor((Date.now() - released.getTime()) / 86_400_000);
+    const month = released.getMonth() + 1;
+    // Matches ml-service's is_wet_season_release feature exactly:
+    // months.isin([6, 7, 8, 9, 10, 11]) -- June through November.
+    const isWetSeason = month >= 6 && month <= 11;
+    indicators.push({
+      label: "Release timing",
+      detail: `Released ${released.toLocaleDateString("en-PH", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })} (${daysSinceRelease.toLocaleString()} days ago)${
+        isWetSeason
+          ? " -- during the wet season (June-November), one of the model's engineered input features."
+          : "."
+      }`,
+      flagged: isWetSeason,
+    });
+
+    if (project.status === "not_yet_implemented" || project.status === "for_bidding") {
+      const stalled = daysSinceRelease > 90;
+      indicators.push({
+        label: "Implementation start",
+        detail: `Still marked "${STATUS_LABELS[project.status] ?? project.status}" ${daysSinceRelease.toLocaleString()} days after release${
+          stalled ? " -- a delayed start relative to most projects in this dataset." : "."
+        }`,
+        flagged: stalled,
+      });
+    }
+  } else {
+    indicators.push({
+      label: "Release timing",
+      detail: "No release date on record.",
+      flagged: false,
+    });
+  }
+
+  const latestReport = reports[0];
+  if (!latestReport) {
+    indicators.push({
+      label: "Field verification",
+      detail:
+        "No monitoring reports filed yet -- no on-site progress has been recorded for this project.",
+      flagged: true,
+    });
+  } else {
+    indicators.push({
+      label: "Field verification",
+      detail: `${reports.length} monitoring report(s) filed. Most recent: ${
+        latestReport.percent_complete != null
+          ? `${latestReport.percent_complete}% complete`
+          : "no completion percentage recorded"
+      } as of ${new Date(latestReport.visited_at).toLocaleDateString()}.`,
+      flagged: false,
+    });
+  }
+
+  if (project.amount_php != null) {
+    indicators.push({
+      label: "Budget",
+      detail: `₱${project.amount_php.toLocaleString()} -- one of the model's numeric inputs.`,
+      flagged: false,
+    });
+  }
+
+  indicators.push({
+    label: "Classification inputs",
+    detail: `Project type: ${project.project_type ?? "Unclassified"}. Municipality: ${
+      project.municipality ?? "not on record"
+    }. Both are categorical (one-hot encoded) inputs to the model.`,
+    flagged: false,
+  });
+
+  return indicators;
+}
 
 /** Manager-facing detail view: project metadata plus every monitoring
  * report an Inspector has filed against it (the ML feedback loop's output —
@@ -94,6 +216,49 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
               P(RedFlag) = {project.risk_probability.toFixed(3)}
             </span>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Why this classification?</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <p className="text-sm text-slate-500">
+            The prediction pipeline (a Random Forest + XGBoost + LSTM stacking ensemble feeding a
+            multinomial logistic regression meta-learner) doesn&apos;t compute or store a
+            per-project feature-attribution breakdown (e.g. SHAP values) -- see /manager/models for
+            the model&apos;s aggregate accuracy/precision/recall instead. What follows are the same
+            real signals the model consumes as inputs for this specific project, so you can judge
+            which ones plausibly line up with the assigned tier; they are inputs the model saw, not
+            a mathematical decomposition of the
+            {project.risk_probability != null
+              ? ` ${(project.risk_probability * 100).toFixed(1)}%`
+              : ""}{" "}
+            P(RedFlag) figure itself.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {buildRiskIndicators(project, reports ?? []).map((indicator) => (
+              <li
+                key={indicator.label}
+                className={`flex items-start gap-2.5 rounded-md border px-3 py-2 text-sm ${
+                  indicator.flagged
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-brand-navy/10 bg-white"
+                }`}
+              >
+                {indicator.flagged ? (
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+                ) : (
+                  <Info className="mt-0.5 size-4 shrink-0 text-brand-blue" aria-hidden="true" />
+                )}
+                <div>
+                  <span className="font-medium text-brand-navy">{indicator.label}:</span>{" "}
+                  <span className="text-slate-600">{indicator.detail}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
 
