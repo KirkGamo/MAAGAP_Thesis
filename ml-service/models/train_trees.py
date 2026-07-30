@@ -251,6 +251,17 @@ def run(train_csv: Path, test_csv: Path, artifacts_dir: Path, n_splits: int = N_
             subsample=0.8, colsample_bytree=0.8,
             scale_pos_weight=scale_pos_weight, eval_metric="logloss",
             random_state=seed, n_jobs=-1,
+            # Explicit, not a default: xgboost >=2.something flipped
+            # XGBClassifier's enable_categorical default from False to True.
+            # None of our features are categorical dtype (build_feature_matrix
+            # casts everything to float64), so this has no effect on what the
+            # model actually learns -- but SHAP's TreeExplainer refuses to run
+            # in interventional/probability mode against ANY model with this
+            # flag set to True, regardless of whether categorical splits are
+            # actually used (see inference/explain.py's shared-background-
+            # sample design). Pinning it False keeps SHAP working without
+            # changing the trained model's predictions.
+            enable_categorical=False,
         )
 
     results: dict = {"n_train": len(train_df), "n_test": len(test_df),
