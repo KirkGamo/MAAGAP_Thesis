@@ -148,3 +148,4 @@ ml-service/artifacts/live_scores.json
 .DS_Store
 Thumbs.db
 desktop.ini
+.obsidian/
