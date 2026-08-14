@@ -123,6 +123,34 @@ MAX_LSTM_SEQUENCE_LENGTH = 5
 # ledger entries, not a crosswalk/join artifact (see D11-Exact-Duplicate-Removal.md).
 DUPLICATE_ROW_KEY_COLUMNS = ["NAME OF PROJECT", "DATE RELEASED", "DATE MONITORED", "AMOUNT (Php)"]
 
+# A 2026-08-15 verification session found 3 labeled rows (D_start 2010-01-17,
+# 2010-12-27, 2013-09-26) that are 8-13 years before every peer in their own
+# monitoring batch -- almost certainly data-entry errors. Chapter 1's stated
+# "2016-2025" study period was the FIRST candidate for a cutoff, but was
+# rejected: it also silently swept up 381 legitimate-looking 2015 rows that
+# were never shown to be erroneous (deviation from their own batch's Year is
+# only -2 to -5, well within the normal administrative-lag range -- see
+# BATCH_YEAR_DEVIATION_THRESHOLD_YEARS below). The actually well-evidenced
+# boundary is the DATA's own natural gap: zero rows anywhere in the full
+# 8,784-row population have D_start in 2011, 2012, or 2014 -- the 3 known-bad
+# rows sit isolated below that gap, and 2015 onward is a contiguous run. This
+# is what STUDY_PERIOD_START encodes -- a gap actually present in the data,
+# not a blanket reading of the manuscript's stated scope (see
+# D09-Study-Period-Floor.md for the full before/after comparison).
+STUDY_PERIOD_START = pd.Timestamp("2015-01-01")
+
+# Diagnostic-only (Phase 9): flags, but never auto-drops, a labeled row whose
+# D_start deviates from its own monitoring batch's `Year` column by more than
+# this many years, for manual review in date_anomaly_review.csv. A lower
+# threshold (4) was tried first and rejected -- deviations of 3-6 years turn
+# out to be the NORMAL shape of this dataset (hundreds of rows, since a
+# monitoring-report batch routinely reviews projects released several years
+# earlier), not a rare signal. 6 isolates a small, genuinely unusual tail
+# (6 rows full-population) rather than flooding the review file with
+# ordinary administrative lag. Deliberately a soft/reviewable threshold, not
+# a defended cutoff like STUDY_PERIOD_START.
+BATCH_YEAR_DEVIATION_THRESHOLD_YEARS = 6
+
 # Keywords in monitoring REMARKS that plausibly indicate a verified weather/
 # environmental cause for delay, per the Chapter 1 Red Flag delimitation.
 #
@@ -377,6 +405,53 @@ def construct_target_variable(
     date_released_is_proxy = d_start_direct.isna() & d_start.notna()
     df["D_start"] = d_start
     df["date_released_is_proxy"] = date_released_is_proxy
+
+    # PHASE 9 — STUDY-PERIOD FLOOR (DQ-9, 2026-08-15 audit, see
+    # D09-Study-Period-Floor.md): 3 labeled rows were found with D_start
+    # years (2010, 2010, 2013) that are 8-13 years before every other row in
+    # their own monitoring batch (same FILE NAME/Year) -- almost certainly
+    # data-entry errors that only survive preprocess.py's deliberately wide
+    # 2000-2030 plausibility filter. STUDY_PERIOD_START is set at the DATA's
+    # own natural gap (see that constant's comment), not Chapter 1's stated
+    # 2016-2025 scope -- a blanket 2016 floor was tried first and rejected
+    # for also excluding 381 legitimate 2015 rows with no evidence of error.
+    # Dropped here (before Phase 6/7/8 run) rather than just NaN'd, so it
+    # cascades to the full pipeline exactly like Phase 11 above, and so every
+    # downstream count in this function already reflects the cleaned
+    # population.
+    pre_study_period_mask = d_start.notna() & (d_start < STUDY_PERIOD_START)
+    n_pre_study_period_dropped = int(pre_study_period_mask.sum())
+    if n_pre_study_period_dropped:
+        logger.warning(
+            "PHASE 9: dropping %d rows with D_start before the declared study period "
+            "(%s) -- see date_anomaly_review.csv precedent / D09 for evidence.",
+            n_pre_study_period_dropped, STUDY_PERIOD_START.date(),
+        )
+    df = df[~pre_study_period_mask].copy()
+    # Resync local Series to the now-filtered df -- everything below must be
+    # index-aligned with `df`, not with the original (larger) `monitoring`.
+    d_start = df["D_start"]
+    date_released_is_proxy = df["date_released_is_proxy"]
+
+    # PHASE 9 diagnostic (non-blocking, log/export only -- see
+    # BATCH_YEAR_DEVIATION_THRESHOLD_YEARS): unlike the hard cutoff above,
+    # this does not tie back to a manuscript-declared bound and government
+    # fund-release-to-monitoring gaps of a few years are not on their own
+    # implausible, so nothing is auto-dropped on this signal alone -- it only
+    # surfaces candidates in date_anomaly_review.csv for manual review.
+    batch_year = pd.to_numeric(df.get("Year", pd.Series(np.nan, index=df.index)), errors="coerce")
+    batch_year_deviation = (d_start.dt.year - batch_year).abs()
+    batch_year_deviation_flag = (batch_year_deviation > BATCH_YEAR_DEVIATION_THRESHOLD_YEARS).fillna(False)
+    df["batch_year_deviation_flag"] = batch_year_deviation_flag
+    n_batch_year_deviation_flagged = int(batch_year_deviation_flag.sum())
+    if n_batch_year_deviation_flagged:
+        logger.info(
+            "PHASE 9 diagnostic: %d rows flagged (D_start year deviates >%d years from "
+            "their own Year column) -- NOT auto-dropped, written to date_anomaly_review.csv "
+            "for manual review.",
+            n_batch_year_deviation_flagged, BATCH_YEAR_DEVIATION_THRESHOLD_YEARS,
+        )
+
     d_end_direct = pd.to_datetime(df["Date  of Completion"], errors="coerce")
 
     status_clean = df.get("STATUS_clean", pd.Series("", index=df.index))
@@ -384,11 +459,11 @@ def construct_target_variable(
     is_ongoing_status = _status_matches(status_clean, ONGOING_STATUS_SUBSTRINGS)
 
     missing_direct_date = d_end_direct.isna()
-    # NOTE: passes `df` (already filtered by Phase 11 above), not the raw
+    # NOTE: passes `df` (already filtered by Phase 9/11 above), not the raw
     # `monitoring` parameter -- compute_proxy_completion_dates aligns its
     # result to whatever index it's given via `.reindex(monitoring_raw.index)`
     # (see its docstring), and `df`'s surviving rows keep their ORIGINAL
-    # index labels (Phase 11 filters via boolean mask, never reset_index()),
+    # index labels (Phase 9/11 filter via boolean mask, never reset_index()),
     # which still equal their true mon_row_id -- so this stays correctly
     # aligned with the crosswalk-based liquidation-date lookup even after
     # rows have been dropped.
@@ -519,6 +594,8 @@ def construct_target_variable(
     report.target_construction = {
         "rows_total": len(df),
         "rows_duplicates_dropped_phase11": n_duplicates_dropped,
+        "rows_dropped_pre_study_period_phase9": n_pre_study_period_dropped,
+        "rows_batch_year_deviation_flagged_phase9_diagnostic": n_batch_year_deviation_flagged,
         "rows_labeled": labeled,
         "rows_labeled_via_proxy_date": n_proxy_recovered,
         "rows_labeled_via_clamped_proxy_date": n_proxy_clamped,
@@ -1003,6 +1080,22 @@ def run(
     inference_df.to_csv(output_dir / "inference.csv", index=False)
     with open(output_dir / "scaler_params.json", "w") as f:
         json.dump(scaler_params, f, indent=2)
+
+    # PHASE 9 diagnostic export: rows NOT auto-dropped by the hard
+    # study-period cutoff, but whose D_start still deviates suspiciously from
+    # their own monitoring batch's Year column (see construct_target_variable
+    # PHASE 9 docstring / D09-Study-Period-Floor.md). Manual-review-only.
+    review_cols = [
+        c for c in ["mon_row_id", "project_key", "NAME OF PROJECT", "D_start", "Year",
+                    "FILE NAME", "DATE RELEASED", "DATE MONITORED"]
+        if c in monitoring.columns
+    ]
+    date_anomaly_review = monitoring.loc[monitoring["batch_year_deviation_flag"], review_cols]
+    date_anomaly_review.to_csv(output_dir / "date_anomaly_review.csv", index=False)
+    logger.info(
+        "Phase 9 diagnostic: wrote %d rows to date_anomaly_review.csv for manual review.",
+        len(date_anomaly_review),
+    )
 
     # --- Partition the LSTM sequences the same way, by project_key membership ---
     resolved_keys = set(resolved_df["project_key"])
