@@ -869,6 +869,20 @@ def run(
             raise FileNotFoundError(f"Required input not found: {p}")
 
     monitoring_raw = pd.read_csv(monitoring_input)
+    # mon_row_id is assigned HERE, immediately on load and before any row could
+    # ever be dropped by a future filtering step, because assemble_lstm_sequences()
+    # and project_crosswalk.csv both treat it as a POSITIONAL index into this
+    # exact row order (see assemble_lstm_sequences docstring). Adding a column
+    # does not change row order/count, so this is safe for that requirement;
+    # deriving mon_row_id later via reset_index() (as this used to do, right
+    # before the project_key join) is NOT safe once an earlier step can drop
+    # rows, since every row after the first drop would then get a mon_row_id
+    # that no longer matches the crosswalk's actual positional key. mon_row_id
+    # is carried as an ordinary column from here on, so it survives any later
+    # boolean-mask filtering correctly. This is a latent-bug fix on its own
+    # (no prior step ever dropped rows, so it was harmless until now) and a
+    # required prerequisite for any future filtering step in this pipeline.
+    monitoring_raw = monitoring_raw.reset_index().rename(columns={"index": "mon_row_id"})
     fund_transfer = pd.read_csv(fund_transfer_input)
     liquidation = pd.read_csv(liquidation_input)
     crosswalk = pd.read_csv(crosswalk_input)
@@ -898,8 +912,12 @@ def run(
     # mon_row_id) so the tabular RF/XGBoost split can also be done at the
     # project level, consistent with the LSTM sequence split. Rows with no
     # crosswalk link get a unique per-row fallback key rather than being
-    # dropped from the split.
-    monitoring = monitoring.reset_index().rename(columns={"index": "mon_row_id"})
+    # dropped from the split. mon_row_id is already a column by this point
+    # (assigned at monitoring_raw load time, above) -- it must NOT be
+    # re-derived via reset_index() here, since a future filtering step
+    # inside construct_target_variable() may have already dropped rows; a
+    # fresh reset_index() at this point would silently desync from the
+    # crosswalk's actual positional keys for every row after the first drop.
     # A single mon_row_id can appear more than once in the crosswalk (e.g. two
     # fuzzy-matched fund-transfer records both linking to the same monitored
     # project); keep the first project_key deterministically rather than
