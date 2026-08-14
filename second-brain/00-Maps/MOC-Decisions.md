@@ -17,5 +17,8 @@ Every significant, non-obvious decision on this project, in roughly the order th
 - [[02-Decisions/D06-Status-Excludes-Scheduling|D06: Excluding Completed/Refunded Projects from Scheduling]] — keeping their risk tier visible as an audit signal while not recommending inspector visits to closed projects.
 - [[02-Decisions/D07-No-Third-Validation-Split|D07: No Separate Validation Split]] — OOF cross-validation instead of 70/15/15.
 - [[02-Decisions/D08-SHAP-Explainability|D08: SHAP for Explainability]] — and the xgboost/shap compatibility patch it required.
+- [[02-Decisions/D09-Study-Period-Floor|D09: Study-Period Floor]] — dropping 3 pre-2015 data-entry-error rows via a genuine gap in the data, after a blanket "2016-2025" cutoff was tried and rejected for also excluding 381 legitimate 2015 rows.
+- [[02-Decisions/D10-Direct-Date-Credibility-Check|D10: Direct Completion-Date Credibility Check]] — closing the same non-positive-duration gap Phase 8 already guards against for proxy dates, but for directly-observed completion dates.
+- [[02-Decisions/D11-Exact-Duplicate-Removal|D11: Exact-Duplicate Row Removal]] — deduplicating genuine duplicate ledger entries, plus the mon_row_id index-integrity prerequisite fix it (and D09) depend on.
 
 See [[MOC-Known-Issues]] for the limitations these decisions left behind, and [[99-Log]] for the chronological work history.
