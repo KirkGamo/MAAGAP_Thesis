@@ -452,7 +452,34 @@ def construct_target_variable(
             n_batch_year_deviation_flagged, BATCH_YEAR_DEVIATION_THRESHOLD_YEARS,
         )
 
-    d_end_direct = pd.to_datetime(df["Date  of Completion"], errors="coerce")
+    d_end_direct_raw = pd.to_datetime(df["Date  of Completion"], errors="coerce")
+
+    # PHASE 10 — DIRECT COMPLETION-DATE CREDIBILITY CHECK (DQ-10, 2026-08-15
+    # audit, see D10-Direct-Date-Credibility-Check.md): Phase 6/8 already
+    # reject an implausible PROXY completion date (one at or before D_start
+    # implies a non-positive duration and is treated as no-usable-proxy,
+    # never silently accepted — see `proxy_usable` below). No equivalent
+    # check existed for a DIRECTLY-OBSERVED 'Date of Completion' until now: a
+    # row with a real completion-date CELL that happens to read on-or-before
+    # D_start flowed straight through as `has_completion_date=True`,
+    # producing RedFlag=0 by the same mechanical-artifact-not-evidence
+    # problem Phase 8 already guards against for proxies (T_actual <= 0 is
+    # never > any T_standard). 120 labeled rows (2.3%) were found in this
+    # state — 60% of them because D_start itself came from the DATE
+    # MONITORED fallback (a routine verification visit, plausibly logged
+    # well after the project's actual completion, not a start-of-project
+    # event), the rest a direct contradiction in the raw DATE
+    # RELEASED/Date of Completion cells themselves. Rather than accept
+    # either as evidence, the non-credible direct date is discarded (NaT)
+    # here, BEFORE `missing_direct_date` is computed — which routes these
+    # rows into the EXISTING Phase 6/7/8 proxy-recovery machinery unchanged,
+    # exactly as if no direct date had ever been recorded. Some will
+    # recover a credible proxy date; the rest correctly fall through to
+    # unresolved -> inference.csv.
+    direct_date_not_credible = (
+        d_end_direct_raw.notna() & d_start.notna() & (d_end_direct_raw <= d_start)
+    )
+    d_end_direct = d_end_direct_raw.where(~direct_date_not_credible)
 
     status_clean = df.get("STATUS_clean", pd.Series("", index=df.index))
     is_completed_status = _status_matches(status_clean, COMPLETED_STATUS_SUBSTRINGS)
@@ -567,6 +594,7 @@ def construct_target_variable(
     df["has_completion_date"] = has_completion_date
     df["completion_date_is_proxy"] = completion_date_is_proxy
     df["completion_date_is_clamped"] = completion_date_is_clamped
+    df["direct_date_rejected_not_credible"] = direct_date_not_credible
     df["RedFlag"] = red_flag
     df["NegativeSlippage_pct"] = negative_slippage_pct
 
@@ -596,6 +624,7 @@ def construct_target_variable(
         "rows_duplicates_dropped_phase11": n_duplicates_dropped,
         "rows_dropped_pre_study_period_phase9": n_pre_study_period_dropped,
         "rows_batch_year_deviation_flagged_phase9_diagnostic": n_batch_year_deviation_flagged,
+        "rows_direct_date_rejected_non_credible_phase10": int(direct_date_not_credible.sum()),
         "rows_labeled": labeled,
         "rows_labeled_via_proxy_date": n_proxy_recovered,
         "rows_labeled_via_clamped_proxy_date": n_proxy_clamped,
