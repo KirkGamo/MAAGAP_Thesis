@@ -15,6 +15,6 @@ Open limitations and caveats, kept visible on purpose so they don't get silently
 - [[05-Known-Issues/Issue-Synthetic-Contractor-Data|Synthetic contractor data]] — contractor features are active but backed by placeholder data, no real PhilGEPS/PPDO linkage.
 - [[05-Known-Issues/Issue-Barangay-Canonicalization|Barangay canonicalization]] — the crosswalk's barangay veto reduces but doesn't eliminate cross-barangay conflation risk.
 - [[05-Known-Issues/Issue-Unclassified-Project-Type|Unclassified project type]] — 19.1% of monitoring rows can never be labeled, no defined T_standard.
-- [[05-Known-Issues/Issue-Climate-Data-Coverage-Gap|Climate data coverage gap (2025-2026)]] — PAGASA request is capped at Dec 2024; later rows keep the coarse wet-season proxy instead of real data.
+- [[05-Known-Issues/Issue-Climate-Data-Coverage-Gap|Climate data coverage gap (2025)]] — PAGASA request is capped at Dec 2024; 189 rows (3.66%, split-balanced) keep the coarse wet-season proxy instead of real data.
 
 See [[MOC-Decisions]] for the decisions that created or addressed each of these.

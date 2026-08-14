@@ -85,6 +85,7 @@ python scripts\seed_supabase.py              # real write
 - Contractor features are still synthetic placeholder data (150-contractor table, no real PhilGEPS/PPDO linkage) -- Chapter 1's declared Data Availability limitation, unchanged.
 - Barangay-level source data still isn't canonicalized the way municipality is -- residual cross-barangay conflation in the crosswalk cannot be fully ruled out even after the veto fix.
 - Unclassified project type (19.1% of all monitoring rows) can never be labeled -- no defined T_standard.
+- Climate data coverage gap: the PAGASA weather data request is capped at 31 Dec 2024 (PAGASA's own form limit); 189 of 5,159 labeled rows (3.66%, split-balanced train/test) fall in 2025 and will keep the coarse `is_wet_season_release` proxy instead of real rainfall/wind data once PAGASA data lands. Footnote-scale, not a design concern.
 
 ## 8. Key File Map
 
