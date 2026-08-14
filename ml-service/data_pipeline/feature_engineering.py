@@ -117,6 +117,12 @@ DATASET_HORIZON = pd.Timestamp("2026-07-27")
 RANDOM_SEED_DEFAULT = 42
 MAX_LSTM_SEQUENCE_LENGTH = 5
 
+# Exact-duplicate raw monitoring rows (Phase 11, DQ-11): same project name,
+# release date, monitoring date, and amount, but a DIFFERENT source row
+# (mon_row_id) -- confirmed via a 2026-08-15 audit to be genuine duplicate
+# ledger entries, not a crosswalk/join artifact (see D11-Exact-Duplicate-Removal.md).
+DUPLICATE_ROW_KEY_COLUMNS = ["NAME OF PROJECT", "DATE RELEASED", "DATE MONITORED", "AMOUNT (Php)"]
+
 # Keywords in monitoring REMARKS that plausibly indicate a verified weather/
 # environmental cause for delay, per the Chapter 1 Red Flag delimitation.
 #
@@ -338,6 +344,33 @@ def construct_target_variable(
         from elapsed time — only from what STATUS itself says.
     """
     df = monitoring.copy()
+
+    # PHASE 11 — EXACT-DUPLICATE ROW REMOVAL (DQ-11, 2026-08-15 audit, see
+    # D11-Exact-Duplicate-Removal.md): 503 of the full 8,784-row monitoring
+    # population share an identical (NAME OF PROJECT, DATE RELEASED, DATE
+    # MONITORED, AMOUNT (Php)) fingerprint with another row that has a
+    # DIFFERENT mon_row_id -- confirmed genuine duplicate ledger entries (not
+    # a crosswalk/join artifact producing repeated rows from a single source
+    # record). Dropped here, before D_start/RedFlag are even computed, so it
+    # cascades to the full ML pipeline (train/test AND inference.csv) via the
+    # existing RedFlag-based partition further down -- not just the labeled
+    # split. `keep="first"` is deterministic given a stable input row order.
+    # Intentionally does NOT touch `monitoring_raw`/assemble_lstm_sequences's
+    # LSTM sequence assembly, which has its own documented, position-fragile
+    # dependency on the crosswalk's original row order (see that function's
+    # docstring) -- deduping there safely would need separate, more invasive
+    # changes and is out of scope for this pass; LSTM sequences still include
+    # the duplicate raw events as a known, called-out limitation.
+    duplicate_mask = df.duplicated(subset=DUPLICATE_ROW_KEY_COLUMNS, keep="first")
+    n_duplicates_dropped = int(duplicate_mask.sum())
+    if n_duplicates_dropped:
+        logger.warning(
+            "PHASE 11: dropping %d exact-duplicate raw monitoring rows (identical "
+            "project/dates/amount, distinct source row) out of %d total.",
+            n_duplicates_dropped, len(df),
+        )
+    df = df[~duplicate_mask].copy()
+
     d_start_direct = pd.to_datetime(df["DATE RELEASED"], errors="coerce")
     d_start_fallback = pd.to_datetime(df["DATE MONITORED"], errors="coerce")
     d_start = d_start_direct.fillna(d_start_fallback)
@@ -351,7 +384,15 @@ def construct_target_variable(
     is_ongoing_status = _status_matches(status_clean, ONGOING_STATUS_SUBSTRINGS)
 
     missing_direct_date = d_end_direct.isna()
-    proxy_dates_raw = compute_proxy_completion_dates(monitoring, liquidation, crosswalk)
+    # NOTE: passes `df` (already filtered by Phase 11 above), not the raw
+    # `monitoring` parameter -- compute_proxy_completion_dates aligns its
+    # result to whatever index it's given via `.reindex(monitoring_raw.index)`
+    # (see its docstring), and `df`'s surviving rows keep their ORIGINAL
+    # index labels (Phase 11 filters via boolean mask, never reset_index()),
+    # which still equal their true mon_row_id -- so this stays correctly
+    # aligned with the crosswalk-based liquidation-date lookup even after
+    # rows have been dropped.
+    proxy_dates_raw = compute_proxy_completion_dates(df, liquidation, crosswalk)
 
     # PHASE 7 EMPIRICAL LAG CORRECTION: the raw proxy date (last recorded
     # monitoring visit or liquidation submission) is a systematically LATE
@@ -477,6 +518,7 @@ def construct_target_variable(
 
     report.target_construction = {
         "rows_total": len(df),
+        "rows_duplicates_dropped_phase11": n_duplicates_dropped,
         "rows_labeled": labeled,
         "rows_labeled_via_proxy_date": n_proxy_recovered,
         "rows_labeled_via_clamped_proxy_date": n_proxy_clamped,
