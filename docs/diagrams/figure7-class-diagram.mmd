@@ -1,0 +1,105 @@
+---
+title: "Figure 7 — MAAGAP Class Diagram"
+---
+%% Source of truth for Figure 7 in the MAAGAP manuscript.
+%% Regenerate: npx mmdc -i figure7-class-diagram.mmd -o figure7-class-diagram.png -b white -s 2
+%% NOTE: the original raster Figure 7 was already technology-agnostic and was
+%% NOT stale. Converted to Mermaid for editability/auditability, with two
+%% accuracy corrections: gradientBoost -> xgboost (the model actually trained)
+%% and DashboardController's render methods no longer imply a Streamlit UI.
+classDiagram
+    direction TB
+
+    class Project {
+        +String projectId
+        +String nameOfProject
+        +String municipality
+        +String barangay
+        +String projectType
+        +Float amountPhp
+        +Date dStart
+        +calculateTargetProgress() Float
+    }
+
+    class Contractor {
+        +String contractorId
+        +String name
+        +Float reliabilityScore
+        +Float historicalDelayRate
+        +calculateReliability() Float
+    }
+
+    class InspectionLog {
+        +String logId
+        +Date visitedAt
+        +Float physicalAccomplishment
+        +Float financialAccomplishment
+        +calculateSlippage(targetPct) Float
+    }
+
+    class Inspector {
+        +String inspectorId
+        +Boolean isAvailable
+        +Int currentWorkload
+        +updateAvailability() void
+    }
+
+    class ExternalContext {
+        +String contextId
+        +String weatherCondition
+        +Float inflationRate
+        +fetchApiData() void
+    }
+
+    class PredictionRecord {
+        +String assessmentId
+        +Date createdAt
+        +String riskTier
+        +Float riskProbability
+        +Json shapTopFeatures
+        +logAssessment() void
+    }
+
+    class PredictiveEngine {
+        +Model randomForest
+        +Model xgboost
+        +Model lstm
+        +Model metaLearner
+        +forecastDelay(project) Float
+    }
+
+    class RiskScoringEngine {
+        +Float~4~ tierThresholds
+        +classifyRiskTier(probability) String
+    }
+
+    class OptimizationEngine {
+        +Int inspectorPool
+        +generateSchedule(riskyProjects, availableInspectors) Schedule
+    }
+
+    class DashboardController {
+        +renderRiskHeatmap() void
+        +displayScheduleView() void
+        +exportProjectsCsv() File
+    }
+
+    class AuthService {
+        +String sessionToken
+        +authenticateUser() void
+        +enforceRowLevelSecurity() void
+    }
+
+    DashboardController --> OptimizationEngine : requests schedule from
+    DashboardController --> AuthService : verifies session via
+    OptimizationEngine --> RiskScoringEngine : optimizes based on
+    RiskScoringEngine --> PredictiveEngine : evaluates forecasts from
+    OptimizationEngine ..> Inspector : checks availability of
+    PredictiveEngine ..> Project : uses data from
+    PredictiveEngine ..> ExternalContext : uses data from
+    PredictiveEngine ..> InspectionLog : uses data from
+    Contractor "1" --> "*" Project : manages
+    Project "1" *-- "*" InspectionLog : contains
+    Inspector "1" --> "*" InspectionLog : conducts
+    Project "1" --> "*" PredictionRecord : generates
+    ExternalContext ..> Project : influences

@@ -1,0 +1,48 @@
+---
+title: "Figure 9 — MAAGAP Deployment Diagram"
+---
+%% Source of truth for Figure 9 in the MAAGAP manuscript.
+%% Regenerate: npx mmdc -i figure9-deployment-diagram.mmd -o figure9-deployment-diagram.png -b white -s 2
+%% Replaces the prior dual-database (SQLite dev / PostgreSQL prod) topology:
+%% the as-built system uses a single managed Supabase PostgreSQL instance.
+flowchart TB
+    subgraph CLIENT["«device» Client Environment Node"]
+        BROWSER["Web browser<br/>PPDO Manager · Inspector · Admin"]
+        FILES["Local file system<br/>legacy DPWH/DBM CSV uploads"]
+    end
+
+    subgraph VERCEL["«execution environment» Vercel — Frontend Node"]
+        NEXTAPP["Next.js App Router application<br/>server components · server actions<br/>Tailwind · Shadcn UI · Tremor"]
+    end
+
+    subgraph CONTAINER["«execution environment» Container Host (Docker/Dokploy) — ML Service Node"]
+        FASTAPI["FastAPI microservice"]
+        MODELS["Trained artifacts<br/>random_forest · xgboost<br/>lstm · meta_learner"]
+        PULP["PuLP optimization engine"]
+        FASTAPI --- MODELS
+        FASTAPI --- PULP
+    end
+
+    subgraph SUPABASE["«managed service» Supabase — Database Node"]
+        PG[("PostgreSQL<br/>projects · monitoring_reports<br/>inspectors · schedules")]
+        RLS["Row Level Security policies"]
+        AUTHSVC["Supabase Auth"]
+        PG --- RLS
+        PG --- AUTHSVC
+    end
+
+    subgraph EXTNODE["«external» Government Data Providers Node"]
+        PAGASAAPI["PAGASA RESTful API"]
+        PSAAPI["PSA RESTful API"]
+    end
+
+    BROWSER -- "HTTPS" --> NEXTAPP
+    FILES -- "batch upload (HTTPS)" --> NEXTAPP
+    NEXTAPP -- "TLS / Postgres wire protocol<br/>(RLS-scoped)" --> PG
+    NEXTAPP -- "HTTPS / REST" --> FASTAPI
+    FASTAPI -- "TLS / Postgres wire protocol<br/>(service role)" --> PG
+    FASTAPI -- "outbound HTTPS" --> PAGASAAPI
+    FASTAPI -- "outbound HTTPS" --> PSAAPI
+
+    classDef node fill:#f8fafc,stroke:#334155,stroke-width:2px
+    class CLIENT,VERCEL,CONTAINER,SUPABASE,EXTNODE node

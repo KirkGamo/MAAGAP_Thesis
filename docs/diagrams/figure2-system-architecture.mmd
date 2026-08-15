@@ -1,0 +1,63 @@
+---
+title: "Figure 2 — MAAGAP System Architecture (four-layer)"
+---
+%% Source of truth for Figure 2 in the MAAGAP manuscript.
+%% Regenerate the embedded PNG with:
+%%   npx mmdc -i figure2-system-architecture.mmd -o figure2-system-architecture.png -b white -s 2
+%% Reflects the AS-BUILT stack (2026-08-15): Next.js + Supabase + FastAPI.
+%% LAYOUT NOTE: edges are declared node-to-node (not subgraph-to-subgraph) and
+%% the retraining feedback loop is drawn as a single back edge from the
+%% Presentation layer — subgraph-level edges combined with a cycle make
+%% Mermaid rank the layers out of order.
+flowchart TB
+    subgraph DATA["DATA LAYER"]
+        direction LR
+        SRC["Historical project records<br/>PPDO · DPWH · DBM"]
+        PAGASA["PAGASA weather API"]
+        PSA["PSA economic indicators"]
+        DB[("Supabase PostgreSQL<br/>+ Row Level Security")]
+        SRC --> DB
+        PAGASA --> DB
+        PSA --> DB
+    end
+
+    subgraph PROC["PROCESSING LAYER — Python ML pipeline"]
+        direction LR
+        PRED["Predictive Analytics Engine<br/>Random Forest · XGBoost · LSTM"]
+        RISK["Risk Scoring Engine<br/>Low · Medium · High · Critical"]
+        OPT["Optimization Engine<br/>PuLP linear programming"]
+        SHAP["SHAP Explainer<br/>per-project attributions"]
+        PRED --> RISK
+        RISK --> OPT
+        PRED --> SHAP
+    end
+
+    subgraph APP["APPLICATION LAYER"]
+        direction LR
+        API["FastAPI microservice<br/>update-monitoring · live-score<br/>latest-schedule · model-metrics"]
+        AUTH["Supabase Auth<br/>+ RLS policy enforcement"]
+        ALERT["Alert management"]
+    end
+
+    subgraph PRES["PRESENTATION LAYER"]
+        direction LR
+        UI["Next.js App Router dashboard<br/>Tailwind CSS · Shadcn UI"]
+        VIZ["Tremor visualizations<br/>risk heatmaps · analytics"]
+        DETAIL["Project detail<br/>+ SHAP attributions"]
+        EXPORT["CSV export<br/>projects · schedules"]
+    end
+
+    DB --> PRED
+    OPT --> API
+    SHAP --> API
+    API --> UI
+    AUTH --- UI
+    UI --- VIZ
+    UI --- DETAIL
+    UI --- EXPORT
+    UI -.-> FEEDBACK["⟲ Recorded inspection outcomes are written back to the<br/>Data Layer, forming the feedback loop for periodic model retraining"]
+
+    classDef layer fill:#f8fafc,stroke:#334155,stroke-width:2px
+    classDef note fill:#fffbeb,stroke:#b45309,stroke-width:1px,color:#78350f
+    class DATA,PROC,APP,PRES layer
+    class FEEDBACK note

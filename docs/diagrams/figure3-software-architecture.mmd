@@ -1,0 +1,34 @@
+---
+title: "Figure 3 — MAAGAP Software Architecture (three-tier request flow)"
+---
+%% Source of truth for Figure 3 in the MAAGAP manuscript.
+%% Regenerate: npx mmdc -i figure3-software-architecture.mmd -o figure3-software-architecture.png -b white -s 2
+%% Deliberately drawn at a DIFFERENT level of abstraction from Figure 2:
+%% Figure 2 = what each layer contains; this = how a request crosses tier
+%% boundaries at runtime; Figure 9 = where each component physically runs.
+flowchart TB
+    subgraph T1["PRESENTATION TIER — client side"]
+        BROWSER["PPDO user<br/>(web browser)"]
+        NEXT["Next.js App Router<br/>server components + server actions<br/>Tremor · Shadcn UI"]
+        BROWSER <--> NEXT
+    end
+
+    subgraph T2["APPLICATION TIER — server side"]
+        FASTAPI["FastAPI ML microservice"]
+        ENGINES["Predictive · Risk Scoring<br/>· PuLP Optimization engines"]
+        FASTAPI <--> ENGINES
+    end
+
+    subgraph T3["DATA TIER"]
+        SUPA[("Supabase PostgreSQL<br/>projects · monitoring_reports<br/>schedules · RLS policies")]
+        EXT["External APIs<br/>PAGASA · PSA"]
+    end
+
+    NEXT -- "1 · reads/writes project state<br/>(RLS-scoped, server-side)" --> SUPA
+    NEXT -- "2 · POST monitoring update /<br/>GET live risk score (REST)" --> FASTAPI
+    FASTAPI -- "3 · loads features,<br/>persists risk_tier + SHAP" --> SUPA
+    ENGINES -- "4 · ingests contextual variables" --> EXT
+    SUPA -. "5 · recorded outcomes feed<br/>periodic model retraining" .-> ENGINES
+
+    classDef tier fill:#f8fafc,stroke:#334155,stroke-width:2px
+    class T1,T2,T3 tier
