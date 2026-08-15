@@ -90,6 +90,10 @@ htmlcov/
 /data/processed/
 /data/synthetic/
 /data/ready/
+# Pre-delete dumps of the Supabase `projects` table taken before orphan-row
+# cleanup (see seed_supabase.py / HANDOFF Section 2). Same sensitivity class as
+# the raw workbook: full project/contractor rows, kept local, never committed.
+/data/backups/
 /ml-service/artifacts/
 *.npy
 *.parquet

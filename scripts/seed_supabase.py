@@ -27,15 +27,32 @@ WHAT THIS SCRIPT DOES NOT DO
 ------------------------------
 - It does not retrain anything or move projects between train/test/
   inference. It only reads already-computed outputs.
-- It does not touch `inspector_schedules` or `monitoring_reports` --
+- It does not write `inspector_schedules` or `monitoring_reports` --
   seeding the inspector deployment schedule from
   ml-service/artifacts/inspector_schedule.csv is a separate, not-yet-built
   step (the Manager Portal's Schedule page already documents this gap in
-  actions/deploy-schedule.ts).
+  actions/deploy-schedule.ts). Note it can still DELETE from both by
+  cascade, via the orphan pruning described below.
 - It is not idempotent-by-accident: it upserts on `project_key` (the
   natural key both the ML pipeline and Supabase agree on), so re-running
   this script after a fresh pipeline run/retrain safely refreshes existing
   rows instead of duplicating them.
+
+ORPHAN PRUNING (added 2026-08-15, on by default)
+------------------------------------------------
+Upserting alone is NOT enough to keep the table in sync. project_key
+composition legitimately changes between pipeline revisions (the D04
+barangay veto and the DQ-11 dedup both change which monitoring rows survive
+and therefore how MON_ONLY_* keys are numbered), so a pure upsert LAYERS each
+new population on top of the previous one. That went unnoticed until
+2026-08-15, by which point `projects` held 6,077 rows of which only 2,517
+were current -- 59% of the dashboard was stale, including 438 rows feeding
+Medium/High/Critical tiers into the manager's priority views from a
+superseded model. After upserting, this script now deletes any row whose
+project_key is absent from the current seed, writing the full pre-delete
+rows to data/backups/ first. Disable with --no-prune; it is also disabled
+automatically under --limit, since pruning against a deliberately partial
+seed would delete everything outside that slice.
 
 Usage
 -----
@@ -54,6 +71,7 @@ KEY=VALUE parsing this requires).
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import logging
 import os
@@ -287,9 +305,96 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
     return [{k: _clean_nan(v) for k, v in r.items()} for r in rows]
 
 
-def push_to_supabase(rows: list[dict], batch_size: int = 500, dry_run: bool = False) -> None:
+def _fetch_all_live_rows(client, columns: str = "*") -> list[dict]:
+    """Page through the whole `projects` table (PostgREST caps a request at 1,000 rows)."""
+    out: list[dict] = []
+    page = 0
+    while True:
+        result = client.table(STATUS_TABLE).select(columns).range(page * 1000, (page + 1) * 1000 - 1).execute()
+        if not result.data:
+            break
+        out.extend(result.data)
+        page += 1
+    return out
+
+
+def prune_orphans(client, seeded_keys: set[str], batch_size: int = 200, dry_run: bool = False) -> int:
+    """
+    Delete `projects` rows whose project_key is absent from the current
+    inference.csv seed, backing them up first.
+
+    WHY THIS EXISTS: the upsert above refreshes and inserts but never removes,
+    while project_key composition legitimately changes between pipeline
+    revisions -- the D04 barangay veto and the DQ-11 dedup both change which
+    monitoring rows survive and therefore how MON_ONLY_* keys are numbered.
+    Without pruning, every run LAYERS a new population on top of the old one
+    instead of replacing it. That went unnoticed until 2026-08-15, by which
+    point the table held 6,077 rows of which only 2,517 were current: 59% of
+    what the dashboard displayed was stale, including 438 rows carrying
+    Medium/High/Critical tiers into the manager's priority views from a
+    superseded model and population. See HANDOFF Section 2.
+
+    Deleting cascades to `inspector_schedules` (ON DELETE CASCADE) -- that is
+    regenerable PuLP output. It also cascades to `monitoring_reports`, which
+    IS hand-entered inspector data, so the full pre-delete rows are always
+    written to data/backups/ first and the count is logged loudly.
+    """
+    live = _fetch_all_live_rows(client, "project_key")
+    orphan_keys = [r["project_key"] for r in live if r.get("project_key") not in seeded_keys]
+
+    if not orphan_keys:
+        logger.info("Orphan check: 0 stale rows -- the table already matches the current seed exactly.")
+        return 0
+
+    logger.warning(
+        "Orphan check: %d of %d live rows are NOT in the current inference.csv seed "
+        "(stale rows left behind by earlier pipeline revisions).",
+        len(orphan_keys), len(live),
+    )
+
+    if dry_run:
+        logger.info("--dry-run: would back up and delete these %d orphan row(s).", len(orphan_keys))
+        return len(orphan_keys)
+
+    # Back up the FULL rows (not just keys) before destroying them.
+    backup_dir = REPO_ROOT / "data" / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / f"supabase_orphans_{dt.datetime.now():%Y%m%d-%H%M%S}.csv"
+    orphan_set = set(orphan_keys)
+    full_rows = [r for r in _fetch_all_live_rows(client, "*") if r.get("project_key") in orphan_set]
+    pd.DataFrame(full_rows).to_csv(backup_path, index=False)
+    logger.info("Backed up %d orphan row(s) -> %s", len(full_rows), backup_path)
+
+    deleted = 0
+    for i in range(0, len(orphan_keys), batch_size):
+        batch = orphan_keys[i : i + batch_size]
+        result = client.table(STATUS_TABLE).delete().in_("project_key", batch).execute()
+        deleted += len(result.data or [])
+
+    logger.info("Deleted %d orphan row(s) from `%s`.", deleted, STATUS_TABLE)
+    return deleted
+
+
+def push_to_supabase(
+    rows: list[dict], batch_size: int = 500, dry_run: bool = False, prune: bool = True
+) -> None:
+    seeded_keys = {r["project_key"] for r in rows if r.get("project_key")}
+
     if dry_run:
         logger.info("--dry-run: not writing to Supabase. Sample row:\n%s", json.dumps(rows[0], indent=2))
+        if prune:
+            # Orphan counting is read-only, so report it in dry-run too -- but
+            # only if credentials happen to be available, since --dry-run is
+            # otherwise usable with no Supabase access at all.
+            _load_frontend_env_local()
+            url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+            key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+            if url and key:
+                from supabase import create_client
+
+                prune_orphans(create_client(url, key), seeded_keys, dry_run=True)
+            else:
+                logger.info("--dry-run: no Supabase credentials, skipping the orphan-row count.")
         return
 
     _load_frontend_env_local()
@@ -316,19 +421,39 @@ def push_to_supabase(rows: list[dict], batch_size: int = 500, dry_run: bool = Fa
 
     logger.info("Done: %d project rows upserted into Supabase's `projects` table.", len(rows))
 
+    if prune:
+        prune_orphans(client, seeded_keys)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Build rows and print a sample, but don't write to Supabase.")
     parser.add_argument("--limit", type=int, default=None, help="Only process the first N rows of inference.csv (for testing).")
     parser.add_argument("--batch-size", type=int, default=500, help="Rows per upsert call (default 500).")
+    parser.add_argument(
+        "--no-prune", action="store_true",
+        help="Skip deleting `projects` rows absent from the current inference.csv seed. "
+             "Pruning is on by default -- see prune_orphans() for why leaving orphans "
+             "behind silently corrupts the dashboard.",
+    )
     args = parser.parse_args()
 
     rows = build_project_rows(limit=args.limit)
     if not rows:
         logger.warning("No rows built -- nothing to seed.")
         return
-    push_to_supabase(rows, batch_size=args.batch_size, dry_run=args.dry_run)
+
+    prune = not args.no_prune
+    if prune and args.limit is not None:
+        # --limit builds a deliberately partial seed; pruning against it would
+        # delete every project outside that slice. Never do this implicitly.
+        logger.warning(
+            "--limit is set, so orphan pruning is DISABLED for this run (pruning against a "
+            "partial seed would delete the rest of the table). Re-run without --limit to prune."
+        )
+        prune = False
+
+    push_to_supabase(rows, batch_size=args.batch_size, dry_run=args.dry_run, prune=prune)
 
 
 if __name__ == "__main__":

@@ -23,9 +23,9 @@ Movement vs. the previous (2026-07-31, 5,159-row) run: Random Forest is down ~1.
 
 **Supabase reseeded 2026-08-15 (step 7 complete)**: the `projects` table now holds exactly the 2,517 rows in the current `inference.csv`, scored by the retrained models. Live risk tiers: Low 646, Medium 34, High 8, Critical 25, and 1,804 unscored (no matching LSTM sequence -- the long-standing meta-learner coverage caveat, not a new defect).
 
-**Orphan-row cleanup (one-off, done 2026-08-15 -- read before the NEXT reseed)**: `seed_supabase.py` upserts on `project_key` and **never deletes**. Because `project_key` composition has changed across revisions (the D04 barangay veto and DQ-11 dedup both shift which rows exist and how `MON_ONLY_*` keys are numbered), every historical run had been *accumulating* rows rather than replacing them: the table held **6,077** rows after this reseed, of which only 2,517 were current and **3,560 were stale orphans** from earlier runs -- 59% of what the dashboard displayed, including 438 carrying Medium/High/Critical tiers that surfaced in priority views. Those 3,560 were deleted after backing up the full pre-delete table to `data/backups/` (gitignored, on Kirk's machine). `monitoring_reports` was empty so no hand-entered inspection data was at risk; the cascade removed 11 of 12 `inspector_schedules` rows, which are regenerable PuLP output -- **the Schedule view is near-empty until the optimizer is re-run**, which was a deliberate choice to keep this pass' blast radius small.
+**Orphan-row accumulation (root cause fixed 2026-08-15 -- `seed_supabase.py` now prunes automatically)**: the script upserts on `project_key`, and `project_key` composition legitimately changes between pipeline revisions (the D04 barangay veto and DQ-11 dedup both shift which rows survive and how `MON_ONLY_*` keys are numbered), so a pure upsert *layered* each new population on top of the last instead of replacing it. Undetected until this session, by which point `projects` held **6,077** rows of which only 2,517 were current -- **3,560 stale orphans**, 59% of the dashboard, including 438 feeding Medium/High/Critical tiers into the manager's priority views from a superseded model. Those were backed up and deleted; the cascade also took 11 of 12 `inspector_schedules` rows (regenerable PuLP output), so **the Schedule view stays near-empty until the optimizer is re-run**. `monitoring_reports` was empty, so no hand-entered inspection data was lost.
 
-This will recur on every reseed that follows a pipeline change. Either clear the table first, add a delete-not-in-current-batch step to `seed_supabase.py`, or re-run the cleanup: back up, then delete rows whose `project_key` is absent from the current `inference.csv`.
+`seed_supabase.py` now deletes any `projects` row whose `project_key` is absent from the current `inference.csv` seed, after writing the full pre-delete rows to `data/backups/` (gitignored). It is on by default, reported read-only under `--dry-run`, disabled by `--no-prune`, and disabled automatically under `--limit` (pruning against a deliberately partial seed would delete everything outside that slice). Note pruning cascades to `monitoring_reports` as well as `inspector_schedules` -- the backup is the safety net, so check the logged delete count on any run where that table is no longer empty.
 
 ## 3. Recent Major Fixes (most recent first)
 
@@ -66,15 +66,19 @@ python models\train_lstm.py --sequences ..\data\ready\lstm_sequences.npy --mask 
 # 6. Train Level 1 meta-learner (no args needed -- paths are computed from __file__, always correct):
 python models\train_meta_learner.py
 
-# 7. Seed Supabase (run from the REPO ROOT, not ml-service -- scripts/ lives there):
+# 7. Seed Supabase (run from the REPO ROOT, not ml-service -- scripts/ lives there).
+#    Upserts the current inference.csv population, THEN deletes any projects row
+#    no longer in that seed (backing it up to data/backups/ first) -- see the
+#    orphan-accumulation note in Section 2. --dry-run reports the orphan count
+#    without writing; --no-prune skips the delete step.
 cd ..
-python scripts\seed_supabase.py --dry-run    # inspect sample output first
-python scripts\seed_supabase.py              # real write
+python scripts\seed_supabase.py --dry-run    # inspect sample row + orphan count first
+python scripts\seed_supabase.py              # real write (upsert + prune)
 ```
 
 **Verify after step 3**: the log line `Step 6: labeled N/D rows (...), of which M recovered via a Phase 6 proxy completion date (... K of those via the Phase 8 D_start+1 clamp)` should read N=5761, D=8278, K=1159 (train 4,033 / test 1,728). History of this checkpoint: N=5159/8784, K=1260 before the 2026-08-15 DQ-9/10/11 cleanup; N=4804/8278, K=1159 after it; N=5761 after the same-day D12 project-type-classifier recovery unblocked ~950 formerly-Unclassified rows (see D09-D13 in `second-brain/02-Decisions/`). Also verify preprocess (step 1) logs `Unclassified: 2.9% of monitoring rows` and a `project_type_source breakdown` line. If these numbers drift beyond what a further data-quality fix explains, something upstream changed and needs investigating before continuing.
 
-**Verify after step 6**: `train_meta_learner.py`'s log should say `Meta-learner training set: 1,124 rows`. If it says something smaller/different, steps 4-5 didn't actually write fresh artifacts (check they didn't abort) and the meta-learner trained on stale OOF predictions.
+**Verify after step 6**: `train_meta_learner.py`'s log should say `Meta-learner training set: 1,396 rows` (1,124 before the 2026-08-15 D13 barangay canonicalization raised crosswalk linkage; see Section 2). If it says something smaller/different, steps 4-5 didn't actually write fresh artifacts (check they didn't abort) and the meta-learner trained on stale OOF predictions.
 
 ## 5. Sandbox Constraints (if working in the Cowork sandbox, not the user's machine)
 
