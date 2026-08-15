@@ -11,15 +11,19 @@ MAAGAP is Kirk's undergraduate CS thesis: a predictive risk-assessment and resou
 
 The ML pipeline, frontend dashboard, and Supabase backend are all functional and in sync as of the last `seed_supabase.py` run (real write, not `--dry-run`, completed successfully -- 3,625 project rows upserted). The methodology report (`MAAGAP_Model_Training_Testing_Methodology_Report.docx`, in the Thesis root) reflects the current model exactly -- headline numbers below are the real, final-run figures, not sandbox estimates.
 
-**Current headline metrics (final run, unrestricted hardware, post Phase 8 clamp fix):**
-- Resolved/labeled population: 5,159 of 8,784 monitoring rows (58.7%) -- train 3,612 / test 1,547
-- Random Forest: test accuracy 0.841, recall 0.859, AUC-ROC 0.905
-- XGBoost: test accuracy 0.921, recall 0.905, AUC-ROC 0.975
-- LSTM (n=1,124 train / 477 test): test accuracy 0.558, recall 0.894, precision 0.468 -- noisy, high-recall/low-precision base learner (see caveat below)
-- Meta-learner (Level 1, n=477 test): accuracy 0.895, precision 0.879, recall 0.851, F1 0.865, AUC-ROC 0.962
-- Risk tier distribution (test): Low 275, Medium 41, High 23, Critical 138
+**Current headline metrics (final run 2026-08-15, unrestricted hardware, post DQ-9/10/11 cleanup + D12/D13 recovery, 136-feature clean set):**
+- Resolved/labeled population: 5,761 of 8,278 pipeline rows (69.6%) -- train 4,033 / test 1,728
+- Random Forest: test accuracy 0.825, precision 0.830, recall 0.824, F1 0.827, AUC-ROC 0.899
+- XGBoost: test accuracy 0.919, precision 0.951, recall 0.886, F1 0.917, AUC-ROC 0.977
+- LSTM (n=1,396 train / 608 test): test accuracy 0.579, recall 0.911, precision 0.477, F1 0.626, AUC-ROC 0.719 -- still the noisy, high-recall/low-precision base learner (see caveat below)
+- Meta-learner (Level 1, n=608 test): accuracy 0.903, precision 0.876, recall 0.872, F1 0.874, AUC-ROC 0.967
+- Risk tier distribution (test): Low 323, Medium 76, High 29, Critical 180
 
-**STALE as of 2026-08-15**: `data/ready/train.csv`/`test.csv` were regenerated twice on 2026-08-15 -- first with the DQ-9/10/11 data-quality fixes (labeled population 5,159 -> 4,804), then with the D12 project-type classifier + D13 barangay canonicalization (4,804 -> 5,761: train 4,033 / test 1,728). The trained model artifacts above were NOT retrained against either regeneration -- these headline metrics describe the original pre-cleanup population. Retraining (HANDOFF steps 4-6) is a deliberately separate, not-yet-taken step.
+Movement vs. the previous (2026-07-31, 5,159-row) run: Random Forest is down ~1.6pp accuracy, XGBoost flat, LSTM up ~2pp accuracy with better recall, meta-learner up ~0.8pp accuracy and ~0.5pp AUC. The meta-learner's usable population grew most (train 1,124 -> 1,396, test 477 -> 608, +27%) because D13's barangay canonicalization improved crosswalk linkage, which is what determines LSTM sequence coverage.
+
+**Supabase NOT reseeded (blocked, 2026-08-15)**: step 7 could not run -- the project host `tgeiancntitgvfcrkvbi.supabase.co` does not resolve (general DNS is fine; `supabase.com` and `github.com` both resolve), which means the Supabase project is paused or deleted. Un-pause it from the Supabase dashboard, then run step 7. The live dashboard therefore still serves risk scores from the 2026-07-31 model against the pre-cleanup population.
+
+**Read before reseeding -- orphan rows**: `seed_supabase.py` upserts on `project_key` and never deletes. `inference.csv` shrank 3,625 -> 2,517 rows (the D12 classifier moved ~950 formerly-Unclassified rows into the labeled population, and DQ-11 removed 503 duplicates), so a plain reseed will refresh 2,517 rows and leave ~1,100 stale rows behind in the `projects` table -- including removed duplicates and rows that are no longer "ongoing". Decide explicitly whether to clear the table first or add a delete-not-in-batch step before running step 7.
 
 ## 3. Recent Major Fixes (most recent first)
 

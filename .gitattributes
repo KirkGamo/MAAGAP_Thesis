@@ -1,0 +1,47 @@
+# Normalize line endings so Windows checkouts don't show whole files as
+# "modified" when only CRLF/LF differs (this repeatedly cost verification time:
+# `git status` showed 9 files changed while `git diff -w` proved the content
+# identical). Text files are stored LF-normalized in the repo and checked out
+# with the platform's native endings.
+* text=auto
+
+# Explicitly text, so they normalize regardless of content heuristics.
+*.py    text
+*.ts    text
+*.tsx   text
+*.js    text
+*.jsx   text
+*.json  text
+*.md    text
+*.css   text
+*.sql   text
+*.yml   text
+*.yaml  text
+*.toml  text
+*.mmd   text
+*.csv   text
+
+# Shell scripts must keep LF even on Windows or they break in containers.
+*.sh    text eol=lf
+
+# Binary: never normalize, never diff as text.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.pdf    binary
+*.docx   binary
+*.xlsx   binary
+*.xls    binary
+*.keras  binary
+*.h5     binary
+*.joblib binary
+*.pkl    binary
+*.npy    binary
+*.parquet binary
+
+# The manuscript is a single ~835KB Markdown file whose bulk is base64-embedded
+# PNG data URIs. Diffing it line-by-line is useless noise; mark it so tooling
+# treats it as an opaque document rather than reviewable text.
+MAAGAP_A_Machine_Learning_Framework_*.md -diff
