@@ -647,18 +647,83 @@ mismatch (different barangay entirely), not to require near-identical text.
 
 def _normalize_barangay(raw) -> str:
     """
-    Light normalization for barangay-name comparison only (no reference-list
-    canonicalization, unlike canonicalize_municipality — there is no
-    authoritative barangay list in this project). Strips a leading
+    Light normalization for barangay-name comparison: strips a leading
     "Brgy."/"Barangay" label and collapses whitespace/case so that
-    "Brgy. Balicua" and "Balicua" compare as equal, without pretending to
-    resolve every formatting variant.
+    "Brgy. Balicua" and "Balicua" compare as equal. This is the first stage
+    of barangay handling; `canonicalize_barangay` below additionally
+    validates against the official PSGC reference list when the row's
+    municipality is known (added 2026-08-15 — before that, no authoritative
+    barangay list existed in this project and this text-normalization was
+    the entire treatment).
     """
     text = _normalize_text(raw)
     if not text:
         return ""
     text = re.sub(r"^(brgy\.?|barangay)\s*", "", text).strip()
     return text
+
+
+# PSGC barangay reference (DQ-3 barangay half / Issue-Barangay-Canonicalization):
+# official 1,901-barangay list for Iloilo Province's 44 LGUs, exported from the
+# PSGC (via the psgc.gitlab.io mirror of PSA's quarterly publication file) on
+# 2026-08-15 and committed as reference/psgc_barangays_iloilo.csv. Barangay
+# canonicalization MUST be municipality-scoped — bare barangay names repeat
+# heavily across municipalities ("Poblacion" exists in nearly every LGU), so a
+# province-wide fuzzy match would happily map a misspelling onto a same-named
+# barangay in the wrong municipality. Consequently canonicalization only
+# applies when the row's municipality is itself resolved; otherwise the
+# text-normalized string passes through unchanged (graceful degradation,
+# same philosophy as canonicalize_municipality's title-case fallback).
+PSGC_BARANGAY_REFERENCE_PATH = Path(__file__).parent / "reference" / "psgc_barangays_iloilo.csv"
+
+# Slightly stricter than MUNICIPALITY_CANONICALIZATION_CUTOFF: within a single
+# municipality the candidate list is small (a few dozen names), and the cost
+# of a wrong canonical mapping (silently merging two different barangays —
+# exactly the conflation the crosswalk veto exists to prevent) outweighs the
+# cost of leaving a noisy string un-canonicalized (veto still compares the
+# normalized text fuzzily, as before).
+BARANGAY_CANONICALIZATION_CUTOFF = 82
+
+
+@functools.lru_cache(maxsize=1)
+def _psgc_barangays_by_municipality() -> dict:
+    """Load the PSGC reference once: {canonical municipality -> tuple of barangay names}."""
+    if not PSGC_BARANGAY_REFERENCE_PATH.exists():
+        logger.warning(
+            "PSGC barangay reference not found at %s — barangay canonicalization disabled, "
+            "falling back to text normalization only", PSGC_BARANGAY_REFERENCE_PATH,
+        )
+        return {}
+    ref = pd.read_csv(PSGC_BARANGAY_REFERENCE_PATH)
+    return {muni: tuple(group["barangay"]) for muni, group in ref.groupby("municipality")}
+
+
+@functools.lru_cache(maxsize=16384)
+def canonicalize_barangay(raw: str, municipality: str) -> str:
+    """
+    Map a free-text barangay string to its official PSGC name within the given
+    (already-canonicalized) municipality, following the same pattern as
+    canonicalize_municipality: RapidFuzz WRatio with default_process on both
+    sides, returning the normalized input unchanged when nothing scores above
+    BARANGAY_CANONICALIZATION_CUTOFF or when the municipality isn't in the
+    reference (unrecognized text degrades gracefully rather than raising).
+    """
+    cleaned = _normalize_barangay(raw)
+    if not cleaned:
+        return ""
+    candidates = _psgc_barangays_by_municipality().get(municipality)
+    if not candidates:
+        return cleaned
+    result = process.extractOne(
+        cleaned, candidates, scorer=fuzz.WRatio,
+        processor=rapidfuzz_utils.default_process,
+        score_cutoff=BARANGAY_CANONICALIZATION_CUTOFF,
+    )
+    if result is not None:
+        # Return in normalized (lowercase) form so downstream comparison via
+        # _barangay_conflicts stays case-consistent with un-canonicalized text.
+        return _normalize_text(result[0])
+    return cleaned
 
 
 def _barangay_conflicts(a: str, b: str) -> bool:
@@ -746,8 +811,21 @@ def fuzzy_link_cascading(
     R["_name"] = R[name_right].map(_normalize_text)
     R["_muni"] = R[muni_right].map(canonicalize_municipality)
     R["_year"] = pd.to_numeric(R[year_right], errors="coerce")
-    L["_brgy"] = L[barangay_left].map(_normalize_barangay) if barangay_left else ""
-    R["_brgy"] = R[barangay_right].map(_normalize_barangay) if barangay_right else ""
+    # Barangay comparison keys are canonicalized against the PSGC reference
+    # within each row's (already canonical) municipality — see
+    # canonicalize_barangay. This tightens the veto: two noisy spellings of
+    # the SAME barangay now collapse to one canonical name (fewer false
+    # vetoes), while two different barangays that happened to fuzzy-score
+    # above the veto cutoff against each other are pulled to their distinct
+    # official names (fewer missed vetoes).
+    L["_brgy"] = (
+        [canonicalize_barangay(b, m) for b, m in zip(L[barangay_left], L["_muni"])]
+        if barangay_left else ""
+    )
+    R["_brgy"] = (
+        [canonicalize_barangay(b, m) for b, m in zip(R[barangay_right], R["_muni"])]
+        if barangay_right else ""
+    )
 
     matches = []
 
