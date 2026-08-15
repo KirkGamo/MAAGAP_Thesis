@@ -11,11 +11,11 @@ The PAGASA climate data request (real rainfall/wind observations, intended to re
 
 ## Why this matters
 
-Real PAGASA data, once received, can only replace the proxy for the portion of the labeled population dated 2015-2024 (2015 is the labeled population's floor as of the 2026-08-15 data-quality cleanup — see [[../02-Decisions/D09-Study-Period-Floor]]). Verified against the post-cleanup 4,804-row labeled population (`data/ready/train.csv` + `test.csv`, keyed on `D_start`, no nulls):
+Real PAGASA data, once received, can only replace the proxy for the portion of the labeled population dated 2015-2024 (2015 is the labeled population's floor as of the 2026-08-15 data-quality cleanup — see [[../02-Decisions/D09-Study-Period-Floor]]). Verified against the labeled population as of the 2026-08-15 D12/D13 regeneration (5,761 rows — up from 4,804 after the project-type classifier recovery; `data/ready/train.csv` + `test.csv`, keyed on `D_start`, no nulls):
 
-- **189 of 4,804 rows (3.93%)** fall in 2025 — all of them, since 2026 has zero rows.
-- Evenly split, not concentrated: 126/3,363 train (3.75%) and 63/1,441 test (4.37%) — no stratification concern.
-- `is_wet_season_release` already covers these 189 rows as fallback signal, so they aren't left with no weather feature at all, just the coarser one.
+- **238 of 5,761 rows (4.13%)** fall in 2025 — all of them, since 2026 has zero rows. (Was 189/4,804 = 3.93% before the D12 recovery; the newly-recovered rows include 2025 releases, so the tail grew proportionally with the population.)
+- Evenly split, not concentrated: 171/4,033 train (4.24%) and 67/1,728 test (3.88%) — no stratification concern.
+- `is_wet_season_release` already covers these 238 rows as fallback signal, so they aren't left with no weather feature at all, just the coarser one.
 
 At under 4% of the population and split-balanced, this is a footnote-scale caveat for Chapter 1's Data Availability limitation and the methodology report — not something that needs a design change (e.g. dropping 2025 rows, or delaying the PAGASA request). State it plainly rather than either hiding it or over-weighting it.
 

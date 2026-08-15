@@ -20,5 +20,7 @@ Every significant, non-obvious decision on this project, in roughly the order th
 - [[02-Decisions/D09-Study-Period-Floor|D09: Study-Period Floor]] — dropping 3 pre-2015 data-entry-error rows via a genuine gap in the data, after a blanket "2016-2025" cutoff was tried and rejected for also excluding 381 legitimate 2015 rows.
 - [[02-Decisions/D10-Direct-Date-Credibility-Check|D10: Direct Completion-Date Credibility Check]] — closing the same non-positive-duration gap Phase 8 already guards against for proxy dates, but for directly-observed completion dates.
 - [[02-Decisions/D11-Exact-Duplicate-Removal|D11: Exact-Duplicate Row Removal]] — deduplicating genuine duplicate ledger entries, plus the mon_row_id index-integrity prerequisite fix it (and D09) depend on.
+- [[02-Decisions/D12-Project-Type-Classifier|D12: Supervised Project-Type Classifier]] — the DQ-7 v3 TF-IDF/logistic-regression fallback that recovers ~85% of heuristic-Unclassified rows at the heuristic's own accuracy standard, trained at run time from a committed hand-labeled sample.
+- [[02-Decisions/D13-Barangay-PSGC-Canonicalization|D13: Barangay PSGC Canonicalization]] — validating barangay strings against the official 1,901-entry PSGC list (municipality-scoped), closing most of the crosswalk's residual conflation risk.
 
 See [[MOC-Known-Issues]] for the limitations these decisions left behind, and [[99-Log]] for the chronological work history.
