@@ -1,18 +1,18 @@
 ---
 tags: [open-issue, ml-pipeline, target-variable]
-status: active
+status: narrowed
 created: 2026-08-08
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
-# Open Issue: Unclassified Project Type
+# Open Issue: Unclassified Project Type (narrowed 2026-08-15)
 
-19.1% of all monitoring rows (1,674 of 8,784) have `project_type = "Unclassified"` and can therefore **never** be labeled — `T_standard` is undefined without a resolved Infrastructure/Non-Infrastructure category, so `RedFlag` stays NaN for these regardless of how good their completion-date evidence is (this is true even for rows with a perfectly credible direct completion date).
+Previously 19.1% of all monitoring rows (1,674 of 8,784) had `project_type = "Unclassified"` and could **never** be labeled — `T_standard` is undefined without a resolved Infrastructure/Non-Infrastructure category, so `RedFlag` stays NaN regardless of completion-date evidence.
 
-## Why this matters
+**Largely resolved by [[../02-Decisions/D12-Project-Type-Classifier]]** (the supervised TF-IDF + logistic-regression fallback the original Data Audit Report Section 6 Step 5 called for): the residual Unclassified rate is now **2.9%** of raw monitoring rows (251 of 8,784; 239 within the deduplicated 8,278-row pipeline population). The recovery lifted the labeled population 4,804 → **5,761 rows (+19.9%)**, with every classifier-typed row marked `project_type_source = "classifier"` for downstream discounting or exclusion.
 
-This is a real ceiling on the labeled population size that no target-construction fix (proxy dates, lag correction, the [[../02-Decisions/D03-Phase8-Clamp|Phase 8 clamp]]) can touch — it's upstream, in [[../03-ML-Pipeline/Stage1-Preprocess|project-type classification]], not in target construction.
+## What remains open
 
-## What would resolve it
-
-Improving the project-type classifier's coverage/accuracy at the preprocessing stage. Not currently scoped as active work.
+- The 251 residual rows are those the classifier could not call at ≥0.7 confidence — by design they stay Unclassified rather than being guessed (`project_type` feeds `T_standard` feeds `RedFlag`). Genuinely ambiguous names (bare "FA", "TPED", "School Facilities") likely need PPDO's own records, not better modeling.
+- Classifier-typed rows (953 of the labeled population, 16.5%) carry a measured ~1.1% error rate on held-out evaluation (98.9% accuracy at the threshold) — a small, quantified label-noise source that should be caveated in the methodology report alongside the proxy-date caveats.
+- Model retraining on the enlarged population has not yet happened (HANDOFF Section 2's staleness note applies).

@@ -9,7 +9,10 @@ Transfer / Monitoring workbook profiled in the MAAGAP Data Audit Report.
     Step 2  Type coercion (dates, currency) with per-column failure logging
     Step 3  Entity resolution (fuzzy project-key crosswalk across sheets)
     Step 4  Categorical normalization (STATUS / REMARKS / Municipality)
-    Step 5  Project-type classification (Infrastructure vs Non-Infrastructure)
+    Step 5  Project-type classification (Infrastructure vs Non-Infrastructure):
+            keyword heuristic fast path + supervised TF-IDF/logistic-regression
+            fallback (v3, DQ-7) trained at run time on the hand-labeled sample
+            in reference/project_type_labels.csv
 
 This script is intentionally framework-agnostic: it is a standalone,
 CLI-runnable module today, and is designed to be imported as-is by the
@@ -990,9 +993,13 @@ def classify_project_type(name: str) -> str:
     """
     Classify a single project name as 'Infrastructure', 'Non-Infrastructure',
     or 'Unclassified' via keyword dictionaries (Data Audit Report Finding
-    DQ-7). This is an improved heuristic (v2), not a final classifier — see
-    the Data Audit Report's recommendation to train a supervised text
-    classifier on a hand-labeled sample once volume allows.
+    DQ-7). This keyword heuristic (v2) is retained as the FAST PATH of the
+    v3 design: on a 550-name hand-labeled evaluation sample it is ~99%
+    accurate wherever it commits to a class (146/148 and 148/149 agreement
+    on its Infrastructure/Non-Infrastructure strata), and its mutual-
+    exclusion logic is fully auditable. Rows it leaves Unclassified are
+    handed to the supervised fallback classifier — see
+    `train_project_type_classifier` and `apply_project_type_classification`.
     """
     if not isinstance(name, str) or not name.strip():
         return "Unclassified"
@@ -1006,17 +1013,128 @@ def classify_project_type(name: str) -> str:
     return "Unclassified"  # ambiguous (both matched) or unmatched (neither matched)
 
 
+# --- DQ-7 v3: supervised fallback classifier ---------------------------------
+# The Data Audit Report (Section 6 Step 5) recommended a supervised TF-IDF +
+# logistic-regression classifier over NAME OF PROJECT, trained on a hand-
+# labeled sample, because keyword matching alone left 19.1% of monitoring rows
+# Unclassified — a hard ceiling on the labeled population (Unclassified rows
+# have no T_standard, so RedFlag can never be computed for them). The labeled
+# sample lives in reference/project_type_labels.csv (550 names, stratified
+# across the v2 heuristic's three output classes, hand-labeled 2026-08-15 with
+# rules documented in D12-Project-Type-Classifier.md; label X = ambiguous-from-
+# name-alone, excluded from training). The model is deliberately trained AT
+# RUN TIME from that CSV (sub-second on 538 rows) rather than shipped as a
+# pickled artifact: the CSV is the single, human-auditable source of truth,
+# and *.joblib/*.pkl are gitignored in this repo by design.
+#
+# The fallback only ever runs on rows the keyword heuristic left Unclassified,
+# and only commits to a class at >= PROJECT_TYPE_CLASSIFIER_THRESHOLD
+# confidence — chosen because out-of-fold accuracy on kept names at this
+# threshold (98.9%) matches the keyword heuristic's own observed accuracy
+# (~99%), i.e. classifier-recovered rows meet the same evidentiary standard as
+# keyword-classified ones. Below-threshold rows stay Unclassified rather than
+# being guessed at (project_type feeds T_standard feeds RedFlag — a silent
+# wrong class here silently flips training labels downstream).
+PROJECT_TYPE_LABELS_PATH = Path(__file__).parent / "reference" / "project_type_labels.csv"
+PROJECT_TYPE_CLASSIFIER_THRESHOLD = 0.7
+_PROJECT_TYPE_LABEL_MAP = {"I": "Infrastructure", "N": "Non-Infrastructure"}
+
+
+def train_project_type_classifier(labels_path: Path = PROJECT_TYPE_LABELS_PATH):
+    """
+    Train the DQ-7 v3 fallback classifier from the hand-labeled reference CSV.
+
+    Returns a fitted sklearn pipeline, or None (with a warning) when the
+    labels file or scikit-learn is unavailable — callers degrade gracefully
+    to pure v2 keyword behavior in that case. Feature design: word 1-2-grams
+    capture phrases ("day care", "sound system"); char_wb 2-4-grams absorb
+    this ledger's pervasive misspellings ("Constrcution", "Adress",
+    "Monoblocl") that word tokens miss. 5-fold CV on the labeled sample:
+    96.3% overall, 94.6% on the heuristic-Unclassified stratum (98.9% on the
+    subset kept at the 0.7 confidence threshold).
+    """
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.pipeline import make_pipeline, make_union
+    except ImportError:  # pragma: no cover - sklearn is in requirements.txt
+        logger.warning("Step 5: scikit-learn unavailable — falling back to keyword-only classification")
+        return None
+    if not labels_path.exists():
+        logger.warning(
+            "Step 5: hand-labeled sample not found at %s — falling back to keyword-only classification",
+            labels_path,
+        )
+        return None
+
+    labels = pd.read_csv(labels_path)
+    train_df = labels[labels["label"].isin(_PROJECT_TYPE_LABEL_MAP)]
+    features = make_union(
+        TfidfVectorizer(analyzer="word", ngram_range=(1, 2), sublinear_tf=True),
+        TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), sublinear_tf=True),
+    )
+    model = make_pipeline(features, LogisticRegression(C=2.0, max_iter=2000, class_weight="balanced"))
+    model.fit(
+        train_df["NAME OF PROJECT"].map(_normalize_project_name_for_matching),
+        train_df["label"].map(_PROJECT_TYPE_LABEL_MAP),
+    )
+    logger.info(
+        "Step 5: trained DQ-7 fallback classifier on %d hand-labeled names (%d ambiguous 'X' rows excluded)",
+        len(train_df), int((labels["label"] == "X").sum()),
+    )
+    return model
+
+
 def apply_project_type_classification(sheets: dict[str, pd.DataFrame], report: PipelineReport) -> dict[str, pd.DataFrame]:
-    """Classify project type on the monitoring sheet and record coverage statistics."""
+    """
+    Classify project type on the monitoring sheet and record coverage stats.
+
+    v3 (DQ-7) two-stage design: keyword heuristic first (auditable, ~99%
+    accurate where it commits), then the supervised fallback ONLY on rows the
+    heuristic left Unclassified, committing only at >= 0.7 confidence. A
+    `project_type_source` column records which stage decided each row
+    ("keyword" / "classifier" / "unclassified") so downstream consumers and
+    the methodology report can always separate the two evidentiary bases.
+    """
     logger.info("Step 5: classifying project type (Infrastructure vs. Non-Infrastructure)")
 
     mon = sheets["monitoring"]
     mon["project_type"] = mon["NAME OF PROJECT"].map(classify_project_type)
+    mon["project_type_source"] = np.where(mon["project_type"] == "Unclassified", "unclassified", "keyword")
+
+    heuristic_unclassified = int((mon["project_type"] == "Unclassified").sum())
+    logger.info(
+        "  keyword heuristic: %d/%d rows Unclassified (%.1f%%) before fallback",
+        heuristic_unclassified, len(mon), heuristic_unclassified / len(mon) * 100,
+    )
+
+    classifier = train_project_type_classifier()
+    if classifier is not None and heuristic_unclassified:
+        uncl_mask = mon["project_type"] == "Unclassified"
+        # fillna + astype(str): NAME OF PROJECT contains occasional bare-numeric
+        # cells (e.g. a stray year typed into the name column), which would
+        # crash the string normalizer if passed through un-coerced.
+        names = mon.loc[uncl_mask, "NAME OF PROJECT"].fillna("").astype(str).map(_normalize_project_name_for_matching)
+        has_name = names.str.strip() != ""
+        if has_name.any():
+            proba = classifier.predict_proba(names[has_name])
+            confident = proba.max(axis=1) >= PROJECT_TYPE_CLASSIFIER_THRESHOLD
+            predicted = classifier.classes_[proba.argmax(axis=1)]
+            target_index = names[has_name].index[confident]
+            mon.loc[target_index, "project_type"] = predicted[confident]
+            mon.loc[target_index, "project_type_source"] = "classifier"
+            logger.info(
+                "  DQ-7 fallback classifier: recovered %d/%d Unclassified rows at >= %.1f confidence "
+                "(%d below threshold stay Unclassified rather than being guessed)",
+                int(confident.sum()), heuristic_unclassified, PROJECT_TYPE_CLASSIFIER_THRESHOLD,
+                heuristic_unclassified - int(confident.sum()),
+            )
 
     coverage = (mon["project_type"].value_counts(normalize=True) * 100).to_dict()
     report.project_type_coverage = coverage
     for label, pct in coverage.items():
         logger.info("  %s: %.1f%% of monitoring rows", label, pct)
+    logger.info("  project_type_source breakdown: %s", mon["project_type_source"].value_counts().to_dict())
 
     return sheets
 
