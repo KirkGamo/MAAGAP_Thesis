@@ -87,7 +87,14 @@ EXCLUDE_COLS = [
     "No.", "FUNDS RELEASED TO:",
     "T_actual_days", "T_standard_days", "NegativeSlippage_pct",
     "has_completion_date", "completion_date_is_proxy", "completion_date_is_clamped",
+    "direct_date_rejected_not_credible", "batch_year_deviation_flag",
     "extension_approved", "contractor_id",
+    # project_type_source records WHICH stage assigned project_type (keyword
+    # heuristic vs. the DQ-7 supervised fallback vs. neither) -- provenance
+    # metadata for auditing label quality, not a model input. Listed
+    # explicitly so it is dropped silently rather than tripping the
+    # "unexpected non-numeric column" warning below on every run.
+    "project_type_source",
     # D_start is the resolved (DATE RELEASED, falling back to DATE MONITORED)
     # datetime used to derive release_month/release_quarter/days_since_release/
     # is_wet_season_release in feature_engineering.py -- it's housekeeping for
