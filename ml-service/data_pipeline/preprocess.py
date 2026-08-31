@@ -1159,7 +1159,15 @@ def load_project_type_overrides() -> dict[str, str]:
         return {}
 
     valid = set(STANDARD_DURATION_DAYS)  # {'Infrastructure', 'Non-Infrastructure'}
-    overrides: dict[str, str] = {}
+    # Collect ALL labels per normalized key first, so a key claimed twice with
+    # DIFFERENT labels can be detected instead of being silently decided by
+    # whichever row happens to come last. This is not hypothetical: the
+    # 2026-08-31 labeling pass contained "Slope Protection"/"Slope protection"
+    # and "Well Development"/"Well development", which differ only in case --
+    # something _normalize_project_name_for_matching folds -- so each pair
+    # collapsed to one key holding two contradictory labels.
+    by_key: dict[str, set[str]] = {}
+    originals: dict[str, list[str]] = {}
     rejected = 0
     for name, ptype in zip(df["NAME OF PROJECT"], df["project_type"]):
         if not isinstance(name, str) or not name.strip():
@@ -1168,12 +1176,39 @@ def load_project_type_overrides() -> dict[str, str]:
         if label not in valid:
             rejected += 1
             continue
-        overrides[_normalize_project_name_for_matching(name)] = label
+        key = _normalize_project_name_for_matching(name)
+        by_key.setdefault(key, set()).add(label)
+        originals.setdefault(key, []).append(name)
+
+    overrides: dict[str, str] = {}
+    conflicts: list[str] = []
+    for key, labels in by_key.items():
+        if len(labels) > 1:
+            # Refuse to guess. Dropping the key entirely means the affected
+            # rows fall through to the keyword/classifier tiers and reappear in
+            # unclassified_project_review.csv, so the conflict surfaces in two
+            # places rather than silently resolving to one arbitrary answer.
+            conflicts.append(key)
+            continue
+        overrides[key] = next(iter(labels))
+
     if rejected:
         logger.warning(
             "Step 5: %d manual override row(s) skipped -- project_type must be exactly one of %s",
             rejected, sorted(valid),
         )
+    if conflicts:
+        logger.error(
+            "Step 5: %d manual override key(s) DROPPED for holding contradictory labels. "
+            "Names differing only in case/punctuation collapse to one key, so these must agree. "
+            "Fix them in %s:",
+            len(conflicts), PROJECT_TYPE_OVERRIDES_PATH.name,
+        )
+        for key in conflicts:
+            logger.error(
+                "    %r <- %s  (labels: %s)",
+                key, originals[key], sorted(by_key[key]),
+            )
     return overrides
 
 
@@ -1392,12 +1427,80 @@ def run_pipeline(
     return report
 
 
+def promote_review_labels() -> int:
+    """
+    Move filled-in labels from unclassified_project_review.csv into
+    project_type_manual_overrides.csv (D14 workflow convenience).
+
+    The review file is REGENERATED on every preprocess run, so anything typed
+    into its `project_type` column is lost on the next run unless it is copied
+    into the overrides file first. That copy step was manual and easy to
+    forget; this does it in one command. Existing override entries are never
+    modified -- a name already present is reported and left alone, so this can
+    be run repeatedly and incrementally without clobbering earlier decisions.
+
+    Returns the number of newly promoted entries.
+    """
+    if not UNCLASSIFIED_REVIEW_PATH.exists():
+        logger.error("No review file at %s -- run the pipeline first to generate it.", UNCLASSIFIED_REVIEW_PATH)
+        return 0
+
+    review = pd.read_csv(UNCLASSIFIED_REVIEW_PATH)
+    if "project_type" not in review.columns:
+        logger.error("%s has no `project_type` column to promote.", UNCLASSIFIED_REVIEW_PATH.name)
+        return 0
+
+    valid = set(STANDARD_DURATION_DAYS)
+    filled = review[review["project_type"].astype(str).str.strip().isin(valid)]
+    unfilled = len(review) - len(filled)
+    if filled.empty:
+        logger.info(
+            "Nothing to promote: no rows in %s have `project_type` set to one of %s (%d row(s) left blank).",
+            UNCLASSIFIED_REVIEW_PATH.name, sorted(valid), unfilled,
+        )
+        return 0
+
+    if PROJECT_TYPE_OVERRIDES_PATH.exists():
+        existing = pd.read_csv(PROJECT_TYPE_OVERRIDES_PATH)
+        if "NAME OF PROJECT" not in existing.columns:
+            existing = pd.DataFrame(columns=["NAME OF PROJECT", "project_type"])
+    else:
+        existing = pd.DataFrame(columns=["NAME OF PROJECT", "project_type"])
+
+    existing_keys = {_normalize_project_name_for_matching(str(n)) for n in existing["NAME OF PROJECT"]}
+    new_rows, skipped = [], []
+    for name, ptype in zip(filled["NAME OF PROJECT"], filled["project_type"]):
+        key = _normalize_project_name_for_matching(str(name))
+        if key in existing_keys:
+            skipped.append(str(name))
+            continue
+        existing_keys.add(key)
+        new_rows.append({"NAME OF PROJECT": name, "project_type": str(ptype).strip()})
+
+    if skipped:
+        logger.info("%d name(s) already in %s -- left unchanged: %s",
+                    len(skipped), PROJECT_TYPE_OVERRIDES_PATH.name, skipped[:5])
+    if not new_rows:
+        logger.info("Nothing new to promote.")
+        return 0
+
+    combined = pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True)
+    PROJECT_TYPE_OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_csv(PROJECT_TYPE_OVERRIDES_PATH, index=False)
+    logger.info(
+        "Promoted %d new override(s) into %s (now %d total). %d review row(s) still blank. "
+        "Re-run the pipeline to apply them.",
+        len(new_rows), PROJECT_TYPE_OVERRIDES_PATH.name, len(combined), unfilled,
+    )
+    return len(new_rows)
+
+
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="MAAGAP data preprocessing pipeline (Steps 1-5)."
     )
     parser.add_argument(
-        "--input", type=Path, required=True,
+        "--input", type=Path, required=False,
         help="Path to the consolidated PPDO workbook (.xlsx).",
     )
     parser.add_argument(
@@ -1416,12 +1519,24 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--log-level", type=str, default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
+    parser.add_argument(
+        "--promote-review", action="store_true",
+        help="Copy filled-in labels from reference/unclassified_project_review.csv into "
+             "reference/project_type_manual_overrides.csv, then exit without running the "
+             "pipeline (D14 workflow). Existing overrides are never modified.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     configure_logging(args.log_level)
+    if args.promote_review:
+        promote_review_labels()
+        return 0
+    if args.input is None:
+        logger.error("--input is required unless --promote-review is used.")
+        return 1
     try:
         run_pipeline(args.input, args.output_dir, args.fuzzy_score_cutoff, args.year_tolerance)
     except (FileNotFoundError, ValueError) as exc:

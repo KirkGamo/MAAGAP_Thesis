@@ -71,9 +71,33 @@ entries. Post-fix verification is clean on all seven checks (parse integrity,
 invalid values, conflicting keys, no-op entries, accidental overrides of
 already-classified rows, coverage, convention contradictions).
 
-**Known gap this exposed**: `load_project_type_overrides()` resolves duplicate
-normalized keys by last-write-wins rather than failing loudly. Worth hardening
-so a future conflicting pair is rejected rather than silently decided.
+**Hardened afterwards (2026-08-31)**: `load_project_type_overrides()` used to
+resolve duplicate normalized keys by last-write-wins. It now collects all
+labels per key and, on disagreement, logs an ERROR naming both original
+spellings and DROPS the key entirely rather than guessing -- so the affected
+rows fall through to the keyword/classifier tiers and reappear in
+`unclassified_project_review.csv`, surfacing the conflict in two places.
+
+**Workflow convenience (2026-08-31)**: `preprocess.py --promote-review` copies
+filled-in labels from the review worklist into the overrides file and exits
+without running the pipeline. This removes the one manual step in the D14 loop
+-- the review file is regenerated on every run, so labels typed into it were
+previously lost unless hand-copied first. Existing overrides are never
+modified, so it is safe to run repeatedly and incrementally.
+
+**The 3 remaining Unclassified rows are unfixable via this mechanism**, because
+overrides are keyed on the project NAME and all three lack a usable one:
+  - `"45701"` -- an Excel date serial (2025-02-13) typed into the name cell.
+    The row is otherwise real: Brgy. Burgos Regidor Dumangas, released
+    2024-10-22, monitored 2025-12-12, STATUS Completed.
+  - a fully blank name -- the row is near-empty (only LOCATION and a
+    2026-03-19 monitoring date), effectively a placeholder.
+  - a whitespace-only name on a REAL PHP 5,921,706.74 on-going project in
+    San Joaquin, REMARKS "Implemented by PEO".
+Clearing these would need either a name-recovery step keyed on something other
+than NAME OF PROJECT, or PPDO confirming what they are. Left Unclassified,
+which is the correct outcome for a row whose type genuinely cannot be
+determined.
 
 Per HANDOFF: labeling changed the population, so retraining and reseeding
 against it is a SEPARATE approval and has not been done. `data/ready` and the
