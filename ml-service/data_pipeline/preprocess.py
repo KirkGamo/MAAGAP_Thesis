@@ -527,8 +527,48 @@ def coerce_date_column(series: pd.Series, sheet: str, column: str) -> tuple[pd.S
     return coerced, report
 
 
+# Magnitude suffixes used in the source workbook ("1.760 M" = 1.76 million).
+# The letter must not be part of a longer word: a cell reading 50,000.00
+# followed by a newline and "MOOE 2024" annotates a funding source -- it is
+# not 50,000 million.
+_CURRENCY_MAGNITUDE = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000}
+# "50.000.00" / "36,000..00" use a period as a THOUSAND separator, or are simply
+# mistyped. Intent is unrecoverable -- 50.000.00 could be 50,000.00 or 50.00 --
+# so they stay NaN for imputation to handle, as the pre-2026-08-31 code did.
+_CURRENCY_AMBIGUOUS_RE = re.compile(r"\d\.\d*\.")
+# The numeric region: from the first digit, consume digits and separators, but
+# STOP at a newline or letter. That boundary is what prevents a trailing
+# annotation from being concatenated into the number, while still tolerating
+# the workbook's stray internal spaces (" 31, 671,942.80", " 1,000, 000.00")
+# and misplaced commas ("100,00.00"), which are stripped rather than parsed.
+_CURRENCY_REGION_RE = re.compile(r"-?\d[\d,. \t]*")
+_CURRENCY_SUFFIX_LOOKAHEAD_RE = re.compile(r"[ \t]*([KkMmBb])(?![A-Za-z])")
+
+
 def _coerce_single_currency(value) -> float:
-    """Coerce a single mixed-type currency cell to a float, or NaN on failure."""
+    """
+    Coerce a single mixed-type currency cell to a float, or NaN on failure.
+
+    Two defects in the original implementation, both found 2026-08-31 while
+    tracing an amount that parsed as 50000.002024:
+
+    1. It stripped every non-digit character, so a MAGNITUDE SUFFIX was
+       silently discarded rather than applied -- " 1.760 M" became 1.76
+       instead of 1,760,000. 46 rows (~PHP 110M of project value) were
+       understated a millionfold, 19 of them inside the training set, where
+       AMOUNT is a model feature that also drives IQR outlier flagging and
+       min-max scaling.
+    2. Stripping non-digits also CONCATENATED digits from trailing
+       annotations: a cell holding "150,0", a newline, then "20% NTA CY 2025"
+       became 1,500,202,025 -- a PHP 1.5 BILLION phantom from a PHP 1,500 row.
+
+    Strategy: reject unrecoverably-ambiguous forms, then take only the numeric
+    region starting at the first digit and ending at the first letter or
+    newline, applying a K/M/B multiplier when one is genuinely attached.
+    Separators inside that region (commas, stray spaces) are stripped, which
+    preserves the original behaviour for the many cells whose only problem is
+    inconsistent thousands formatting.
+    """
     if pd.isna(value):
         return np.nan
     if isinstance(value, (int, float, np.integer, np.floating)):
@@ -536,13 +576,26 @@ def _coerce_single_currency(value) -> float:
     s = str(value).strip()
     if not s or s.upper() in ("NA", "N/A"):
         return np.nan
-    cleaned = re.sub(r"[^\d.\-]", "", s.replace(",", ""))
-    if cleaned in ("", "-", ".", "-."):
+
+    if _CURRENCY_AMBIGUOUS_RE.search(s):
+        return np.nan
+
+    region = _CURRENCY_REGION_RE.search(s)
+    if not region:
+        return np.nan
+
+    digits = re.sub(r"[,\s]", "", region.group(0)).rstrip(".")
+    if digits in ("", "-", ".", "-."):
         return np.nan
     try:
-        return float(cleaned)
+        amount = float(digits)
     except ValueError:
         return np.nan
+
+    suffix = _CURRENCY_SUFFIX_LOOKAHEAD_RE.match(s, region.end())
+    if suffix:
+        amount *= _CURRENCY_MAGNITUDE[suffix.group(1).lower()]
+    return amount
 
 
 def coerce_currency_column(series: pd.Series, sheet: str, column: str) -> tuple[pd.Series, ColumnCoercionReport]:
