@@ -389,7 +389,21 @@ def construct_target_variable(
     # docstring) -- deduping there safely would need separate, more invasive
     # changes and is out of scope for this pass; LSTM sequences still include
     # the duplicate raw events as a known, called-out limitation.
-    duplicate_mask = df.duplicated(subset=DUPLICATE_ROW_KEY_COLUMNS, keep="first")
+    # Deduplication needs the FULL fingerprint to be safe: matching on a subset
+    # of these columns would collapse genuinely distinct projects (the same
+    # "Streetlights" name recurs across barangays and years). If any key column
+    # is absent -- a caller passing a partial frame, or an upstream rename --
+    # skip the phase loudly rather than dedup on a weaker key or crash.
+    missing_key_cols = [c for c in DUPLICATE_ROW_KEY_COLUMNS if c not in df.columns]
+    if missing_key_cols:
+        logger.warning(
+            "PHASE 11: SKIPPED -- missing key column(s) %s, so an exact-duplicate "
+            "fingerprint cannot be formed. Duplicate rows (if any) are NOT removed.",
+            missing_key_cols,
+        )
+        duplicate_mask = pd.Series(False, index=df.index)
+    else:
+        duplicate_mask = df.duplicated(subset=DUPLICATE_ROW_KEY_COLUMNS, keep="first")
     n_duplicates_dropped = int(duplicate_mask.sum())
     if n_duplicates_dropped:
         logger.warning(
