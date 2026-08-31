@@ -22,5 +22,6 @@ Every significant, non-obvious decision on this project, in roughly the order th
 - [[02-Decisions/D11-Exact-Duplicate-Removal|D11: Exact-Duplicate Row Removal]] — deduplicating genuine duplicate ledger entries, plus the mon_row_id index-integrity prerequisite fix it (and D09) depend on.
 - [[02-Decisions/D12-Project-Type-Classifier|D12: Supervised Project-Type Classifier]] — the DQ-7 v3 TF-IDF/logistic-regression fallback that recovers ~85% of heuristic-Unclassified rows at the heuristic's own accuracy standard, trained at run time from a committed hand-labeled sample.
 - [[02-Decisions/D13-Barangay-PSGC-Canonicalization|D13: Barangay PSGC Canonicalization]] — validating barangay strings against the official 1,901-entry PSGC list (municipality-scoped), closing most of the crosswalk's residual conflation risk.
+- [[02-Decisions/D14-Manual-Project-Type-Overrides|D14: Manual Project-Type Override Tier]] — a hand-maintained, exact-match override tier ahead of the heuristic and classifier, for the names D12 correctly refuses to guess at, plus the ranked worklist that feeds it.
 
 See [[MOC-Known-Issues]] for the limitations these decisions left behind, and [[99-Log]] for the chronological work history.

@@ -1117,6 +1117,65 @@ PROJECT_TYPE_LABELS_PATH = Path(__file__).parent / "reference" / "project_type_l
 PROJECT_TYPE_CLASSIFIER_THRESHOLD = 0.7
 _PROJECT_TYPE_LABEL_MAP = {"I": "Infrastructure", "N": "Non-Infrastructure"}
 
+# --- DQ-7 tier 1: hand-maintained per-row overrides (D14) --------------------
+# The authoritative tier, checked BEFORE the keyword heuristic and the
+# supervised fallback. Unlike project_type_labels.csv -- which only supplies
+# TRAINING EXAMPLES to the classifier and therefore influences predictions
+# statistically -- an entry here directly sets that project's type with no
+# confidence gating and no possibility of being overruled. This exists because
+# the classifier deliberately abstains below PROJECT_TYPE_CLASSIFIER_THRESHOLD
+# (see D12), leaving a residue of genuinely ambiguous names that no amount of
+# modelling can resolve from the name string alone -- they need a human who
+# knows the actual project. Matching is exact on the normalized name (case,
+# dashes/slashes and whitespace folded via _normalize_project_name_for_matching),
+# so it is deterministic and auditable: one row in, one label out.
+#
+# Companion artifact: reference/unclassified_project_review.csv, regenerated on
+# every preprocess run, listing every still-Unclassified distinct name with its
+# row count (highest-impact first) and the classifier's below-threshold best
+# guess, so this file can be filled in from a ranked worklist rather than a
+# blank page. See D14-Manual-Project-Type-Overrides.md.
+PROJECT_TYPE_OVERRIDES_PATH = Path(__file__).parent / "reference" / "project_type_manual_overrides.csv"
+UNCLASSIFIED_REVIEW_PATH = Path(__file__).parent / "reference" / "unclassified_project_review.csv"
+
+
+@functools.lru_cache(maxsize=1)
+def load_project_type_overrides() -> dict[str, str]:
+    """
+    Load the hand-maintained name -> project_type overrides, keyed by
+    normalized project name. Returns {} (with a log line) when the file is
+    absent or empty, so the pipeline runs unchanged before Kirk fills it in.
+    Rows whose project_type is not exactly 'Infrastructure' or
+    'Non-Infrastructure' are skipped with a warning rather than silently
+    admitting a third class into T_standard's lookup.
+    """
+    if not PROJECT_TYPE_OVERRIDES_PATH.exists():
+        logger.info("Step 5: no manual project-type override file at %s", PROJECT_TYPE_OVERRIDES_PATH)
+        return {}
+
+    df = pd.read_csv(PROJECT_TYPE_OVERRIDES_PATH)
+    if df.empty or "NAME OF PROJECT" not in df.columns or "project_type" not in df.columns:
+        logger.info("Step 5: manual project-type override file is empty or missing required columns")
+        return {}
+
+    valid = set(STANDARD_DURATION_DAYS)  # {'Infrastructure', 'Non-Infrastructure'}
+    overrides: dict[str, str] = {}
+    rejected = 0
+    for name, ptype in zip(df["NAME OF PROJECT"], df["project_type"]):
+        if not isinstance(name, str) or not name.strip():
+            continue
+        label = str(ptype).strip()
+        if label not in valid:
+            rejected += 1
+            continue
+        overrides[_normalize_project_name_for_matching(name)] = label
+    if rejected:
+        logger.warning(
+            "Step 5: %d manual override row(s) skipped -- project_type must be exactly one of %s",
+            rejected, sorted(valid),
+        )
+    return overrides
+
 
 def train_project_type_classifier(labels_path: Path = PROJECT_TYPE_LABELS_PATH):
     """
@@ -1163,16 +1222,73 @@ def train_project_type_classifier(labels_path: Path = PROJECT_TYPE_LABELS_PATH):
     return model
 
 
+def _write_unclassified_review(
+    mon: pd.DataFrame, best_guess: pd.Series, best_conf: pd.Series,
+) -> None:
+    """
+    Write the ranked worklist of still-Unclassified project names (D14).
+
+    One row per DISTINCT name rather than per monitoring row -- the same name
+    recurs across barangays and years, so a single decision by Kirk can clear
+    many rows at once, and `n_rows` is what tells him which decisions are worth
+    making first. Ships the classifier's below-threshold best guess and its
+    confidence so the file is a starting point rather than a blank page, plus
+    an empty `project_type` column: fill it in, then copy the
+    (NAME OF PROJECT, project_type) pair into
+    project_type_manual_overrides.csv.
+    """
+    uncl = mon[mon["project_type"] == "Unclassified"].copy()
+    if uncl.empty:
+        # Still rewrite the file, so a cleared backlog is visible as an empty
+        # worklist rather than a stale one left over from a previous run.
+        pd.DataFrame(
+            columns=["NAME OF PROJECT", "n_rows", "classifier_best_guess", "classifier_confidence", "project_type"]
+        ).to_csv(UNCLASSIFIED_REVIEW_PATH, index=False)
+        logger.info("Step 5: no Unclassified rows remain -- wrote an empty %s", UNCLASSIFIED_REVIEW_PATH.name)
+        return
+
+    uncl["_guess"] = best_guess.reindex(uncl.index)
+    uncl["_conf"] = best_conf.reindex(uncl.index)
+    review = (
+        uncl.groupby(uncl["NAME OF PROJECT"].fillna("").astype(str), dropna=False)
+        .agg(
+            n_rows=("NAME OF PROJECT", "size"),
+            classifier_best_guess=("_guess", "first"),
+            classifier_confidence=("_conf", "first"),
+        )
+        .reset_index()
+        .rename(columns={"NAME OF PROJECT": "NAME OF PROJECT"})
+        .sort_values(["n_rows", "NAME OF PROJECT"], ascending=[False, True])
+    )
+    review["classifier_confidence"] = review["classifier_confidence"].round(3)
+    review["project_type"] = ""  # for Kirk to fill in
+    review.to_csv(UNCLASSIFIED_REVIEW_PATH, index=False)
+    logger.info(
+        "Step 5: wrote %s -- %d distinct name(s) covering %d Unclassified row(s) awaiting manual review "
+        "(top name accounts for %d rows)",
+        UNCLASSIFIED_REVIEW_PATH.name, len(review), int(review["n_rows"].sum()), int(review["n_rows"].max()),
+    )
+
+
 def apply_project_type_classification(sheets: dict[str, pd.DataFrame], report: PipelineReport) -> dict[str, pd.DataFrame]:
     """
     Classify project type on the monitoring sheet and record coverage stats.
 
-    v3 (DQ-7) two-stage design: keyword heuristic first (auditable, ~99%
-    accurate where it commits), then the supervised fallback ONLY on rows the
-    heuristic left Unclassified, committing only at >= 0.7 confidence. A
-    `project_type_source` column records which stage decided each row
-    ("keyword" / "classifier" / "unclassified") so downstream consumers and
-    the methodology report can always separate the two evidentiary bases.
+    v4 (DQ-7 + D14) three-tier design, most authoritative first:
+
+      1. MANUAL   -- an exact (normalized) name match in
+                     reference/project_type_manual_overrides.csv wins
+                     outright, no confidence gating. Deterministic by design.
+      2. KEYWORD  -- the auditable heuristic (~99% accurate where it commits).
+      3. CLASSIFIER -- the supervised fallback, ONLY on rows the first two
+                     tiers left Unclassified, and only at >= 0.7 confidence.
+
+    A `project_type_source` column records which tier decided each row
+    ("manual" / "keyword" / "classifier" / "unclassified") so downstream
+    consumers and the methodology report can always separate the evidentiary
+    bases. Whatever is still Unclassified at the end is written to
+    reference/unclassified_project_review.csv as a ranked worklist for
+    extending tier 1.
     """
     logger.info("Step 5: classifying project type (Infrastructure vs. Non-Infrastructure)")
 
@@ -1180,13 +1296,36 @@ def apply_project_type_classification(sheets: dict[str, pd.DataFrame], report: P
     mon["project_type"] = mon["NAME OF PROJECT"].map(classify_project_type)
     mon["project_type_source"] = np.where(mon["project_type"] == "Unclassified", "unclassified", "keyword")
 
+    # --- Tier 1: manual overrides (applied last-written, first-authority) ---
+    overrides = load_project_type_overrides()
+    if overrides:
+        normalized_names = mon["NAME OF PROJECT"].fillna("").astype(str).map(_normalize_project_name_for_matching)
+        override_label = normalized_names.map(overrides)
+        override_mask = override_label.notna()
+        n_override = int(override_mask.sum())
+        if n_override:
+            mon.loc[override_mask, "project_type"] = override_label[override_mask]
+            mon.loc[override_mask, "project_type_source"] = "manual"
+            logger.info(
+                "  manual overrides: %d row(s) across %d distinct name(s) set from %s "
+                "(authoritative -- not subject to the confidence threshold)",
+                n_override, override_label[override_mask].groupby(normalized_names[override_mask]).ngroups,
+                PROJECT_TYPE_OVERRIDES_PATH.name,
+            )
+
     heuristic_unclassified = int((mon["project_type"] == "Unclassified").sum())
     logger.info(
-        "  keyword heuristic: %d/%d rows Unclassified (%.1f%%) before fallback",
+        "  after manual + keyword tiers: %d/%d rows Unclassified (%.1f%%) before the classifier fallback",
         heuristic_unclassified, len(mon), heuristic_unclassified / len(mon) * 100,
     )
 
     classifier = train_project_type_classifier()
+    # Retained per-row so the review export can show the classifier's opinion
+    # on the rows it declined to commit to -- a below-threshold guess is a
+    # useful starting point for a human, even though it is not good enough to
+    # set a training label unsupervised.
+    best_guess = pd.Series(pd.NA, index=mon.index, dtype="object")
+    best_conf = pd.Series(np.nan, index=mon.index, dtype="float")
     if classifier is not None and heuristic_unclassified:
         uncl_mask = mon["project_type"] == "Unclassified"
         # fillna + astype(str): NAME OF PROJECT contains occasional bare-numeric
@@ -1198,7 +1337,10 @@ def apply_project_type_classification(sheets: dict[str, pd.DataFrame], report: P
             proba = classifier.predict_proba(names[has_name])
             confident = proba.max(axis=1) >= PROJECT_TYPE_CLASSIFIER_THRESHOLD
             predicted = classifier.classes_[proba.argmax(axis=1)]
-            target_index = names[has_name].index[confident]
+            scored_index = names[has_name].index
+            best_guess.loc[scored_index] = predicted
+            best_conf.loc[scored_index] = proba.max(axis=1)
+            target_index = scored_index[confident]
             mon.loc[target_index, "project_type"] = predicted[confident]
             mon.loc[target_index, "project_type_source"] = "classifier"
             logger.info(
@@ -1207,6 +1349,8 @@ def apply_project_type_classification(sheets: dict[str, pd.DataFrame], report: P
                 int(confident.sum()), heuristic_unclassified, PROJECT_TYPE_CLASSIFIER_THRESHOLD,
                 heuristic_unclassified - int(confident.sum()),
             )
+
+    _write_unclassified_review(mon, best_guess, best_conf)
 
     coverage = (mon["project_type"].value_counts(normalize=True) * 100).to_dict()
     report.project_type_coverage = coverage

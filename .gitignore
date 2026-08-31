@@ -153,3 +153,9 @@ ml-service/artifacts/live_scores.json
 Thumbs.db
 desktop.ini
 .obsidian/
+
+# Regenerated on every preprocess run from whatever is still Unclassified after
+# the manual/keyword/classifier tiers -- a derived worklist, not a source of
+# truth (D14). The hand-maintained companion it feeds,
+# reference/project_type_manual_overrides.csv, IS committed.
+/ml-service/data_pipeline/reference/unclassified_project_review.csv
