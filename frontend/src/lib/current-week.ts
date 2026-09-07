@@ -9,6 +9,8 @@
  * `inspector_schedules.week_of`, a plain `date` column identifying which
  * week a given row's assignment belongs to.
  */
+import { toLocalIsoDate } from "./local-date";
+
 export function currentWeekMonday(): string {
   const now = new Date();
   const day = now.getDay(); // 0 = Sunday, 1 = Monday, ...
@@ -21,9 +23,8 @@ export function currentWeekMonday(): string {
   // UTC first, so anywhere east of UTC (Manila is UTC+8) a local Monday
   // 00:00 serializes as the PREVIOUS day. That shifted every week_of by
   // one -- visible as "Week of Sep 6" on a week whose Monday is Sep 7,
-  // and it silently mislabels every deployed schedule's week.
-  const year = monday.getFullYear();
-  const month = String(monday.getMonth() + 1).padStart(2, "0");
-  const date = String(monday.getDate()).padStart(2, "0");
-  return `${year}-${month}-${date}`;
+  // and it silently mislabels every deployed schedule's week. The same
+  // trap later dated a monitoring report's completion a day early, so the
+  // formatting now lives in one shared place.
+  return toLocalIsoDate(monday);
 }

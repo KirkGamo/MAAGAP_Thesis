@@ -41,12 +41,18 @@
  *   1. Inspector submits a report via /inspector/report/[projectId] (this
  *      action's `submitReport` function).
  *   2. `monitoring_reports` row is written to Supabase (implemented below).
- *   3. If `statusObserved` indicates the project is now Completed/Functional
- *      (or its `percentComplete` reached 100), this action also updates
- *      `projects.status` and `projects.date_of_completion` — mirroring the
+ *   3. The observed status is applied to `projects` (and, on the
+ *      transition into completed, `date_of_completion`) — mirroring the
  *      real-world event that feature_engineering.py's Phase 6/7 proxy-date
  *      recovery logic was built to handle: a project transitioning from
  *      "ongoing, no completion date" to "resolved, has an outcome."
+ *
+ *      THIS STEP WAS BROKEN AND SILENT until it was rewritten around
+ *      `applyProjectStatus` below — read that function's comment before
+ *      touching this path. In short: the write ran as the inspector,
+ *      `projects` has no inspector UPDATE policy, and an RLS-filtered
+ *      UPDATE returns no error, so every field observation was discarded
+ *      without a trace while the ML webhook still moved the risk tier.
  *   4. A webhook POST fires to
  *      `${FASTAPI_ML_SERVICE_URL}/webhooks/monitoring-report`, authenticated
  *      via a shared secret (`ML_SERVICE_WEBHOOK_SECRET`) rather than being
@@ -78,7 +84,8 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { todayLocalIsoDate } from "@/lib/local-date";
 import type { ProjectStatus } from "@/types/database";
 
 export interface SubmitReportInput {
@@ -90,8 +97,113 @@ export interface SubmitReportInput {
 }
 
 export type SubmitReportResult =
-  | { success: true }
+  | {
+      success: true;
+      /** What the report did to the project itself, so the Inspector can
+       * be told rather than left guessing (this used to fail silently --
+       * see applyProjectStatus below). */
+      projectUpdated: boolean;
+      previousStatus?: ProjectStatus;
+      newStatus?: ProjectStatus;
+    }
   | { success: false; error: string };
+
+/**
+ * May this user change `projects.status` for this project?
+ *
+ * Deliberately evaluated with the RLS-respecting client: a manager is
+ * identified by their own `profiles` row (readable under "profiles: read
+ * own"), and an inspector's assignment is read from
+ * `inspector_schedules` under "schedules: inspectors read own" -- so the
+ * check itself cannot see more than the caller legitimately can. Mirrors
+ * the relation behind the "projects: inspectors read assigned" policy
+ * (an inspector_schedules row linking this inspector to this project),
+ * which is exactly the set of projects an inspector can be looking at
+ * when they file a report.
+ */
+async function canWriteProjectStatus(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  projectId: string
+): Promise<boolean> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile?.role === "manager") return true;
+
+  const { data: assignment } = await supabase
+    .from("inspector_schedules")
+    .select("id")
+    .eq("inspector_id", userId)
+    .eq("project_id", projectId)
+    .limit(1)
+    .maybeSingle();
+
+  return Boolean(assignment);
+}
+
+/**
+ * Applies a field observation to the project record.
+ *
+ * WHY THIS NEEDS THE SERVICE-ROLE CLIENT (the bug this replaces):
+ * `projects` carries exactly two policies -- managers `FOR ALL`, and
+ * inspectors `FOR SELECT` on their assigned projects. There is no
+ * inspector UPDATE policy, so when this ran as the signed-in inspector
+ * the UPDATE matched zero rows and PostgREST returned NO ERROR. The old
+ * code awaited it without checking, so a project reported Completed in
+ * the field silently stayed On-going on every Manager screen forever,
+ * while the ML webhook (which patches risk_tier through the service
+ * role) still moved the risk tier -- the two halves of the same event
+ * disagreeing, with nothing surfaced anywhere. Verified against the live
+ * database before this change: `rows affected: 0 | error: none`.
+ *
+ * The fix is NOT an RLS grant. Postgres policies gate rows, not columns,
+ * so letting inspectors UPDATE `projects` would also let a field device
+ * write `risk_tier`, `amount_php`, or `municipality`. Instead the table
+ * stays manager-only and this one narrow write happens server-side,
+ * behind `canWriteProjectStatus` -- the same shape as
+ * actions/inspectors.ts's invite path, where the privileged action is
+ * isolated in one audited place. `canWriteProjectStatus` IS the security
+ * boundary here, since the service-role client bypasses RLS entirely.
+ */
+async function applyProjectStatus(
+  projectId: string,
+  statusObserved: ProjectStatus,
+  previousCompletionDate: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const patch: { status: ProjectStatus; date_of_completion?: string } = {
+    status: statusObserved,
+  };
+
+  // Set a completion date only on the transition INTO completed, and
+  // never clear one that already exists: a later correction away from
+  // "completed" records the new status without erasing the dated
+  // evidence that the project was once observed finished. That date is
+  // the loop's most valuable output -- it is what lets a project stop
+  // depending on feature_engineering.py's proxy-date recovery.
+  if (statusObserved === "completed" && !previousCompletionDate) {
+    // Local calendar day, never toISOString(): see lib/local-date.ts. A
+    // completion dated one day early propagates straight into T_actual
+    // and therefore into the RedFlag target at the next retrain.
+    patch.date_of_completion = todayLocalIsoDate();
+  }
+
+  const admin = createServiceRoleClient();
+  const { data, error } = await admin
+    .from("projects")
+    .update(patch)
+    .eq("id", projectId)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "The project record could not be found." };
+  }
+  return { ok: true };
+}
 
 /**
  * Notifies the FastAPI ML service that a project's real-world state may
@@ -167,6 +279,25 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     return { success: false, error: "Not signed in." };
   }
 
+  // Read the project's current state BEFORE writing anything: the
+  // report's value to the pipeline is the transition it records, and the
+  // completion-date rule below needs to know whether one already exists.
+  // Readable here under "projects: inspectors read assigned".
+  const { data: project } = await supabase
+    .from("projects")
+    .select("project_key, status, date_of_completion")
+    .eq("id", input.projectId)
+    .maybeSingle();
+
+  if (!project) {
+    return {
+      success: false,
+      error: "That project isn't assigned to you, so a report can't be filed against it.",
+    };
+  }
+
+  const previousStatus = project.status;
+
   const { error: insertError } = await supabase.from("monitoring_reports").insert({
     project_id: input.projectId,
     inspector_id: user.id,
@@ -180,41 +311,50 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     return { success: false, error: insertError.message };
   }
 
-  // If the field-observed status confirms completion, reflect that on the
-  // project record itself — this is the live-data analogue of Phase 6/7's
-  // offline proxy-completion-date recovery: a real, dated event (this
-  // report) resolving a previously-ongoing project.
-  let dateOfCompletion: string | null = null;
-  if (input.statusObserved === "completed") {
-    dateOfCompletion = new Date().toISOString().slice(0, 10);
-    await supabase
-      .from("projects")
-      .update({ status: "completed", date_of_completion: dateOfCompletion })
-      .eq("id", input.projectId);
-  } else {
-    await supabase.from("projects").update({ status: input.statusObserved }).eq("id", input.projectId);
+  // The report is now saved and must never be lost to a later failure --
+  // everything below is a downstream consequence of a record that already
+  // exists, so failures are reported back, not thrown.
+  let projectUpdated = false;
+  if (previousStatus !== input.statusObserved) {
+    const allowed = await canWriteProjectStatus(supabase, user.id, input.projectId);
+    if (allowed) {
+      const applied = await applyProjectStatus(
+        input.projectId,
+        input.statusObserved,
+        project.date_of_completion
+      );
+      if (applied.ok) {
+        projectUpdated = true;
+      } else {
+        console.error("[submit-report] project status write failed:", applied.error);
+      }
+    } else {
+      console.warn(
+        "[submit-report] %s may not change status on project %s — report saved, project unchanged.",
+        user.id,
+        input.projectId
+      );
+    }
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("project_key")
-    .eq("id", input.projectId)
-    .single();
-
-  if (project) {
-    await notifyMlService({
-      projectKey: project.project_key,
-      statusObserved: input.statusObserved,
-      percentComplete: input.percentComplete ?? null,
-      amountSpent: null, // not yet collected by the inspector report form — see module docstring
-      observedAt: new Date().toISOString(),
-      photoUrl: input.photoUrls?.[0] ?? null,
-    });
-  }
+  await notifyMlService({
+    projectKey: project.project_key,
+    statusObserved: input.statusObserved,
+    percentComplete: input.percentComplete ?? null,
+    amountSpent: null, // not yet collected by the inspector report form — see module docstring
+    observedAt: new Date().toISOString(),
+    photoUrl: input.photoUrls?.[0] ?? null,
+  });
 
   revalidatePath("/manager/ppas");
   revalidatePath(`/manager/ppas/${input.projectId}`);
+  revalidatePath("/manager/reports");
   revalidatePath("/inspector");
 
-  return { success: true };
+  return {
+    success: true,
+    projectUpdated,
+    previousStatus,
+    newStatus: input.statusObserved,
+  };
 }
