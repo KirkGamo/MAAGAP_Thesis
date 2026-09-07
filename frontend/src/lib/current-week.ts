@@ -15,5 +15,15 @@ export function currentWeekMonday(): string {
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + diffToMonday);
-  return monday.toISOString().slice(0, 10);
+
+  // Format from LOCAL date parts, not toISOString(): the Monday above is
+  // computed in local time (getDay/getDate), but toISOString() converts to
+  // UTC first, so anywhere east of UTC (Manila is UTC+8) a local Monday
+  // 00:00 serializes as the PREVIOUS day. That shifted every week_of by
+  // one -- visible as "Week of Sep 6" on a week whose Monday is Sep 7,
+  // and it silently mislabels every deployed schedule's week.
+  const year = monday.getFullYear();
+  const month = String(monday.getMonth() + 1).padStart(2, "0");
+  const date = String(monday.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
 }
