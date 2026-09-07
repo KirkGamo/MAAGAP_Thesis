@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { currentWeekMonday } from "@/lib/current-week";
 import { Card } from "@/components/tremor/card";
+import { getOptimizerStatus } from "@/actions/run-optimizer";
 import { DeployScheduleButton } from "./deploy-schedule-button";
+import { RunOptimizerButton } from "./run-optimizer-button";
 import { ScheduleMapLoader } from "./schedule-map-loader";
 import { DayStrip, type DayTabInfo } from "./day-strip";
 import { Scorecard, type OptimizerSummary } from "./scorecard";
@@ -64,6 +66,18 @@ interface JoinedProject {
  * the Scorecard explains itself -- the schedule workspace must render
  * fully from Supabase alone.
  */
+/** "Last optimized 2h ago" -- computed server-side so the client button
+ * renders a fixed string (no server/client clock mismatch to hydrate
+ * around). */
+function relativeTimeLabel(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 async function fetchOptimizerSummary(): Promise<OptimizerSummary | null> {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   if (!baseUrl) return null;
@@ -123,7 +137,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   // page's subject.
   const weekOf = currentWeekMonday();
 
-  const [{ data: rows }, { data: activeInspectors }, summary] = await Promise.all([
+  const [{ data: rows }, { data: activeInspectors }, summary, optimizerStatus] = await Promise.all([
     supabase
       .from("inspector_schedules")
       .select(
@@ -140,6 +154,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       .eq("active", true)
       .order("full_name"),
     fetchOptimizerSummary(),
+    getOptimizerStatus(),
   ]);
 
   const weekRows = rows ?? [];
@@ -306,7 +321,17 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
           <p className="text-xs text-slate-500">{headerCaption}</p>
         </div>
         <Scorecard summary={summary} />
-        <DeployScheduleButton />
+        <div className="flex items-start gap-2">
+          <RunOptimizerButton
+            initiallyRunning={optimizerStatus?.state === "running"}
+            freshnessLabel={
+              optimizerStatus?.schedule_generated_at
+                ? `Last optimized ${relativeTimeLabel(optimizerStatus.schedule_generated_at)}`
+                : null
+            }
+          />
+          <DeployScheduleButton />
+        </div>
       </div>
 
       <div className="shrink-0">
