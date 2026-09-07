@@ -152,3 +152,54 @@ export async function addAssignment(input: {
   revalidateScheduleViews();
   return { success: true, message: `Added ${projectKey} to the schedule.` };
 }
+
+export interface ProjectSearchResult {
+  projectKey: string;
+  name: string;
+  municipality: string | null;
+  riskTier: string | null;
+}
+
+/**
+ * Backs the schedule workspace's "Add visit" picker (see
+ * add-visit-dialog.tsx) -- the replacement for the old raw
+ * type-a-project-key input, which required the Manager to memorize keys
+ * off the PPAs tab. Matches on project name OR municipality, riskiest
+ * first (risk_probability desc, unscored last) since scheduling exists to
+ * cover risk. Same manager-scoped RLS read as every other projects query.
+ */
+export async function searchProjects(
+  query: string
+): Promise<
+  | { success: true; results: ProjectSearchResult[] }
+  | { success: false; error: string }
+> {
+  // PostgREST's .or() syntax delimits conditions with commas/parens --
+  // strip them from user input rather than attempting to escape.
+  const q = query.trim().replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
+  if (q.length < 2) {
+    return { success: true, results: [] };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("project_key, name_of_project, municipality, risk_tier")
+    .or(`name_of_project.ilike.%${q}%,municipality.ilike.%${q}%`)
+    .order("risk_probability", { ascending: false, nullsFirst: false })
+    .limit(20);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return {
+    success: true,
+    results: (data ?? []).map((row) => ({
+      projectKey: row.project_key,
+      name: row.name_of_project,
+      municipality: row.municipality,
+      riskTier: row.risk_tier,
+    })),
+  };
+}

@@ -6,7 +6,12 @@ import { ScheduleMapLoader } from "./schedule-map-loader";
 import { DayStrip, type DayTabInfo } from "./day-strip";
 import { Scorecard, type OptimizerSummary } from "./scorecard";
 import { WeekMatrix, type WeekMatrixRow } from "./week-matrix";
-import { AgendaPane, type AgendaGroup } from "./agenda-pane";
+import {
+  AgendaPane,
+  type AgendaGroup,
+  type InspectorLoad,
+  type InspectorOption,
+} from "./agenda-pane";
 import type { ScheduleMapPoint } from "./schedule-map";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
@@ -118,7 +123,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   // page's subject.
   const weekOf = currentWeekMonday();
 
-  const [{ data: rows }, summary] = await Promise.all([
+  const [{ data: rows }, { data: activeInspectors }, summary] = await Promise.all([
     supabase
       .from("inspector_schedules")
       .select(
@@ -126,10 +131,34 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       )
       .eq("week_of", weekOf)
       .order("scheduled_day"),
+    // Only active inspectors are offered by the reassign/add controls,
+    // matching the Inspectors tab's own active/inactive gate.
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("role", "inspector")
+      .eq("active", true)
+      .order("full_name"),
     fetchOptimizerSummary(),
   ]);
 
   const weekRows = rows ?? [];
+  const inspectorOptions: InspectorOption[] = (activeInspectors ?? []).map((i) => ({
+    id: i.id,
+    name: i.full_name ?? "Unnamed",
+  }));
+
+  // Per-inspector load across the week -- capacity chips, annotated select
+  // options, and over-capacity warnings all read from this one structure.
+  const loadByInspector: Record<string, InspectorLoad> = {};
+  for (const row of weekRows) {
+    const load = (loadByInspector[row.inspector_id] ??= { week: 0, days: {} });
+    load.week += 1;
+    load.days[row.scheduled_day] = (load.days[row.scheduled_day] ?? 0) + 1;
+  }
+  for (const option of inspectorOptions) {
+    loadByInspector[option.id] ??= { week: 0, days: {} };
+  }
 
   // Stable per-inspector colors: sort names first so the same inspector
   // keeps the same color across renders/day switches.
@@ -311,12 +340,17 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
             <p className="text-[11px] text-slate-400">{paneCaption}</p>
           </div>
           <div className="min-h-80 flex-1 overflow-y-auto pr-1 lg:min-h-0">
-            {weekRows.length === 0 ? (
+            {weekRows.length === 0 && selectedDay === "All" ? (
               <p className="p-4 text-center text-sm text-slate-400">{emptyStateText}</p>
             ) : selectedDay === "All" ? (
               <WeekMatrix days={DAY_ORDER} rows={matrixRows} />
             ) : (
-              <AgendaPane groups={agendaGroups} />
+              <AgendaPane
+                groups={agendaGroups}
+                inspectors={inspectorOptions}
+                selectedDay={selectedDay}
+                loadByInspector={loadByInspector}
+              />
             )}
           </div>
         </Card>
