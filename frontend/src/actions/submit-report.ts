@@ -86,6 +86,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { todayLocalIsoDate } from "@/lib/local-date";
+import { isMissingColumnError } from "@/lib/postgrest-errors";
 import type { ProjectStatus } from "@/types/database";
 
 export interface SubmitReportInput {
@@ -226,6 +227,11 @@ async function notifyMlService(payload: {
   amountSpent: number | null;
   observedAt: string;
   photoUrl: string | null;
+  /** Lets the ML service write the outcome back to this exact report's
+   * `rescore_state`, so a dropped or failed re-score is visible and
+   * retryable instead of vanishing. Null when the tracking migration
+   * hasn't been applied. */
+  reportId: string | null;
 }) {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   const secret = process.env.ML_SERVICE_WEBHOOK_SECRET;
@@ -258,6 +264,7 @@ async function notifyMlService(payload: {
         // monitoring_reports.photo_urls (written above), which is the
         // record of truth.
         photo_url: payload.photoUrl,
+        report_id: payload.reportId,
       }),
       // Fire-and-forget: don't let a slow/unreachable ML service hold up
       // the Inspector's submission.
@@ -298,14 +305,43 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
 
   const previousStatus = project.status;
 
-  const { error: insertError } = await supabase.from("monitoring_reports").insert({
+  const baseRow = {
     project_id: input.projectId,
     inspector_id: user.id,
     status_observed: input.statusObserved,
     percent_complete: input.percentComplete ?? null,
     remarks: input.remarks ?? null,
     photo_urls: input.photoUrls ?? null,
-  });
+  };
+
+  // Try to record the re-score as pending. If
+  // add_monitoring_reports_rescore_state.sql hasn't been run against this
+  // database yet, PostgREST rejects the unknown column -- fall back to the
+  // plain row rather than refusing to file a field report over a migration
+  // the inspector has no control of. Filing must never be the thing that
+  // breaks.
+  let reportId: string | null = null;
+  let insertError: { code?: string; message: string } | null = null;
+  {
+    const withState = await supabase
+      .from("monitoring_reports")
+      .insert({ ...baseRow, rescore_state: "pending" })
+      .select("id")
+      .single();
+
+    if (withState.error && isMissingColumnError(withState.error)) {
+      const plain = await supabase
+        .from("monitoring_reports")
+        .insert(baseRow)
+        .select("id")
+        .single();
+      reportId = plain.data?.id ?? null;
+      insertError = plain.error;
+    } else {
+      reportId = withState.data?.id ?? null;
+      insertError = withState.error;
+    }
+  }
 
   if (insertError) {
     return { success: false, error: insertError.message };
@@ -344,6 +380,7 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     amountSpent: null, // not yet collected by the inspector report form — see module docstring
     observedAt: new Date().toISOString(),
     photoUrl: input.photoUrls?.[0] ?? null,
+    reportId,
   });
 
   revalidatePath("/manager/ppas");

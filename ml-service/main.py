@@ -78,6 +78,16 @@ class UpdateMonitoringPayload(BaseModel):
     observed_at: Optional[datetime] = Field(
         None, description="Defaults to server-received time (UTC) if omitted."
     )
+    report_id: Optional[str] = Field(
+        None,
+        description=(
+            "The monitoring_reports row this observation came from, when the caller has one. "
+            "Used only to write the re-score outcome back to that row's rescore_state "
+            "(see supabase/add_monitoring_reports_rescore_state.sql), so a dropped or failed "
+            "re-score is visible in the Manager Portal and retryable, instead of vanishing the "
+            "way this fire-and-forget webhook previously allowed. Not a model input."
+        ),
+    )
     photo_url: Optional[str] = Field(
         None,
         description=(
@@ -101,6 +111,41 @@ class UpdateMonitoringResponse(BaseModel):
     message: str
 
 
+def _mark_rescore_state(
+    report_id: Optional[str], state: str, error: Optional[str] = None
+) -> None:
+    """Records how a re-score ended on the monitoring report that triggered
+    it. Best-effort and never raises: this is observability for a webhook
+    that is itself fire-and-forget, so failing to write the state must not
+    turn into a second silent failure on top of the first.
+
+    No-ops when the caller sent no report_id (e.g. a manual curl, or a
+    frontend running against a database where
+    add_monitoring_reports_rescore_state.sql hasn't been applied yet)."""
+    if not report_id:
+        return
+
+    url = os.environ.get("SUPABASE_URL")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not (url and service_role_key):
+        return
+
+    try:
+        from supabase import create_client
+
+        client = create_client(url, service_role_key)
+        client.table("monitoring_reports").update(
+            {
+                "rescore_state": state,
+                "rescored_at": datetime.now(timezone.utc).isoformat(),
+                "rescore_error": error,
+            }
+        ).eq("id", report_id).execute()
+        logger.info("Marked report %s rescore_state=%s.", report_id, state)
+    except Exception:
+        logger.exception("Could not record rescore_state for report %s (non-fatal).", report_id)
+
+
 def _run_rescore(payload: UpdateMonitoringPayload) -> None:
     """The actual background job: re-score the one project and persist the
     result. Runs after the HTTP response has already been sent (see the
@@ -117,13 +162,19 @@ def _run_rescore(payload: UpdateMonitoringPayload) -> None:
         )
     except FileNotFoundError as exc:
         logger.error("Re-score failed for %s — pipeline artifacts missing: %s", payload.project_key, exc)
+        _mark_rescore_state(payload.report_id, "failed", f"Pipeline artifacts missing: {exc}")
         return
-    except Exception:
+    except Exception as exc:
         logger.exception("Unhandled error re-scoring project %s", payload.project_key)
+        _mark_rescore_state(payload.report_id, "failed", str(exc))
         return
 
     if not result.found:
+        # Not an error: the project has no trained representation to
+        # re-score (see live_scoring.score_project's `found` flag), so
+        # retrying would do exactly the same nothing.
         logger.warning("Re-score skipped for %s: %s", payload.project_key, result.message)
+        _mark_rescore_state(payload.report_id, "skipped", result.message)
         return
 
     logger.info(
@@ -142,6 +193,7 @@ def _run_rescore(payload: UpdateMonitoringPayload) -> None:
     _maybe_patch_supabase(
         payload.project_key, result.risk_tier, result.meta_prob, result.shap_top_features
     )
+    _mark_rescore_state(payload.report_id, "done")
 
 
 def _maybe_patch_supabase(

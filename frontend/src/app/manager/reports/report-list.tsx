@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Badge, statusVariant } from "@/components/ui/badge";
+import { RescoreChip } from "./rescore-badge";
+import type { RescoreState } from "@/types/database";
 
 export interface ReportListItem {
   id: string;
@@ -13,6 +15,8 @@ export interface ReportListItem {
   statusObserved: string;
   statusLabel: string;
   photoCount: number;
+  /** Null when the re-score tracking migration hasn't been applied. */
+  rescoreState: RescoreState | null;
 }
 
 /**
@@ -77,6 +81,9 @@ export function ReportList({
                 {report.municipality ? ` · ${report.municipality}` : ""}
               </span>
               <span className="flex shrink-0 items-center gap-1.5">
+                {report.rescoreState && report.rescoreState !== "done" && (
+                  <RescoreChip state={report.rescoreState} />
+                )}
                 {report.photoCount > 0 && (
                   <span className="text-[10px] text-slate-400">{report.photoCount} photo</span>
                 )}

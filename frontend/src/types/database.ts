@@ -49,6 +49,12 @@ export type ProjectStatus =
   | "for_bidding"
   | "refunded";
 
+/** Whether a monitoring report's ML re-score actually happened. See
+ * supabase/add_monitoring_reports_rescore_state.sql -- "skipped" means the
+ * ML service had nothing to score for that project, which is a correct
+ * outcome rather than a failure to retry. */
+export type RescoreState = "pending" | "done" | "failed" | "skipped";
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "13";
@@ -170,6 +176,14 @@ export type Database = {
           remarks: string | null;
           photo_urls: string[] | null;
           created_at: string;
+          // Added by add_monitoring_reports_rescore_state.sql. Typed as
+          // optional because the app must keep working against a database
+          // where that migration hasn't been run yet -- every read/write of
+          // these columns is capability-probed at runtime (see
+          // actions/submit-report.ts's rescoreColumnsMissing).
+          rescore_state?: RescoreState;
+          rescored_at?: string | null;
+          rescore_error?: string | null;
         };
         Insert: Partial<Database["public"]["Tables"]["monitoring_reports"]["Row"]> & {
           project_id: string;

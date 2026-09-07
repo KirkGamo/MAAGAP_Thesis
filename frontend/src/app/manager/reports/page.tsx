@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { isMissingColumnError } from "@/lib/postgrest-errors";
 import { Card } from "@/components/tremor/card";
+import type { RescoreState } from "@/types/database";
 import { STATUSES } from "../ppas/filters";
 import { ReportsFilters } from "./reports-filters";
 import { ReportList, type ReportListItem } from "./report-list";
@@ -24,6 +26,23 @@ interface JoinedProject {
   municipality: string | null;
   risk_tier: string | null;
   status: string | null;
+}
+
+/** Shape of a row from the dynamic select below. Declared explicitly
+ * because passing the column list as a variable (needed for the
+ * migration fallback) erases PostgREST's inferred row typing. */
+interface RawReport {
+  id: string;
+  visited_at: string;
+  status_observed: string;
+  percent_complete: number | null;
+  remarks: string | null;
+  photo_urls: string[] | null;
+  project: JoinedProject | null;
+  inspector: { full_name: string | null } | null;
+  rescore_state?: RescoreState;
+  rescored_at?: string | null;
+  rescore_error?: string | null;
 }
 
 /**
@@ -52,43 +71,52 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     .eq("role", "inspector")
     .order("full_name");
 
-  let query = supabase
-    .from("monitoring_reports")
-    .select(
-      "id, visited_at, status_observed, percent_complete, remarks, photo_urls, project:projects(id, name_of_project, project_key, municipality, risk_tier, status), inspector:profiles!monitoring_reports_inspector_id_fkey(full_name)"
-    )
-    .order("visited_at", { ascending: false })
-    .limit(MAX_ROWS);
+  // The re-score columns only exist once
+  // add_monitoring_reports_rescore_state.sql has been run by hand (this
+  // repo's migration convention), so the richer select is attempted first
+  // and falls back to the original shape. Reports must stay readable on a
+  // database that is a migration behind.
+  const BASE_COLUMNS =
+    "id, visited_at, status_observed, percent_complete, remarks, photo_urls, project:projects(id, name_of_project, project_key, municipality, risk_tier, status), inspector:profiles!monitoring_reports_inspector_id_fkey(full_name)";
+  const RESCORE_COLUMNS = `${BASE_COLUMNS}, rescore_state, rescored_at, rescore_error`;
 
-  if (params.inspector) {
-    query = query.eq("inspector_id", params.inspector);
+  function buildQuery(columns: string) {
+    let q = supabase
+      .from("monitoring_reports")
+      .select(columns)
+      .order("visited_at", { ascending: false })
+      .limit(MAX_ROWS);
+    if (params.inspector) q = q.eq("inspector_id", params.inspector);
+    return q;
   }
 
-  const { data: reportsRaw, error } = await query;
+  let rescoreTrackingEnabled = true;
+  let { data: reportsRaw, error } = await buildQuery(RESCORE_COLUMNS);
+  if (error && isMissingColumnError(error)) {
+    rescoreTrackingEnabled = false;
+    ({ data: reportsRaw, error } = await buildQuery(BASE_COLUMNS));
+  }
 
   // Project-name search filters in memory: the column lives on a joined
   // table, which PostgREST's .ilike() can't reach alongside this join
   // syntax. MAX_ROWS caps it to a bounded scan.
-  const filtered = (reportsRaw ?? []).filter((r) => {
+  const allRows = (reportsRaw ?? []) as unknown as RawReport[];
+  const filtered = allRows.filter((r) => {
     if (!params.q) return true;
-    const project = r.project as unknown as JoinedProject | null;
-    return project?.name_of_project.toLowerCase().includes(params.q.toLowerCase());
+    return r.project?.name_of_project.toLowerCase().includes(params.q.toLowerCase());
   });
 
-  const listItems: ReportListItem[] = filtered.map((r) => {
-    const project = r.project as unknown as JoinedProject | null;
-    const inspector = r.inspector as unknown as { full_name: string | null } | null;
-    return {
-      id: r.id,
-      visitedAt: r.visited_at,
-      inspectorName: inspector?.full_name ?? "Unknown",
-      projectName: project?.name_of_project ?? "Unknown project",
-      municipality: project?.municipality ?? null,
-      statusObserved: r.status_observed,
-      statusLabel: STATUS_LABELS[r.status_observed] ?? r.status_observed,
-      photoCount: (r.photo_urls ?? []).length,
-    };
-  });
+  const listItems: ReportListItem[] = filtered.map((r) => ({
+    id: r.id,
+    visitedAt: r.visited_at,
+    inspectorName: r.inspector?.full_name ?? "Unknown",
+    projectName: r.project?.name_of_project ?? "Unknown project",
+    municipality: r.project?.municipality ?? null,
+    statusObserved: r.status_observed,
+    statusLabel: STATUS_LABELS[r.status_observed] ?? r.status_observed,
+    photoCount: (r.photo_urls ?? []).length,
+    rescoreState: rescoreTrackingEnabled ? (r.rescore_state ?? "pending") : null,
+  }));
 
   // Default to the newest report so the detail pane is never empty when
   // there is something to show.
@@ -101,8 +129,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
   let selected: ReportDetailData | null = null;
   if (selectedRaw) {
-    const project = selectedRaw.project as unknown as JoinedProject | null;
-    const inspector = selectedRaw.inspector as unknown as { full_name: string | null } | null;
+    const project = selectedRaw.project;
+    const inspector = selectedRaw.inspector;
 
     // Signed for THIS report only -- the whole point of the rebuild.
     const paths = selectedRaw.photo_urls ?? [];
@@ -134,6 +162,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       percentComplete: selectedRaw.percent_complete,
       remarks: selectedRaw.remarks,
       signedPhotoUrls,
+      rescoreState: rescoreTrackingEnabled ? (selectedRaw.rescore_state ?? "pending") : null,
+      rescoredAt: selectedRaw.rescored_at ?? null,
+      rescoreError: selectedRaw.rescore_error ?? null,
     };
   }
 
@@ -142,11 +173,22 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const filedLast7 = filtered.filter(
     (r) => now - new Date(r.visited_at).getTime() < 7 * 24 * 60 * 60 * 1000
   ).length;
-  const withPhotos = filtered.filter((r) => (r.photo_urls ?? []).length > 0).length;
+  const awaiting = rescoreTrackingEnabled
+    ? filtered.filter((r) => (r.rescore_state ?? "pending") === "pending").length
+    : 0;
+  const failed = rescoreTrackingEnabled
+    ? filtered.filter((r) => r.rescore_state === "failed").length
+    : 0;
   const headline =
     filtered.length === 0
       ? "No field reports have been filed yet — the loop's input is empty."
-      : `${filtered.length} report${filtered.length === 1 ? "" : "s"} · ${filedLast7} in the last 7 days · ${withPhotos} with photos`;
+      : [
+          `${filtered.length} report${filtered.length === 1 ? "" : "s"}`,
+          `${filedLast7} in the last 7 days`,
+          rescoreTrackingEnabled
+            ? `${awaiting} awaiting re-score${failed > 0 ? `, ${failed} failed` : ""}`
+            : "re-score tracking not enabled",
+        ].join(" · ");
 
   return (
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">

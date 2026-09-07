@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Badge, riskTierVariant, statusVariant } from "@/components/ui/badge";
+import { RescorePanel } from "./rescore-badge";
+import type { RescoreState } from "@/types/database";
 
 export interface ReportDetailData {
   id: string;
@@ -20,6 +22,10 @@ export interface ReportDetailData {
   remarks: string | null;
   /** Freshly signed for this render only -- see page.tsx. */
   signedPhotoUrls: string[];
+  /** Null when the re-score tracking migration hasn't been applied. */
+  rescoreState: RescoreState | null;
+  rescoredAt: string | null;
+  rescoreError: string | null;
 }
 
 /**
@@ -84,6 +90,15 @@ export function ReportDetail({ report }: { report: ReportDetailData | null }) {
           The project&apos;s current status differs from what this visit observed — either a later
           report superseded it, or this observation was never applied.
         </p>
+      )}
+
+      {report.rescoreState && (
+        <RescorePanel
+          reportId={report.id}
+          state={report.rescoreState}
+          rescoredAt={report.rescoredAt}
+          error={report.rescoreError}
+        />
       )}
 
       {report.percentComplete != null && (
