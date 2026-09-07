@@ -1,5 +1,6 @@
 import { Card } from "@/components/tremor/card";
 import { ActiveToggle } from "./active-toggle";
+import { AssignSlotMenu, ClearSlotButton, type SlotCandidate } from "./assign-slot-menu";
 import { DAILY_CAPACITY, WEEKLY_CAPACITY } from "../schedule/capacity";
 import { displayName, WORKDAYS, type SlotRow, type WeekLoad } from "./lib/roster";
 
@@ -20,11 +21,14 @@ export function SlotCard({
   load,
   proposedVisits,
   solveKnown,
+  candidates,
 }: {
   row: SlotRow;
   load: WeekLoad | undefined;
   proposedVisits: number;
   solveKnown: boolean;
+  /** Inspectors holding no slot, offered when filling this one. */
+  candidates: SlotCandidate[];
 }) {
   const { slot, profile, inCurrentSolve } = row;
   const total = load?.total ?? 0;
@@ -83,20 +87,28 @@ export function SlotCard({
             {`${total} of ${WEEKLY_CAPACITY} deployed this week`}
           </p>
 
-          <div className="mt-auto pt-1">
-            <ActiveToggle profileId={profile.id} active={profile.active} />
+          <div className="mt-auto flex flex-wrap items-center gap-1 pt-1">
+            <ActiveToggle
+              profileId={profile.id}
+              active={profile.active}
+              scheduledThisWeek={total}
+            />
+            <ClearSlotButton profileId={profile.id} />
           </div>
         </>
       ) : (
         <>
           <p className="text-sm font-medium text-slate-400">Unassigned</p>
-          <p className="mt-auto pt-1 text-[11px] text-slate-500">
+          <p className="text-[11px] text-slate-500">
             {!solveKnown
               ? "No one receives this slot's visits."
               : proposedVisits > 0
                 ? `${proposedVisits} visit${proposedVisits === 1 ? "" : "s"} in the latest solve cannot be deployed.`
                 : "The latest solve routes no visits here."}
           </p>
+          <div className="mt-auto pt-1">
+            <AssignSlotMenu mode="fill-slot" slot={slot} candidates={candidates} label="Assign" />
+          </div>
         </>
       )}
     </Card>

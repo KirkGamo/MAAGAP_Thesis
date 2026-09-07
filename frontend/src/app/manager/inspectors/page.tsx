@@ -9,6 +9,7 @@ import { UnrosteredTable } from "./unrostered-table";
 import {
   buildSlotRows,
   buildWeekLoads,
+  displayName,
   summarizeRoster,
   undeployableVisits,
   unrosteredProfiles,
@@ -113,6 +114,16 @@ export default async function InspectorsPage() {
     ? undeployableVisits(slotRows, solverRoster.countBySlot)
     : 0;
 
+  // Assignment inputs, computed once and shared by both directions of
+  // the flow (fill an empty slot from its card, or give an unrostered
+  // person a slot from the table).
+  const candidates = unrostered.map((profile) => ({
+    id: profile.id,
+    name: displayName(profile),
+  }));
+  const knownSlots = slotRows.map((row) => row.slot);
+  const occupiedSlots = slotRows.filter((row) => row.profile).map((row) => row.slot);
+
   // Composed as plain strings, not JSX text: this repo's Next build fuses
   // boundary whitespace around entities (Overview/Schedule convention).
   const slotsExplainer =
@@ -167,6 +178,7 @@ export default async function InspectorsPage() {
                   load={row.profile ? weekLoads[row.profile.id] : undefined}
                   proposedVisits={solverRoster?.countBySlot[row.slot] ?? 0}
                   solveKnown={solverRoster !== null}
+                  candidates={candidates}
                 />
               ))}
             </div>
@@ -182,7 +194,11 @@ export default async function InspectorsPage() {
           <Card className="flex flex-col p-4 lg:min-h-0 lg:flex-1">
             <p className="mb-1 shrink-0 text-sm font-semibold text-brand-navy">No optimizer slot</p>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-              <UnrosteredTable profiles={unrostered} />
+              <UnrosteredTable
+                profiles={unrostered}
+                slots={knownSlots}
+                occupiedSlots={occupiedSlots}
+              />
             </div>
           </Card>
 
