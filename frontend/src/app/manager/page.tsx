@@ -290,9 +290,16 @@ export default async function ManagerOverviewPage() {
               />
               {budget.excludedNoAmount + budget.excludedNoMunicipality > 0 && (
                 <p className="mt-2 text-xs text-slate-400">
-                  Excludes {budget.excludedNoAmount.toLocaleString()} PPAs with no recorded
-                  amount{budget.excludedNoMunicipality > 0 &&
-                    ` and ${budget.excludedNoMunicipality.toLocaleString()} with no resolved municipality`}.
+                  Excludes{" "}
+                  {[
+                    budget.excludedNoAmount > 0 &&
+                      `${budget.excludedNoAmount.toLocaleString()} PPAs with no recorded amount`,
+                    budget.excludedNoMunicipality > 0 &&
+                      `${budget.excludedNoMunicipality.toLocaleString()} PPAs with no resolved municipality`,
+                  ]
+                    .filter(Boolean)
+                    .join(" and ")}
+                  .
                 </p>
               )}
             </>
