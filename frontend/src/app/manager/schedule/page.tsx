@@ -105,10 +105,11 @@ async function fetchOptimizerSummary(): Promise<OptimizerSummary | null> {
  * week/deploy status + optimizer scorecard + actions), the day tabs, and
  * the two-pane workspace -- routing map left, day agenda right, both
  * driven by the same `day` URL param. "All" swaps the agenda for the
- * WeekMatrix count grid; per-day is the default (today's workday when the
- * page is opened Mon-Fri, else Mon), which is the workspace's core
- * information-overload defense: one day's <=18 visits rendered in detail
- * instead of the old ~90-card five-column board.
+ * WeekMatrix count grid; per-day is the default (today when today has
+ * visits, else the week's first day with any -- see the selectedDay
+ * resolution below), which is the workspace's core information-overload
+ * defense: one day's <=18 visits rendered in detail instead of the old
+ * ~90-card five-column board.
  *
  * Replaced by this workspace (git history preserves them): the
  * always-visible "Adjust this week's schedule" table (schedule-editor),
@@ -118,17 +119,14 @@ async function fetchOptimizerSummary(): Promise<OptimizerSummary | null> {
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
   const { day: dayParam } = await searchParams;
 
-  // Default to today's workday (a Manager opening this mid-week wants
-  // today, not Monday); weekends fall back to Mon. "All" is an explicit
-  // choice via the day strip.
-  const todayIndex = new Date().getDay(); // 0 = Sun .. 6 = Sat
-  const defaultDay = todayIndex >= 1 && todayIndex <= 5 ? DAY_ORDER[todayIndex - 1] : "Mon";
-  const selectedDay =
+  // An explicit choice from the day strip always wins; the default is
+  // resolved below, once the week's per-day counts are known.
+  const explicitDay =
     dayParam === "All"
       ? "All"
       : dayParam && (DAY_ORDER as readonly string[]).includes(dayParam)
         ? dayParam
-        : defaultDay;
+        : null;
 
   const supabase = await createClient();
 
@@ -207,6 +205,20 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       tabByDay.get("All")!.high += 1;
     }
   }
+
+  // Default day: today (a Manager opening this mid-week wants today, not
+  // Monday), but only if today actually has visits -- landing on a blank
+  // agenda while the rest of the week is full is a worse first impression
+  // than opening on the first day with work. Weekends, and weeks with no
+  // visits at all, fall back to today's workday equivalent.
+  const todayIndex = new Date().getDay(); // 0 = Sun .. 6 = Sat
+  const todayWorkday = todayIndex >= 1 && todayIndex <= 5 ? DAY_ORDER[todayIndex - 1] : "Mon";
+  const firstDayWithVisits = DAY_ORDER.find((day) => (tabByDay.get(day)?.count ?? 0) > 0);
+  const selectedDay =
+    explicitDay ??
+    ((tabByDay.get(todayWorkday)?.count ?? 0) > 0
+      ? todayWorkday
+      : (firstDayWithVisits ?? todayWorkday));
 
   const mapPoints: ScheduleMapPoint[] = weekRows
     .filter((row) => selectedDay === "All" || row.scheduled_day === selectedDay)
@@ -301,7 +313,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   });
   const headerCaption =
     weekRows.length > 0
-      ? `Week of ${weekLabel} · ${weekRows.length} visits deployed · PuLP-optimized`
+      ? `Week of ${weekLabel} · ${weekRows.length} visit${weekRows.length === 1 ? "" : "s"} deployed · PuLP-optimized`
       : `Week of ${weekLabel} · nothing deployed yet`;
   const paneTitle =
     selectedDay === "All" ? "Week at a glance" : `${DAY_FULL_NAMES[selectedDay]} agenda`;
@@ -315,12 +327,11 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   return (
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
       {/* ---- Top strip: identity, status, scorecard, actions ---- */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div>
           <h1 className="text-xl font-semibold text-brand-navy">Schedule</h1>
           <p className="text-xs text-slate-500">{headerCaption}</p>
         </div>
-        <Scorecard summary={summary} />
         <div className="flex items-start gap-2">
           <RunOptimizerButton
             initiallyRunning={optimizerStatus?.state === "running"}
@@ -334,8 +345,12 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
         </div>
       </div>
 
-      <div className="shrink-0">
+      {/* Day tabs and the optimizer scorecard share one band: the tabs are
+          the workspace's primary control, the scorecard the standing
+          read-out of the solve behind it. */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <DayStrip tabs={tabs} current={selectedDay} />
+        <Scorecard summary={summary} />
       </div>
 
       {/* ---- Workspace: map pane + agenda pane ---- */}

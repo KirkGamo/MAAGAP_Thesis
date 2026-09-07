@@ -167,6 +167,13 @@ function noneDeployableError(mapped: MappedSchedule): string {
 export interface DeployPreview {
   /** Successfully mapped rows that would be inserted. */
   incoming: number;
+  /** Rows in the optimizer's output, mapped or not. */
+  totalRows: number;
+  /** Rows that cannot be deployed because their "Inspector_N" slot has no
+   * profile (assign slugs on the Inspectors tab). */
+  skippedUnmappedInspector: number;
+  /** Rows whose project_key isn't in `projects` yet. */
+  skippedUnknownProject: number;
   /** Current-week rows that the deploy would delete first. */
   existing: number;
   /** Of those, rows that differ from the incoming optimizer output --
@@ -208,7 +215,14 @@ export async function previewDeploy(): Promise<
 
   return {
     success: true,
-    preview: { incoming: result.mapped.toInsert.length, existing, differing },
+    preview: {
+      incoming: result.mapped.toInsert.length,
+      totalRows: result.mapped.totalRows,
+      skippedUnmappedInspector: result.mapped.skippedUnmappedInspector,
+      skippedUnknownProject: result.mapped.skippedUnknownProject,
+      existing,
+      differing,
+    },
   };
 }
 

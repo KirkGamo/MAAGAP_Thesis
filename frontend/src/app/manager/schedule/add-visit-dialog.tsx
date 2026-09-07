@@ -53,19 +53,33 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
-  // Debounced search: schedule a lookup 300ms after the last keystroke.
-  useEffect(() => {
+  /** Typing clears stale output immediately; the lookup itself is
+   * debounced below. Both state updates deliberately live in the event
+   * handler / timer callback rather than in the effect body -- a
+   * synchronous setState during an effect triggers cascading renders
+   * (react-hooks/set-state-in-effect). */
+  function handleQueryChange(value: string) {
+    setQuery(value);
     setSearchError(null);
-    if (query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
+    if (value.trim().length < 2) setResults([]);
+  }
+
+  // Debounced search: look up 300ms after the last keystroke. `cancelled`
+  // guards against a slow response landing after a newer query has
+  // already been typed, which would otherwise show stale matches.
+  useEffect(() => {
+    if (query.trim().length < 2) return;
+    let cancelled = false;
     const handle = setTimeout(async () => {
       const res = await searchProjects(query);
+      if (cancelled) return;
       if (res.success) setResults(res.results);
       else setSearchError(res.error);
     }, 300);
-    return () => clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
   }, [query]);
 
   const dayLoad = loadByInspector[inspectorId]?.days[day] ?? 0;
@@ -111,7 +125,7 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
         <SheetBody className="flex flex-col gap-3">
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => handleQueryChange(e.target.value)}
             placeholder="e.g. flood control, Leon…"
             className="h-9 text-sm"
           />
