@@ -20,6 +20,21 @@ interface LatestScheduleResponse {
   summary: Record<string, unknown> | null;
 }
 
+interface InsertableAssignment {
+  project_id: string;
+  inspector_id: string;
+  scheduled_day: string;
+  week_of: string;
+  cluster: string;
+}
+
+interface MappedSchedule {
+  toInsert: InsertableAssignment[];
+  skippedUnmappedInspector: number;
+  skippedUnknownProject: number;
+  totalRows: number;
+}
+
 /**
  * Mirrors ml-service/optimization_engine.py's most recent PuLP solve
  * output (served as JSON by ml-service/main.py's GET /api/v1/latest-schedule,
@@ -43,16 +58,18 @@ interface LatestScheduleResponse {
  * existing inspector_schedules rows for this week are deleted first, then
  * every successfully-mapped row from the CSV is inserted fresh. This
  * matches the button's own label ("deploy LATEST") rather than
- * accumulating duplicate rows on every click.
+ * accumulating duplicate rows on every click. Because that delete also
+ * wipes any manual edits made through the workspace, previewDeploy()
+ * (below) lets the button warn before this action runs -- see
+ * SCHEDULE_WORKFLOW_IMPROVEMENT_PLAN.md phase 4.
  */
-export async function deployLatestSchedule(): Promise<
-  | { success: true; message: string }
-  | { success: false; error: string }
-> {
+async function fetchAndMapLatestSchedule(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<{ ok: true; mapped: MappedSchedule } | { ok: false; error: string }> {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   if (!baseUrl) {
     return {
-      success: false,
+      ok: false,
       error:
         "FASTAPI_ML_SERVICE_URL is not configured -- set it in frontend/.env.local (e.g. http://localhost:8000 for local dev) so this action can reach the ML service.",
     };
@@ -63,18 +80,17 @@ export async function deployLatestSchedule(): Promise<
     const res = await fetch(`${baseUrl}/api/v1/latest-schedule`, { cache: "no-store" });
     if (res.status === 404) {
       return {
-        success: false,
-        error:
-          "No inspector schedule found yet -- run ml-service/optimization_engine.py first, then try again.",
+        ok: false,
+        error: "No inspector schedule found yet -- run the optimizer first, then try again.",
       };
     }
     if (!res.ok) {
-      return { success: false, error: `ML service returned ${res.status}.` };
+      return { ok: false, error: `ML service returned ${res.status}.` };
     }
     data = (await res.json()) as LatestScheduleResponse;
   } catch (err) {
     return {
-      success: false,
+      ok: false,
       error: `Could not reach the ML service at ${baseUrl}: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -82,10 +98,8 @@ export async function deployLatestSchedule(): Promise<
   }
 
   if (data.rows.length === 0) {
-    return { success: false, error: "The latest schedule has no rows to deploy." };
+    return { ok: false, error: "The latest schedule has no rows to deploy." };
   }
-
-  const supabase = await createClient();
 
   const slugs = Array.from(new Set(data.rows.map((r) => r.inspector)));
   const projectKeys = Array.from(new Set(data.rows.map((r) => r.project_key)));
@@ -103,13 +117,7 @@ export async function deployLatestSchedule(): Promise<
   const projectIdByKey = new Map((projectRows ?? []).map((p) => [p.project_key, p.id]));
 
   const weekOf = currentWeekMonday();
-  const toInsert: {
-    project_id: string;
-    inspector_id: string;
-    scheduled_day: string;
-    week_of: string;
-    cluster: string;
-  }[] = [];
+  const toInsert: InsertableAssignment[] = [];
 
   let skippedUnmappedInspector = 0;
   let skippedUnknownProject = 0;
@@ -136,16 +144,89 @@ export async function deployLatestSchedule(): Promise<
     });
   }
 
-  if (toInsert.length === 0) {
-    return {
-      success: false,
-      error:
-        `None of the ${data.rows.length} schedule row(s) could be deployed -- ` +
-        `${skippedUnmappedInspector} had no inspector mapped to their "Inspector_N" slot ` +
-        `(assign one on the Inspectors tab) and ${skippedUnknownProject} referenced a project ` +
-        `not yet imported (use Import Projects on the PPAs tab).`,
-    };
+  return {
+    ok: true,
+    mapped: {
+      toInsert,
+      skippedUnmappedInspector,
+      skippedUnknownProject,
+      totalRows: data.rows.length,
+    },
+  };
+}
+
+function noneDeployableError(mapped: MappedSchedule): string {
+  return (
+    `None of the ${mapped.totalRows} schedule row(s) could be deployed -- ` +
+    `${mapped.skippedUnmappedInspector} had no inspector mapped to their "Inspector_N" slot ` +
+    `(assign one on the Inspectors tab) and ${mapped.skippedUnknownProject} referenced a project ` +
+    `not yet imported (use Import Projects on the PPAs tab).`
+  );
+}
+
+export interface DeployPreview {
+  /** Successfully mapped rows that would be inserted. */
+  incoming: number;
+  /** Current-week rows that the deploy would delete first. */
+  existing: number;
+  /** Of those, rows that differ from the incoming optimizer output --
+   * the closest available proxy for "manual edits that will be lost"
+   * (the schema doesn't record who created a row). */
+  differing: number;
+}
+
+/**
+ * Phase 4: what would deploying do? Lets the button warn before the
+ * replace-week delete wipes manual edits. Read-only.
+ */
+export async function previewDeploy(): Promise<
+  { success: true; preview: DeployPreview } | { success: false; error: string }
+> {
+  const supabase = await createClient();
+  const result = await fetchAndMapLatestSchedule(supabase);
+  if (!result.ok) return { success: false, error: result.error };
+  if (result.mapped.toInsert.length === 0) {
+    return { success: false, error: noneDeployableError(result.mapped) };
   }
+
+  const { data: existingRows, error } = await supabase
+    .from("inspector_schedules")
+    .select("project_id, inspector_id, scheduled_day")
+    .eq("week_of", currentWeekMonday());
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  const incomingKeys = new Set(
+    result.mapped.toInsert.map((r) => `${r.project_id}|${r.inspector_id}|${r.scheduled_day}`)
+  );
+  const existing = existingRows?.length ?? 0;
+  const differing = (existingRows ?? []).filter(
+    (r) => !incomingKeys.has(`${r.project_id}|${r.inspector_id}|${r.scheduled_day}`)
+  ).length;
+
+  return {
+    success: true,
+    preview: { incoming: result.mapped.toInsert.length, existing, differing },
+  };
+}
+
+export async function deployLatestSchedule(): Promise<
+  | { success: true; message: string }
+  | { success: false; error: string }
+> {
+  const supabase = await createClient();
+  const result = await fetchAndMapLatestSchedule(supabase);
+  if (!result.ok) return { success: false, error: result.error };
+
+  const { toInsert, skippedUnmappedInspector, skippedUnknownProject } = result.mapped;
+
+  if (toInsert.length === 0) {
+    return { success: false, error: noneDeployableError(result.mapped) };
+  }
+
+  const weekOf = currentWeekMonday();
 
   // Replace the week wholesale rather than accumulating duplicates on
   // every "Deploy" click.
