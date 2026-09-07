@@ -98,8 +98,10 @@ from sklearn.impute import IterativeImputer
 
 try:
     from .preprocess import STANDARD_DURATION_DAYS, canonicalize_municipality
+    from .status_vocabulary import STATUS_FLAGS, canonicalize_status, status_flags
 except ImportError:  # running this file directly (not as part of the package)
     from preprocess import STANDARD_DURATION_DAYS, canonicalize_municipality
+    from status_vocabulary import STATUS_FLAGS, canonicalize_status, status_flags
 
 logger = logging.getLogger("maagap.feature_engineering")
 
@@ -192,6 +194,7 @@ class FeatureEngineeringReport:
     outliers: dict = field(default_factory=dict)
     sequence_assembly: dict = field(default_factory=dict)
     split: dict = field(default_factory=dict)
+    status_vocabulary: dict = field(default_factory=dict)
 
     def log_summary(self) -> None:
         logger.info("=" * 78)
@@ -200,6 +203,7 @@ class FeatureEngineeringReport:
         for section_name, section in [
             ("Step 6: Target construction", self.target_construction),
             ("Step 7: Imputation", self.imputation),
+            ("Step 9: Status vocabulary (D16)", self.status_vocabulary),
             ("Step 8: Outliers", self.outliers),
             ("Step 10: Sequence assembly", self.sequence_assembly),
             ("Step 11: Train/test split", self.split),
@@ -799,7 +803,46 @@ def engineer_features(
         lambda s: canonicalize_municipality(s.split(",")[-1])
     )
 
-    categorical_cols = [c for c in ["STATUS_clean", "project_type", "municipality_canonical"] if c in df.columns]
+    # D16: status is encoded from a CONTROLLED vocabulary, not from the raw
+    # free text. One-hotting STATUS_clean directly produced 57 of the
+    # previous model's 137 feature columns (42%) -- near-singleton columns
+    # keyed on typos, e.g. "STATUS_clean_Completd/ Distributed", which no
+    # unseen wording can ever match. Collapsing to 7 canonical labels plus
+    # three orthogonal condition flags keeps the information the free text
+    # carried (damage, non-functionality, not-yet-turned-over) in a form
+    # that generalizes, and lets a live field observation land in the same
+    # column the model was trained on (see status_vocabulary.py).
+    #
+    # STATUS_clean itself is untouched upstream: construct_target_variable()
+    # (Step 6, already run by this point) still decides completion from it
+    # exactly as before, so this changes the FEATURES only and the retrain
+    # that follows is a controlled comparison.
+    if "STATUS_clean" in df.columns:
+        canon = df["STATUS_clean"].map(canonicalize_status)
+        df["STATUS_canonical"] = [c[0] for c in canon]
+        df["status_source"] = [c[1] for c in canon]
+        flags = df["STATUS_clean"].map(status_flags)
+        for flag_name in STATUS_FLAGS:
+            df[flag_name] = flags.map(lambda f, name=flag_name: f[name]).astype(bool)
+
+        source_counts = df["status_source"].value_counts().to_dict()
+        label_counts = df["STATUS_canonical"].value_counts().to_dict()
+        logger.info(
+            "Step 9: status vocabulary (D16) -> %d canonical labels %s; provenance %s",
+            df["STATUS_canonical"].nunique(), label_counts, source_counts,
+        )
+        report.status_vocabulary = {
+            "canonical_label_counts": label_counts,
+            "status_source_counts": source_counts,
+            "flag_counts": {name: int(df[name].sum()) for name in STATUS_FLAGS},
+        }
+        # Drop the free-text column from the FEATURE frame so it cannot be
+        # one-hot encoded; the target it fed was constructed in Step 6.
+        df = df.drop(columns=["STATUS_clean"])
+
+    categorical_cols = [
+        c for c in ["STATUS_canonical", "project_type", "municipality_canonical"] if c in df.columns
+    ]
     df = pd.get_dummies(df, columns=categorical_cols, prefix=categorical_cols, dummy_na=False)
 
     if contractors is not None and "contractor_id" in df.columns:

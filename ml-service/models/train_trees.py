@@ -95,6 +95,11 @@ EXCLUDE_COLS = [
     # explicitly so it is dropped silently rather than tripping the
     # "unexpected non-numeric column" warning below on every run.
     "project_type_source",
+    # status_source is D16's equivalent: which stage assigned
+    # STATUS_canonical (the rule cascade, or abstention). Provenance for
+    # auditing how the controlled vocabulary was applied, not a model
+    # input -- excluded explicitly for the same reason as above.
+    "status_source",
     # D_start is the resolved (DATE RELEASED, falling back to DATE MONITORED)
     # datetime used to derive release_month/release_quarter/days_since_release/
     # is_wet_season_release in feature_engineering.py -- it's housekeeping for
