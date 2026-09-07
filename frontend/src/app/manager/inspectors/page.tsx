@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { currentWeekMonday } from "@/lib/current-week";
 import { Card } from "@/components/tremor/card";
 import { DAILY_CAPACITY, WEEKLY_CAPACITY } from "../schedule/capacity";
 import { InviteInspectorForm } from "./invite-inspector-form";
@@ -7,7 +8,9 @@ import { SlotCard } from "./slot-card";
 import { UnrosteredTable } from "./unrostered-table";
 import {
   buildSlotRows,
+  buildWeekLoads,
   summarizeRoster,
+  undeployableVisits,
   unrosteredProfiles,
   type InspectorProfile,
 } from "./lib/roster";
@@ -21,7 +24,14 @@ import {
  * unreachable/slow/errored fetch returns null and the page renders the
  * roster from Supabase alone (see RosterReadiness's offline chip).
  */
-async function fetchSolverSlots(): Promise<string[] | null> {
+interface SolverRoster {
+  slots: string[];
+  /** Visits the latest solve routes to each slot. */
+  countBySlot: Record<string, number>;
+  totalRows: number;
+}
+
+async function fetchSolverRoster(): Promise<SolverRoster | null> {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   if (!baseUrl) return null;
   try {
@@ -31,10 +41,21 @@ async function fetchSolverSlots(): Promise<string[] | null> {
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
+      rows?: { inspector?: string }[];
       summary?: { inspectors_used?: string[] } | null;
     };
-    const slots = data.summary?.inspectors_used;
-    return Array.isArray(slots) && slots.length > 0 ? slots : null;
+    const rows = data.rows ?? [];
+    const countBySlot: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.inspector) countBySlot[row.inspector] = (countBySlot[row.inspector] ?? 0) + 1;
+    }
+    const summarySlots = data.summary?.inspectors_used;
+    const slots =
+      Array.isArray(summarySlots) && summarySlots.length > 0
+        ? summarySlots
+        : Object.keys(countBySlot);
+    if (slots.length === 0) return null;
+    return { slots, countBySlot, totalRows: rows.length };
   } catch {
     return null;
   }
@@ -66,19 +87,31 @@ async function fetchSolverSlots(): Promise<string[] | null> {
 export default async function InspectorsPage() {
   const supabase = await createClient();
 
-  const [{ data: profileRows, error }, solverSlots] = await Promise.all([
+  const [{ data: profileRows, error }, { data: scheduleRows }, solverRoster] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, active, inspector_slug, created_at")
       .eq("role", "inspector")
       .order("full_name"),
-    fetchSolverSlots(),
+    // Deployed load for the current week only -- inspector_schedules
+    // accumulates every week ever deployed (the Phase 14 note on the
+    // Schedule page), so an unscoped read would inflate every capacity
+    // chip with historical visits.
+    supabase
+      .from("inspector_schedules")
+      .select("inspector_id, scheduled_day")
+      .eq("week_of", currentWeekMonday()),
+    fetchSolverRoster(),
   ]);
 
   const profiles = (profileRows ?? []) as InspectorProfile[];
-  const slotRows = buildSlotRows(solverSlots ?? [], profiles);
+  const slotRows = buildSlotRows(solverRoster?.slots ?? [], profiles);
   const summary = summarizeRoster(slotRows, profiles);
   const unrostered = unrosteredProfiles(profiles);
+  const weekLoads = buildWeekLoads(scheduleRows ?? []);
+  const undeployable = solverRoster
+    ? undeployableVisits(slotRows, solverRoster.countBySlot)
+    : 0;
 
   // Composed as plain strings, not JSX text: this repo's Next build fuses
   // boundary whitespace around entities (Overview/Schedule convention).
@@ -96,14 +129,18 @@ export default async function InspectorsPage() {
         <div>
           <h1 className="text-xl font-semibold text-brand-navy">Inspectors</h1>
           <p className="text-xs text-slate-500">
-            {readinessHeadline(summary, solverSlots !== null)}
+            {readinessHeadline(summary, solverRoster !== null, undeployable, solverRoster?.totalRows ?? 0)}
           </p>
         </div>
         <InviteInspectorForm />
       </div>
 
       <div className="shrink-0">
-        <RosterReadiness summary={summary} serviceReachable={solverSlots !== null} />
+        <RosterReadiness
+          summary={summary}
+          serviceReachable={solverRoster !== null}
+          undeployable={undeployable}
+        />
       </div>
 
       {error && (
@@ -124,7 +161,13 @@ export default async function InspectorsPage() {
           {slotRows.length > 0 ? (
             <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 content-start gap-2 overflow-y-auto pr-1 xl:grid-cols-3">
               {slotRows.map((row) => (
-                <SlotCard key={row.slot} row={row} />
+                <SlotCard
+                  key={row.slot}
+                  row={row}
+                  load={row.profile ? weekLoads[row.profile.id] : undefined}
+                  proposedVisits={solverRoster?.countBySlot[row.slot] ?? 0}
+                  solveKnown={solverRoster !== null}
+                />
               ))}
             </div>
           ) : (

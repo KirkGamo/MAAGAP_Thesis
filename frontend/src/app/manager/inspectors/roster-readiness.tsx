@@ -13,16 +13,13 @@ import type { RosterSummary } from "./lib/roster";
 export function RosterReadiness({
   summary,
   serviceReachable,
+  undeployable,
 }: {
   summary: RosterSummary;
   serviceReachable: boolean;
+  /** Visits the latest solve routes to slots nobody holds. */
+  undeployable: number;
 }) {
-  const headline = serviceReachable
-    ? `${summary.filledSlots} of ${summary.totalSlots} optimizer slots filled`
-    : summary.totalSlots > 0
-      ? `${summary.filledSlots} of ${summary.totalSlots} known slots filled`
-      : "No optimizer slots assigned yet";
-
   const chips: { label: string; tone: "ok" | "warn" | "muted" }[] = [
     {
       label: `${summary.activeInspectors} active inspector${summary.activeInspectors === 1 ? "" : "s"}`,
@@ -33,6 +30,12 @@ export function RosterReadiness({
       tone: summary.emptySlots > 0 ? "warn" : "ok",
     },
   ];
+  if (undeployable > 0) {
+    chips.push({
+      label: `${undeployable} optimized visit${undeployable === 1 ? "" : "s"} undeployable`,
+      tone: "warn",
+    });
+  }
   if (summary.unrostered > 0) {
     chips.push({
       label: `${summary.unrostered} inspector${summary.unrostered === 1 ? "" : "s"} with no slot`,
@@ -66,15 +69,21 @@ export function RosterReadiness({
           {chip.label}
         </span>
       ))}
-      <span className="sr-only">{headline}</span>
     </div>
   );
 }
 
-/** The one-sentence version, rendered next to the page title. */
+/**
+ * The one-sentence version, rendered next to the page title. Names the
+ * concrete cost when the solve is known ("21 of 25 optimized visits
+ * cannot be deployed") and falls back to the structural statement when
+ * the ML service is unreachable.
+ */
 export function readinessHeadline(
   summary: RosterSummary,
-  serviceReachable: boolean
+  serviceReachable: boolean,
+  undeployable: number,
+  totalSolveVisits: number
 ): string {
   if (!serviceReachable && summary.totalSlots === 0) {
     return "Assign each inspector an optimizer slot so deployed schedules can reach them.";
@@ -82,6 +91,9 @@ export function readinessHeadline(
   const base = `${summary.filledSlots} of ${summary.totalSlots} optimizer slot${
     summary.totalSlots === 1 ? "" : "s"
   } filled`;
+  if (undeployable > 0 && totalSolveVisits > 0) {
+    return `${base} — ${undeployable} of the latest solve's ${totalSolveVisits} visits cannot be deployed to anyone.`;
+  }
   return summary.emptySlots > 0
     ? `${base} — work routed to the empty ones cannot be deployed.`
     : `${base} — every slot can receive deployed work.`;

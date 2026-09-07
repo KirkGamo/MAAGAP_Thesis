@@ -79,6 +79,43 @@ export function buildSlotRows(
   }));
 }
 
+export const WORKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+
+/** One inspector's deployed load for the current week. */
+export interface WeekLoad {
+  total: number;
+  days: Record<string, number>;
+}
+
+/** Groups this week's `inspector_schedules` rows by inspector. Deployed
+ * reality, as distinct from what the latest solve merely proposes. */
+export function buildWeekLoads(
+  rows: { inspector_id: string; scheduled_day: string }[]
+): Record<string, WeekLoad> {
+  const loads: Record<string, WeekLoad> = {};
+  for (const row of rows) {
+    const load = (loads[row.inspector_id] ??= { total: 0, days: {} });
+    load.total += 1;
+    load.days[row.scheduled_day] = (load.days[row.scheduled_day] ?? 0) + 1;
+  }
+  return loads;
+}
+
+/**
+ * Visits the latest solve routes to slots nobody holds -- the count that
+ * will be skipped verbatim by the Schedule tab's deploy step. This is
+ * the number that makes the roster gap concrete, and the reason this tab
+ * reads the solve at all.
+ */
+export function undeployableVisits(
+  slotRows: SlotRow[],
+  countBySlot: Record<string, number>
+): number {
+  return slotRows
+    .filter((row) => !row.profile)
+    .reduce((sum, row) => sum + (countBySlot[row.slot] ?? 0), 0);
+}
+
 export interface RosterSummary {
   totalSlots: number;
   filledSlots: number;
