@@ -81,17 +81,20 @@ LIVE_SCORES_PATH = ARTIFACTS_DIR / "live_scores.json"
 MAX_LSTM_SEQUENCE_LENGTH = 5
 PAD_VALUE = -1.0
 
-# Mirrors preprocess.py's STATUS_LOOKUP canonical labels — kept as a small,
-# local copy rather than importing preprocess.py's full module, since this
-# endpoint only needs the forward mapping from a normalized inspector-app
-# status string to the one-hot column suffix the trained feature schema
-# actually contains.
-STATUS_TO_COLUMN_SUFFIX = {
-    "completed": "Completed/Functional",
-    "on_going": "On-going",
-    "not_yet_implemented": "Not Implemented",
-    "for_bidding": "For Bidding",
-}
+# D16: the app's status enum maps into the CONTROLLED vocabulary the model
+# is now trained on, imported from the single source of truth rather than
+# duplicated here. The previous local copy had drifted into being wrong in
+# two ways at once: it mapped `for_bidding` to a column the trained schema
+# never contained, and it had no entry for `refunded` at all (the enum
+# gained that value later), so both kinds of field observation were
+# recorded and then silently unable to move a score.
+try:
+    from data_pipeline.status_vocabulary import canonical_from_app_status
+except ImportError:  # imported from inside ml-service/ without the package root
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from data_pipeline.status_vocabulary import canonical_from_app_status
 
 
 def probability_to_risk_tier(prob: float) -> str:
@@ -148,23 +151,33 @@ def _find_project_row(project_key: str) -> tuple[Optional[pd.DataFrame], Optiona
 
 
 def _update_status_columns(row: pd.Series, status_observed: str) -> pd.Series:
-    """Zeroes every STATUS_clean_* one-hot column on this row and sets the
-    one matching the newly-observed status, if the trained feature schema
-    has a column for it. Unrecognized statuses are logged and left as-is
-    (the row keeps its previous STATUS one-hot encoding) rather than
-    guessing at a new column name that wasn't in the training schema."""
-    target_suffix = STATUS_TO_COLUMN_SUFFIX.get(status_observed)
-    if target_suffix is None:
-        logger.warning("Unrecognized status_observed=%r — leaving STATUS columns unchanged.", status_observed)
+    """Zeroes every STATUS_canonical_* one-hot on this row and sets the one
+    matching the newly-observed status.
+
+    Since D16 the target column is drawn from a controlled vocabulary of
+    seven labels rather than from whatever free-text spelling happened to
+    be frequent enough at train time to earn its own column, so an
+    inspector's report now reliably lands somewhere. A label that still
+    has no column (because it never occurred in the training population --
+    "Refunded" is only 2 rows, so zero-variance selection drops it) leaves
+    the encoding unchanged, which is the honest outcome: the model has no
+    learned representation of that state to move toward."""
+    target_label = canonical_from_app_status(status_observed)
+
+    status_cols = [c for c in row.index if isinstance(c, str) and c.startswith("STATUS_canonical_")]
+    if not status_cols:
+        logger.warning(
+            "No STATUS_canonical_* columns in this row's schema — the artifacts predate D16. "
+            "Re-run feature_engineering.py and retrain."
+        )
         return row
 
-    status_cols = [c for c in row.index if isinstance(c, str) and c.startswith("STATUS_clean_")]
-    target_col = f"STATUS_clean_{target_suffix}"
+    target_col = f"STATUS_canonical_{target_label}"
     if target_col not in status_cols:
         logger.warning(
-            "Column %s not present in this row's schema (status wasn't seen often enough at train "
-            "time to get its own one-hot column) — leaving STATUS columns unchanged.",
-            target_col,
+            "Status %r maps to %s, which the trained schema does not contain (too rare in the "
+            "training population to survive feature selection) — leaving STATUS columns unchanged.",
+            status_observed, target_col,
         )
         return row
 

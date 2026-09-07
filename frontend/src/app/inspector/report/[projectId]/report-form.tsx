@@ -30,7 +30,6 @@ function toLocalDateTimeValue(date: Date): string {
 
 interface ReportDraft {
   statusObserved: ProjectStatus;
-  percentComplete: string;
   remarks: string;
   visitedAt: string;
   awaitingSend?: boolean;
@@ -55,7 +54,6 @@ type PhotoUploadState = {
 export function ReportForm({ projectId }: { projectId: string }) {
   const router = useRouter();
   const [statusObserved, setStatusObserved] = useState<ProjectStatus>("on_going");
-  const [percentComplete, setPercentComplete] = useState("");
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -88,7 +86,6 @@ export function ReportForm({ projectId }: { projectId: string }) {
            without breaking SSR hydration. Runs once per project; it
            cannot cascade. */
         if (draft.statusObserved) setStatusObserved(draft.statusObserved);
-        if (draft.percentComplete) setPercentComplete(draft.percentComplete);
         if (draft.remarks) setRemarks(draft.remarks);
         if (draft.visitedAt) setVisitedAt(draft.visitedAt);
         if (draft.awaitingSend) setAwaitingSend(true);
@@ -124,8 +121,8 @@ export function ReportForm({ projectId }: { projectId: string }) {
 
   // Mirror every keystroke, so nothing typed is ever only in memory.
   useEffect(() => {
-    saveDraft({ statusObserved, percentComplete, remarks, visitedAt, awaitingSend });
-  }, [saveDraft, statusObserved, percentComplete, remarks, visitedAt, awaitingSend]);
+    saveDraft({ statusObserved, remarks, visitedAt, awaitingSend });
+  }, [saveDraft, statusObserved, remarks, visitedAt, awaitingSend]);
 
   function clearDraft() {
     try {
@@ -220,7 +217,6 @@ export function ReportForm({ projectId }: { projectId: string }) {
         const res = await submitReport({
           projectId,
           statusObserved,
-          percentComplete: percentComplete ? Number(percentComplete) : undefined,
           remarks: remarks || undefined,
           photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
           visitedAt: new Date(visitedAt).toISOString(),
@@ -245,7 +241,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
     // clearDraft/router are stable enough for this callback's purpose;
     // the values it closes over are the submitted ones.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos, projectId, statusObserved, percentComplete, remarks, visitedAt, router]);
+  }, [photos, projectId, statusObserved, remarks, visitedAt, router]);
 
   // Auto-send once connectivity returns, so an inspector who submitted in
   // a dead spot doesn't have to remember to come back to this screen.
@@ -319,19 +315,13 @@ export function ReportForm({ projectId }: { projectId: string }) {
         </select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="percent_complete">% complete (optional)</Label>
-        <Input
-          id="percent_complete"
-          type="number"
-          min="0"
-          max="100"
-          inputMode="numeric"
-          className="h-12 text-base"
-          value={percentComplete}
-          onChange={(e) => setPercentComplete(e.target.value)}
-        />
-      </div>
+      {/* D16: the "% complete" field is deliberately gone. A percentage
+          judged by eye at a site is an unvalidated subjective estimate --
+          no rubric, no inter-rater check, and no way to audit it
+          afterwards -- and it was never a model input anyway. The
+          observed status above is the objective, verifiable primitive
+          that feeds the model instead; see
+          ml-service/data_pipeline/status_vocabulary.py. */}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="remarks">Remarks</Label>

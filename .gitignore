@@ -95,6 +95,10 @@ htmlcov/
 # the raw workbook: full project/contractor rows, kept local, never committed.
 /data/backups/
 /ml-service/artifacts/
+# Snapshot of the trained artifacts taken before the D16 retrain, kept for
+# rollback and for reproducing that decision's before/after comparison. Same
+# class as artifacts/ above: model binaries, local only.
+/ml-service/artifacts_pre_d16/
 *.npy
 *.parquet
 *.pkl
