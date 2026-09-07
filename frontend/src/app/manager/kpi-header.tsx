@@ -40,33 +40,37 @@ export async function KpiHeader() {
   ).size;
   const capacityPct = totalActive > 0 ? Math.round((distinctScheduledProjects / totalActive) * 100) : 0;
 
+  // Compact sizing (text-2xl metrics, size-4 icons, px-4 gutters): since
+  // the single-viewport Overview redesign this row shares the top strip
+  // with the risk-tier counts, so it has to earn its height -- see
+  // page.tsx's layout comment.
   return (
     <div className="grid grid-cols-1 divide-y divide-brand-navy/10 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-      <div className="flex items-start gap-3 py-3 first:pt-0 sm:px-6 sm:py-0 sm:first:pl-0">
-        <FolderKanban className="mt-0.5 size-5 shrink-0 text-brand-blue" aria-hidden="true" />
+      <div className="flex items-start gap-2 py-3 first:pt-0 sm:px-4 sm:py-0 sm:first:pl-0">
+        <FolderKanban className="mt-0.5 size-4 shrink-0 text-brand-blue" aria-hidden="true" />
         <div>
-          <MetricLabel>Total Active Projects</MetricLabel>
-          <Metric>{totalActive.toLocaleString()}</Metric>
+          <MetricLabel className="text-xs">Total Active Projects</MetricLabel>
+          <Metric className="text-2xl">{totalActive.toLocaleString()}</Metric>
         </div>
       </div>
-      <div className="flex items-start gap-3 py-3 sm:px-6 sm:py-0">
+      <div className="flex items-start gap-2 py-3 sm:px-4 sm:py-0">
         <AlertTriangle
-          className={`mt-0.5 size-5 shrink-0 ${criticalCount > 0 ? "text-red-600" : "text-brand-blue"}`}
+          className={`mt-0.5 size-4 shrink-0 ${criticalCount > 0 ? "text-red-600" : "text-brand-blue"}`}
           aria-hidden="true"
         />
         <div>
-          <MetricLabel>Critical Risk Load</MetricLabel>
-          <Metric className={criticalCount > 0 ? "text-red-600" : undefined}>
+          <MetricLabel className="text-xs">Critical Risk Load</MetricLabel>
+          <Metric className={`text-2xl ${criticalCount > 0 ? "text-red-600" : ""}`}>
             {criticalCount.toLocaleString()}
           </Metric>
         </div>
       </div>
-      <div className="flex items-start gap-3 py-3 sm:px-6 sm:py-0 sm:last:pr-0">
-        <Gauge className="mt-0.5 size-5 shrink-0 text-brand-blue" aria-hidden="true" />
+      <div className="flex items-start gap-2 py-3 sm:px-4 sm:py-0 sm:last:pr-0">
+        <Gauge className="mt-0.5 size-4 shrink-0 text-brand-blue" aria-hidden="true" />
         <div>
-          <MetricLabel>Optimized Inspector Capacity</MetricLabel>
-          <Metric>{capacityPct}%</Metric>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <MetricLabel className="text-xs">Optimized Inspector Capacity</MetricLabel>
+          <Metric className="text-2xl">{capacityPct}%</Metric>
+          <p className="mt-0.5 text-[11px] text-slate-400">
             {distinctScheduledProjects} of {totalActive} ongoing projects have a deployed inspector
           </p>
         </div>

@@ -2,8 +2,6 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Card } from "@/components/tremor/card";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
-import { Tracker, type TrackerBlockProps } from "@/components/tremor/tracker";
-import { BarChart } from "@/components/tremor/bar-chart";
 import type { RiskTier } from "@/types/database";
 import { KpiHeader } from "./kpi-header";
 import { KpiHeaderSkeleton } from "./kpi-header-skeleton";
@@ -35,27 +33,16 @@ const TIER_ACCENT: Record<RiskTier, string> = {
   Low: "border-l-4 border-l-emerald-500",
 };
 
-const TIER_TRACKER_COLOR: Record<RiskTier, string> = {
-  Critical: "bg-red-600",
-  High: "bg-orange-500",
-  Medium: "bg-amber-500",
-  Low: "bg-emerald-600",
-};
-
-// Tremor's BarChart colors bars by category name, drawing from a fixed
-// palette of named colors (see components/tremor/chart-utils.ts) rather
-// than arbitrary hex/Tailwind classes -- that fixed set has no "red", so
-// "amber" (this app's Chapter 3 alert color) and "emerald" (this app's
-// existing "safe/low-risk" color everywhere else -- Tracker above, the
-// Risk Map's pins, badge.tsx) are the closest available match.
-const HIGH_RISK_CATEGORY = "High/Critical";
-const LOW_RISK_CATEGORY = "Low/Medium";
-const MAX_MUNICIPALITIES_SHOWN = 10;
-const MAX_TRACKER_BLOCKS = 120;
+// 5, not 10: in the single-viewport layout this chart's cell is ~150-200px
+// of plot height, and more category rows than this push Recharts into
+// tick thinning that leaves bars unlabeled (verified empirically: 7 rows
+// at 1366x768 still lost every other label) -- 5 keeps every bar labeled
+// on the smallest supported laptop viewport.
+const MAX_BUDGET_MUNICIPALITIES = 5;
 
 // PostgREST caps a single select at 1,000 rows (the same limit the PPAs
 // map view designs around via MAP_MARKER_LIMIT), and the demographics
-// section needs the WHOLE seeded portfolio (~2,393 rows) -- so the fetch
+// charts need the WHOLE seeded portfolio (~2,393 rows) -- so the fetch
 // pages in chunks, ordered by id for a stable page boundary.
 const PORTFOLIO_FETCH_CHUNK = 1000;
 
@@ -77,36 +64,36 @@ async function fetchPortfolioRows(
 }
 
 /**
- * Manager overview. Two sections since the demographics revamp (see
- * DASHBOARD_UI_IMPROVEMENT_PLAN.md at the repo root):
+ * Manager overview, laid out to fit a single desktop/laptop viewport with
+ * no page scrolling (the user's explicit call after the demographics
+ * revamp -- see DASHBOARD_UI_IMPROVEMENT_PLAN.md for the revamp itself).
  *
- * 1. "Portfolio demographics" -- descriptive charts over the ENTIRE
- *    seeded portfolio (PPAs per municipality, per year, and the
- *    status/type/budget breakdowns), built from lib/portfolio-stats.ts's
- *    pure aggregation helpers. Before this section existed, every visual
- *    on the page filtered to `risk_tier != null`, which silently hid the
- *    ~72% of live projects that are unscored (no matching LSTM sequence
- *    -- the long-standing meta-learner coverage caveat, not a defect).
+ * Layout: at lg+ the page pins itself to the viewport remainder
+ * (100dvh minus the portal header (~61px) and main's py-6 -- 7.25rem
+ * leaves a few px of slack) and becomes a fixed grid: a slim top strip
+ * (the three portal KPIs + the four risk-tier counts with a coverage
+ * note), then a 2x2 chart grid where "PPAs per municipality" spans both
+ * rows and the right column holds "PPAs per year" over the status/budget
+ * pair. Charts fill their grid cells (h-full into minmax(0,1fr) tracks)
+ * instead of carrying fixed heights. Below lg there is no bounded
+ * viewport worth designing to, so everything stacks and scrolls normally
+ * (charts keep explicit min-heights so flex-1 can't collapse them).
  *
- * 2. "Risk assessment" -- the pre-existing scored-only widgets (tier
- *    cards, Tracker strip, High/Critical-by-municipality BarChart),
- *    unchanged in behavior but now explicitly labeled with how much of
- *    the portfolio they cover.
+ * Cut in this redesign (git history preserves them): the page heading
+ * block, the Tracker strip, the High/Critical-vs-Low/Medium municipality
+ * BarChart (redundant next to the demographics municipality chart), the
+ * project-type percent bar (its exact counts moved into the year card's
+ * caption; the type split itself is every stacked chart's legend), and
+ * the "Next steps" onboarding card.
  *
- * Both sections derive from ONE paged fetch of `projects` (see
- * fetchPortfolioRows) -- demographics aggregate every row, the risk
- * widgets filter to scored rows in memory, so the scoping difference is
- * visible in code instead of buried in two slightly-different queries.
- *
- * Color discipline: demographic charts use blue/cyan/violet/gray only
- * (see portfolio-stats.ts's TYPE_COLORS comment); amber/emerald/red/
- * orange remain reserved for risk semantics, so a description never
- * reads as an alarm.
- *
- * Earlier layout history (Phases 10-12, 18: Tremor Raw adoption, the
- * short-lived Monitoring tab, the KPI header's move from layout.tsx into
- * this page's own Suspense boundary) is preserved in git history and the
- * respective components' comments.
+ * Data notes that survive from the revamp: demographics describe ALL
+ * seeded rows via ONE paged fetch (the pre-revamp page's scored-only
+ * query silently hid the ~72% of live projects that are unscored -- no
+ * matching LSTM sequence, the long-standing coverage caveat); the risk
+ * tier counts filter to scored rows in memory; every excluded row is
+ * surfaced in a caption, never silently dropped; and demographic charts
+ * draw only from blue/cyan/violet/gray (see portfolio-stats.ts's
+ * TYPE_COLORS comment) so amber/emerald/red stay reserved for risk.
  */
 export default async function ManagerOverviewPage() {
   const supabase = await createClient();
@@ -114,274 +101,167 @@ export default async function ManagerOverviewPage() {
   const rows = await fetchPortfolioRows(supabase);
   const scoredRows = rows.filter((row) => row.risk_tier != null);
 
-  // -- Portfolio demographics (all rows) --------------------------------
   const municipality = countByMunicipalityAndType(rows);
   const years = countByYearAndType(rows);
   const statuses = countByStatus(rows);
   const types = countByType(rows);
-  const budget = budgetByMunicipality(rows, MAX_MUNICIPALITIES_SHOWN);
+  const budget = budgetByMunicipality(rows, MAX_BUDGET_MUNICIPALITIES);
 
-  // -- Risk assessment (scored rows only) -------------------------------
-  const counts: Record<RiskTier, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  const tierCounts: Record<RiskTier, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
   for (const row of scoredRows) {
-    counts[row.risk_tier as RiskTier] += 1;
+    tierCounts[row.risk_tier as RiskTier] += 1;
   }
-  const totalScored = scoredRows.length;
 
-  // Group by municipality: how many High/Critical vs. Low/Medium projects
-  // in each. Projects with no resolved municipality (see
-  // src/lib/municipality-coordinates.ts / optimization_engine.py's
-  // resolve_municipality "Unmapped" fallback) are excluded from this
-  // chart -- there's no meaningful bar to plot them under -- rather than
-  // silently lumped into a misleading catch-all category.
-  const byMunicipality = new Map<string, { high: number; low: number }>();
-  for (const row of scoredRows) {
-    if (!row.municipality) continue;
-    const bucket = byMunicipality.get(row.municipality) ?? { high: 0, low: 0 };
-    if (row.risk_tier === "High" || row.risk_tier === "Critical") bucket.high += 1;
-    else bucket.low += 1;
-    byMunicipality.set(row.municipality, bucket);
-  }
-  const riskMunicipalityChartData = Array.from(byMunicipality.entries())
-    .map(([name, { high, low }]) => ({
-      municipality: name,
-      [HIGH_RISK_CATEGORY]: high,
-      [LOW_RISK_CATEGORY]: low,
-      total: high + low,
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, MAX_MUNICIPALITIES_SHOWN)
-    .map(({ total: _total, ...rest }) => rest);
+  // Captions are composed as plain strings (not JSX text nodes) -- immune
+  // to this repo's Next build fusing boundary whitespace around entities,
+  // and easy to keep to one compact line each in the fixed-height layout.
+  const scoredCaption =
+    `Model risk tiers cover ${scoredRows.length.toLocaleString()} of ` +
+    `${rows.length.toLocaleString()} live PPAs; the rest lack the LSTM ` +
+    `monitoring-event sequence and stay unscored rather than guessed.`;
 
-  // Tracker: one block per scored project (capped for render/legibility),
-  // colored by risk tier -- a compact "at a glance" distribution strip
-  // complementing the exact counts in the Metric cards above it.
-  const trackerData: TrackerBlockProps[] = scoredRows
-    .slice(0, MAX_TRACKER_BLOCKS)
-    .map((row) => {
-      const tier = row.risk_tier as RiskTier;
-      return {
-        color: TIER_TRACKER_COLOR[tier],
-        tooltip: `${row.municipality ?? "Unmapped"} — ${tier}`,
-      };
-    });
+  const municipalityCaption =
+    municipality.excludedNoMunicipality > 0
+      ? `${municipality.excludedNoMunicipality.toLocaleString()} PPAs without a resolved municipality are not charted.`
+      : null;
+
+  const yearCaption = [
+    years.undatedCount > 0
+      ? `${years.undatedCount.toLocaleString()} undated PPAs` +
+        (years.includesUndatedBucket ? " — the right-most bar" : " not charted")
+      : null,
+    `Infrastructure ${types.counts.Infrastructure.toLocaleString()}`,
+    `Non-Infrastructure ${types.counts["Non-Infrastructure"].toLocaleString()}`,
+    `Unclassified ${types.counts.Unclassified.toLocaleString()}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const budgetCaption =
+    budget.excludedNoAmount + budget.excludedNoMunicipality > 0
+      ? "Excludes " +
+        [
+          budget.excludedNoAmount > 0
+            ? `${budget.excludedNoAmount.toLocaleString()} PPAs with no recorded amount`
+            : null,
+          budget.excludedNoMunicipality > 0
+            ? `${budget.excludedNoMunicipality.toLocaleString()} PPAs with no resolved municipality`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" and ") +
+        "."
+      : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <Card className="p-6">
-        <Suspense fallback={<KpiHeaderSkeleton />}>
-          <KpiHeader />
-        </Suspense>
-      </Card>
+    <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
+      {/* ---- Top strip: portal KPIs + risk-tier counts ---- */}
+      <div className="grid shrink-0 gap-3 lg:grid-cols-[1.2fr_1fr]">
+        <Card className="p-4">
+          <Suspense fallback={<KpiHeaderSkeleton />}>
+            <KpiHeader />
+          </Suspense>
+        </Card>
 
-      <div>
-        <h1 className="text-2xl font-semibold text-brand-navy">Overview</h1>
-        <p className="text-sm text-slate-500">
-          The current PPA portfolio at a glance — its composition, and the live model risk
-          assessment of the scored subset.
-        </p>
-      </div>
-
-      {/* ---------------- Portfolio demographics ---------------- */}
-      <div>
-        <h2 className="text-lg font-semibold text-brand-navy">Portfolio demographics</h2>
-        <p className="text-sm text-slate-500">
-          Every one of the {rows.length.toLocaleString()} PPAs currently seeded from the
-          monitoring portfolio, scored or not.
-        </p>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <MetricLabel>PPAs per municipality</MetricLabel>
-          {municipality.data.length > 0 ? (
-            <>
-              <div className="mt-3">
-                <MunicipalityPpaChart data={municipality.data} />
+        <Card className="p-4">
+          <div className="grid grid-cols-4 gap-2">
+            {TIER_ORDER.map((tier) => (
+              <div key={tier} className={`pl-2 ${TIER_ACCENT[tier]}`}>
+                <MetricLabel className="text-xs">{tier}</MetricLabel>
+                <Metric className="text-2xl">{tierCounts[tier].toLocaleString()}</Metric>
               </div>
-              {municipality.excludedNoMunicipality > 0 && (
-                <p className="mt-2 text-xs text-slate-400">
-                  {municipality.excludedNoMunicipality.toLocaleString()} PPAs without a resolved
-                  municipality are not charted.
-                </p>
-              )}
-            </>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-tight text-slate-400">{scoredCaption}</p>
+        </Card>
+      </div>
+
+      {/* ---- Chart grid ---- */}
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-2">
+        <Card className="flex flex-col p-4 lg:row-span-2 lg:min-h-0">
+          <div className="mb-2 flex shrink-0 items-baseline justify-between gap-2">
+            <MetricLabel>PPAs per municipality</MetricLabel>
+            {municipalityCaption && (
+              <p className="truncate text-[11px] text-slate-400">{municipalityCaption}</p>
+            )}
+          </div>
+          {municipality.data.length > 0 ? (
+            <MunicipalityPpaChart data={municipality.data} />
           ) : (
-            <p className="mt-3 text-sm text-slate-400">No PPAs with a resolved municipality yet.</p>
+            <p className="text-sm text-slate-400">No PPAs with a resolved municipality yet.</p>
           )}
         </Card>
 
-        <Card>
-          <MetricLabel>PPAs per year of fund release</MetricLabel>
+        <Card className="flex flex-col p-4 lg:min-h-0">
+          <MetricLabel className="shrink-0">PPAs per year of fund release</MetricLabel>
           {years.data.length > 0 ? (
             <>
-              <CountBarChart
-                className="mt-4"
-                data={years.data}
-                index="year"
-                categories={TYPE_CATEGORIES}
-                colors={TYPE_COLORS}
-                type="stacked"
-              />
-              {years.undatedCount > 0 && (
-                <p className="mt-2 text-xs text-slate-400">
-                  {years.undatedCount.toLocaleString()} PPAs have no recorded release date
-                  {years.includesUndatedBucket
-                    ? " — grouped under the chart's right-most “Undated” bar."
-                    : " and are not charted."}
-                </p>
-              )}
+              <div className="mt-2 min-h-60 flex-1 lg:min-h-0">
+                <CountBarChart
+                  className="h-full"
+                  data={years.data}
+                  index="year"
+                  categories={TYPE_CATEGORIES}
+                  colors={TYPE_COLORS}
+                  type="stacked"
+                />
+              </div>
+              <p className="mt-1.5 shrink-0 text-[11px] leading-tight text-slate-400">
+                {yearCaption}
+              </p>
             </>
           ) : (
             <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded release date yet.</p>
           )}
         </Card>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <MetricLabel>PPAs by status</MetricLabel>
-          <CountBarChart
-            className="mt-4 h-64"
-            data={statuses}
-            index="status"
-            categories={[STATUS_COUNT_CATEGORY]}
-            colors={["blue"]}
-            layout="vertical"
-            showLegend={false}
-            yAxisWidth={130}
-          />
-        </Card>
-
-        <Card>
-          <MetricLabel>PPAs by project type</MetricLabel>
-          <CountBarChart
-            className="mt-4 h-40"
-            data={types.percentData}
-            index="split"
-            categories={TYPE_CATEGORIES}
-            colors={TYPE_COLORS}
-            layout="vertical"
-            type="percent"
-            showYAxis={false}
-          />
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            {Object.entries(types.counts).map(([type, count]) => (
-              <span key={type}>
-                {type} <span className="font-medium text-brand-navy">{count.toLocaleString()}</span>
-              </span>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <MetricLabel>
-            Total amount per municipality (top {MAX_MUNICIPALITIES_SHOWN})
-          </MetricLabel>
-          {budget.data.length > 0 ? (
-            <>
-              <CurrencyBarChart
-                className="mt-4 h-80"
-                data={budget.data}
-                index="municipality"
-                categories={[BUDGET_CATEGORY]}
-                colors={["violet"]}
+        <div className="grid gap-3 sm:grid-cols-2 lg:min-h-0">
+          <Card className="flex flex-col p-4 lg:min-h-0">
+            <MetricLabel className="shrink-0">PPAs by status</MetricLabel>
+            <div className="mt-2 min-h-60 flex-1 lg:min-h-0">
+              <CountBarChart
+                className="h-full"
+                data={statuses}
+                index="status"
+                categories={[STATUS_COUNT_CATEGORY]}
+                colors={["blue"]}
                 layout="vertical"
                 showLegend={false}
-                yAxisWidth={110}
+                yAxisWidth={120}
               />
-              {budget.excludedNoAmount + budget.excludedNoMunicipality > 0 && (
-                <p className="mt-2 text-xs text-slate-400">
-                  Excludes{" "}
-                  {[
-                    budget.excludedNoAmount > 0 &&
-                      `${budget.excludedNoAmount.toLocaleString()} PPAs with no recorded amount`,
-                    budget.excludedNoMunicipality > 0 &&
-                      `${budget.excludedNoMunicipality.toLocaleString()} PPAs with no resolved municipality`,
-                  ]
-                    .filter(Boolean)
-                    .join(" and ")}
-                  .
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded amount yet.</p>
-          )}
-        </Card>
-      </div>
-
-      {/* ---------------- Risk assessment ---------------- */}
-      <div>
-        <h2 className="text-lg font-semibold text-brand-navy">Risk assessment</h2>
-        {/* Explicit {" "} after the count expression: this repo's Next
-            build fuses the boundary space away when the following text
-            node contains an HTML entity (compare the Next steps card's
-            pre-existing use of the same convention). */}
-        <p className="text-sm text-slate-500">
-          {totalScored.toLocaleString()} of {rows.length.toLocaleString()}{" "}
-          live PPAs currently carry a model risk score; the rest lack the monitoring-event
-          sequence the ensemble&apos;s LSTM requires and stay unscored rather than being guessed.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {TIER_ORDER.map((tier) => (
-          <Card key={tier} className={TIER_ACCENT[tier]}>
-            <MetricLabel>{tier}</MetricLabel>
-            <Metric>{counts[tier]}</Metric>
+            </div>
           </Card>
-        ))}
+
+          <Card className="flex flex-col p-4 lg:min-h-0">
+            <MetricLabel className="shrink-0">
+              Amount per municipality (top {MAX_BUDGET_MUNICIPALITIES})
+            </MetricLabel>
+            {budget.data.length > 0 ? (
+              <>
+                <div className="mt-2 min-h-60 flex-1 lg:min-h-0">
+                  <CurrencyBarChart
+                    className="h-full"
+                    data={budget.data}
+                    index="municipality"
+                    categories={[BUDGET_CATEGORY]}
+                    colors={["violet"]}
+                    layout="vertical"
+                    showLegend={false}
+                    yAxisWidth={100}
+                  />
+                </div>
+                {budgetCaption && (
+                  <p className="mt-1.5 shrink-0 text-[11px] leading-tight text-slate-400">
+                    {budgetCaption}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded amount yet.</p>
+            )}
+          </Card>
+        </div>
       </div>
-
-      <Card>
-        <MetricLabel>Risk distribution (first {trackerData.length} of {totalScored} scored projects)</MetricLabel>
-        {trackerData.length > 0 ? (
-          <Tracker data={trackerData} className="mt-3" hoverEffect />
-        ) : (
-          <p className="mt-3 text-sm text-slate-400">No scored projects yet.</p>
-        )}
-      </Card>
-
-      <Card>
-        <MetricLabel>
-          High/Critical vs. Low/Medium risk projects by municipality (top {MAX_MUNICIPALITIES_SHOWN})
-        </MetricLabel>
-        {riskMunicipalityChartData.length > 0 ? (
-          <BarChart
-            className="mt-4"
-            data={riskMunicipalityChartData}
-            index="municipality"
-            categories={[HIGH_RISK_CATEGORY, LOW_RISK_CATEGORY]}
-            colors={["amber", "emerald"]}
-            // No valueFormatter prop: this page is a Server Component, and
-            // functions cannot be passed as props across the server/
-            // client boundary to BarChart (a "use client" component) --
-            // see Phase 10's fix for the full explanation. BarChart's own
-            // default formatter is functionally identical to what would
-            // have been passed here. (The demographics charts above DO
-            // get real formatters -- via thin "use client" wrappers in
-            // ./charts/ that close over them, the boundary-safe pattern.)
-            yAxisWidth={40}
-          />
-        ) : (
-          <p className="mt-3 text-sm text-slate-400">
-            No scored projects with a resolved municipality yet.
-          </p>
-        )}
-      </Card>
-
-      <Card>
-        <p className="font-semibold text-brand-navy">Next steps</p>
-        <p className="mt-2 text-sm text-slate-500">
-          Use <span className="font-medium text-brand-navy">Program, Projects, and Activities (PPAs)</span>{" "}
-          to import new monitoring data, review the full project list, and switch to a map view;{" "}
-          <span className="font-medium text-brand-navy">Schedule</span> to see the latest
-          PuLP-optimized inspector routes; <span className="font-medium text-brand-navy">Inspectors</span>{" "}
-          to manage who&apos;s active; and <span className="font-medium text-brand-navy">Models</span>{" "}
-          to review the ML stack&apos;s validation performance.
-        </p>
-      </Card>
     </div>
   );
 }
