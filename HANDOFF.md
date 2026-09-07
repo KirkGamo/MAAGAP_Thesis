@@ -97,16 +97,15 @@ python scripts\seed_supabase.py              # real write (upsert + prune)
 
 **Verify after step 6**: `train_meta_learner.py`'s log should say `Meta-learner training set: 1,451 rows` (1,124 before D13's barangay canonicalization, 1,396 before D14's manual labeling; see Section 2). If it says something smaller/different, steps 4-5 didn't actually write fresh artifacts (check they didn't abort) and the meta-learner trained on stale OOF predictions.
 
-**Running the ML service: it needs Supabase credentials to write anything back.** `uvicorn main:app --reload --port 8000` starts fine without them, scores fine, and every write-back it performs is a **silent no-op** — the live re-score never reaches `projects.risk_tier` (`_maybe_patch_supabase`) and a monitoring report never leaves "Awaiting re-score" (`_mark_rescore_state`). This was verified on 2026-09-08: the same report that stayed `pending` forever against a credential-less service resolved to `done` immediately against one started with the vars set. Export all three before relying on the feedback loop (values are in `frontend/.env.local`; note the ML service reads `SUPABASE_URL`, which is `NEXT_PUBLIC_SUPABASE_URL` there):
+**Running the ML service: its credentials live in `ml-service/.env`.** Just start it — no exports needed:
 
 ```powershell
-$env:SUPABASE_URL = "<NEXT_PUBLIC_SUPABASE_URL from frontend/.env.local>"
-$env:SUPABASE_SERVICE_ROLE_KEY = "<SUPABASE_SERVICE_ROLE_KEY>"
-$env:ML_SERVICE_WEBHOOK_SECRET = "<ML_SERVICE_WEBHOOK_SECRET>"
 cd ml-service; python -m uvicorn main:app --reload --port 8000
 ```
 
-The service now warns about this at startup rather than only failing quietly.
+`main.py` loads `ml-service/.env` at startup (gitignored; copy `ml-service/.env.example` to create it) and logs how many variables it read. Anything already exported wins over the file, so a CI secret or container environment is never overridden. Three variables matter: `ML_SERVICE_WEBHOOK_SECRET`, `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` — note the rename, `SUPABASE_URL` is called `NEXT_PUBLIC_SUPABASE_URL` in `frontend/.env.local`, which is the usual way this ends up half-configured.
+
+Why it matters: without them the service still starts and still scores, but **every write-back is a silent no-op** — the live re-score never reaches `projects.risk_tier` (`_maybe_patch_supabase`) and a monitoring report never leaves "Awaiting re-score" (`_mark_rescore_state`), while everything looks healthy. Verified 2026-09-08 in both directions: a report stayed `pending` forever against a credential-less service and resolved to `done` immediately against a configured one. Missing credentials now produce a startup warning naming the fix, and the loader itself was verified from a shell with all three variables explicitly cleared.
 
 ## 5. Sandbox Constraints (if working in the Cowork sandbox, not the user's machine)
 

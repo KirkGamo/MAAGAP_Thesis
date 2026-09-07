@@ -31,6 +31,7 @@ Environment variables:
 import logging
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
@@ -50,6 +51,57 @@ app = FastAPI(
     version="0.8.0",
 )
 
+ENV_FILE = Path(__file__).resolve().parent / ".env"
+
+
+def _load_env_file(path: Path = ENV_FILE) -> int:
+    """Loads KEY=VALUE pairs from ml-service/.env into the environment.
+
+    Environment variables are per-shell on Windows, so before this existed
+    the service had to be started from a terminal that had exported
+    SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and ML_SERVICE_WEBHOOK_SECRET
+    by hand. Forgetting was not loud: the service starts fine without
+    them, scores fine, and every write-back it performs silently no-ops --
+    live risk-tier patches and monitoring-report re-score outcomes both
+    vanish while everything looks healthy.
+
+    Deliberately hand-rolled rather than using python-dotenv: that package
+    is only present here as a transitive dependency of supabase/uvicorn,
+    never declared in requirements.txt, so depending on it would make
+    credential loading break the day the dependency tree shifts -- exactly
+    the silent failure this is meant to prevent. The format needed is
+    KEY=VALUE, so the parser is a few lines.
+
+    Existing environment variables always win: an explicit export, a CI
+    secret, or a container's own environment must never be overridden by a
+    stale file on someone's laptop.
+    """
+    if not path.exists():
+        return 0
+
+    loaded = 0
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+                loaded += 1
+    except OSError as exc:
+        logger.warning("Could not read %s: %s", path, exc)
+        return 0
+
+    if loaded:
+        logger.info("Loaded %d environment variable(s) from %s", loaded, path)
+    return loaded
+
+
+_load_env_file()
+
 WEBHOOK_SECRET = os.environ.get("ML_SERVICE_WEBHOOK_SECRET")
 if not WEBHOOK_SECRET:
     logger.warning(
@@ -67,8 +119,9 @@ if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE
     logger.warning(
         "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set — this service can score, "
         "but nothing it computes will be written back to Supabase. Live risk-tier updates "
-        "and monitoring-report re-score outcomes will both silently no-op. Export both "
-        "(their values are in frontend/.env.local) before relying on the feedback loop."
+        "and monitoring-report re-score outcomes will both silently no-op. Fix: copy "
+        "ml-service/.env.example to ml-service/.env and fill it in (values are in "
+        "frontend/.env.local; note SUPABASE_URL is called NEXT_PUBLIC_SUPABASE_URL there)."
     )
 
 
