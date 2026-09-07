@@ -58,6 +58,19 @@ if not WEBHOOK_SECRET:
         "Set this env var before deploying anywhere reachable outside localhost."
     )
 
+if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")):
+    # Warned at startup, not just at the moment of failure: without these,
+    # EVERY write-back this service performs is a silent no-op — the live
+    # re-score never reaches projects.risk_tier (_maybe_patch_supabase) and
+    # a monitoring report never leaves 'Awaiting re-score'
+    # (_mark_rescore_state). Both look like the service working fine.
+    logger.warning(
+        "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set — this service can score, "
+        "but nothing it computes will be written back to Supabase. Live risk-tier updates "
+        "and monitoring-report re-score outcomes will both silently no-op. Export both "
+        "(their values are in frontend/.env.local) before relying on the feedback loop."
+    )
+
 
 def _check_webhook_secret(x_webhook_secret: Optional[str]) -> None:
     if WEBHOOK_SECRET and x_webhook_secret != WEBHOOK_SECRET:
@@ -128,6 +141,15 @@ def _mark_rescore_state(
     url = os.environ.get("SUPABASE_URL")
     service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not (url and service_role_key):
+        # Logged, never silent: without this line a report sits at
+        # 'pending' forever in the Manager Portal with a Retry button that
+        # cannot possibly resolve it, and the cause is invisible.
+        logger.warning(
+            "Re-score for report %s finished as %r but SUPABASE_URL/"
+            "SUPABASE_SERVICE_ROLE_KEY are not set, so the outcome cannot be written back. "
+            "The report will stay 'Awaiting re-score' in the Manager Portal.",
+            report_id, state,
+        )
         return
 
     try:
