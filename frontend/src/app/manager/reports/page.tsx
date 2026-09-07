@@ -1,35 +1,46 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card } from "@/components/tremor/card";
+import { STATUSES } from "../ppas/filters";
 import { ReportsFilters } from "./reports-filters";
+import { ReportList, type ReportListItem } from "./report-list";
+import { ReportDetail, type ReportDetailData } from "./report-detail";
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
-const SIGNED_URL_TTL_SECONDS = 60 * 10; // 10 minutes: only needs to outlive one page render
+const SIGNED_URL_TTL_SECONDS = 60 * 10; // only needs to outlive one page render
 const MAX_ROWS = 200;
 
+const STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  STATUSES.map((s) => [s.value, s.label])
+);
+
 interface ReportsPageProps {
-  searchParams: Promise<{ q?: string; inspector?: string }>;
+  searchParams: Promise<{ q?: string; inspector?: string; report?: string }>;
+}
+
+interface JoinedProject {
+  id: string;
+  name_of_project: string;
+  project_key: string;
+  municipality: string | null;
+  risk_tier: string | null;
+  status: string | null;
 }
 
 /**
- * Phase 12: Reports tab — a full audit trail of every monitoring_reports
- * row ever filed (the ML feedback loop's raw input; see
- * actions/submit-report.ts), across every project, rather than the
- * per-project slice already shown on each PPA's detail page
- * (app/manager/ppas/[projectId]/page.tsx). Useful at a defense to show the
- * complete field-verification trail behind the risk scores, not just the
- * scores themselves.
+ * Reports — the full audit trail of every `monitoring_reports` row ever
+ * filed (the ML feedback loop's raw input; see actions/submit-report.ts),
+ * across every project.
  *
- * Filtering (project name search, inspector) via URL search params, same
- * pattern as every other filterable list in this portal.
+ * Rebuilt as a master-detail workspace on the single-viewport contract
+ * shared with Overview, Schedule, and Inspectors. It replaces a
+ * seven-column table that could not hold remarks and a photo strip
+ * without scrolling sideways, and — more importantly — that signed a
+ * Storage URL for EVERY row's photos on EVERY render, up to 200 round
+ * trips to populate thumbnails nobody clicked. Only the selected
+ * report's photos are signed now.
+ *
+ * Selection lives in the URL (`?report=`), so a specific report stays
+ * linkable, same convention as this portal's other filters.
  */
 export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const params = await searchParams;
@@ -44,7 +55,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   let query = supabase
     .from("monitoring_reports")
     .select(
-      "id, visited_at, status_observed, percent_complete, remarks, photo_urls, project:projects(id, name_of_project, project_key), inspector:profiles!monitoring_reports_inspector_id_fkey(full_name)"
+      "id, visited_at, status_observed, percent_complete, remarks, photo_urls, project:projects(id, name_of_project, project_key, municipality, risk_tier, status), inspector:profiles!monitoring_reports_inspector_id_fkey(full_name)"
     )
     .order("visited_at", { ascending: false })
     .limit(MAX_ROWS);
@@ -55,127 +66,115 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
   const { data: reportsRaw, error } = await query;
 
-  // Project-name search happens client-... no, server-side, but the
-  // column being searched (project.name_of_project) lives on a joined
-  // table, which PostgREST's .ilike() can't filter across directly in one
-  // query alongside the join syntax used here -- filtered in memory
-  // instead, same tradeoff .not("risk_tier", ...) elsewhere in this app
-  // makes for joined/derived fields. MAX_ROWS caps this to a bounded scan.
+  // Project-name search filters in memory: the column lives on a joined
+  // table, which PostgREST's .ilike() can't reach alongside this join
+  // syntax. MAX_ROWS caps it to a bounded scan.
   const filtered = (reportsRaw ?? []).filter((r) => {
     if (!params.q) return true;
-    const project = r.project as unknown as { name_of_project: string } | null;
-    return project?.name_of_project.toLowerCase().includes(params.q!.toLowerCase());
+    const project = r.project as unknown as JoinedProject | null;
+    return project?.name_of_project.toLowerCase().includes(params.q.toLowerCase());
   });
 
-  const reports = await Promise.all(
-    filtered.map(async (r) => {
-      const paths = r.photo_urls ?? [];
-      let signedPhotoUrls: string[] = [];
-      if (paths.length > 0) {
-        const { data: signed } = await supabase.storage
-          .from(MONITORING_PHOTOS_BUCKET)
-          .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
-        signedPhotoUrls = (signed ?? [])
-          .map((s) => s.signedUrl)
-          .filter((url): url is string => Boolean(url));
-      }
-      return { ...r, signedPhotoUrls };
-    })
-  );
+  const listItems: ReportListItem[] = filtered.map((r) => {
+    const project = r.project as unknown as JoinedProject | null;
+    const inspector = r.inspector as unknown as { full_name: string | null } | null;
+    return {
+      id: r.id,
+      visitedAt: r.visited_at,
+      inspectorName: inspector?.full_name ?? "Unknown",
+      projectName: project?.name_of_project ?? "Unknown project",
+      municipality: project?.municipality ?? null,
+      statusObserved: r.status_observed,
+      statusLabel: STATUS_LABELS[r.status_observed] ?? r.status_observed,
+      photoCount: (r.photo_urls ?? []).length,
+    };
+  });
+
+  // Default to the newest report so the detail pane is never empty when
+  // there is something to show.
+  const selectedId =
+    params.report && filtered.some((r) => r.id === params.report)
+      ? params.report
+      : (filtered[0]?.id ?? null);
+
+  const selectedRaw = filtered.find((r) => r.id === selectedId) ?? null;
+
+  let selected: ReportDetailData | null = null;
+  if (selectedRaw) {
+    const project = selectedRaw.project as unknown as JoinedProject | null;
+    const inspector = selectedRaw.inspector as unknown as { full_name: string | null } | null;
+
+    // Signed for THIS report only -- the whole point of the rebuild.
+    const paths = selectedRaw.photo_urls ?? [];
+    let signedPhotoUrls: string[] = [];
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage
+        .from(MONITORING_PHOTOS_BUCKET)
+        .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
+      signedPhotoUrls = (signed ?? [])
+        .map((s) => s.signedUrl)
+        .filter((url): url is string => Boolean(url));
+    }
+
+    selected = {
+      id: selectedRaw.id,
+      visitedAt: selectedRaw.visited_at,
+      inspectorName: inspector?.full_name ?? "Unknown",
+      projectId: project?.id ?? null,
+      projectKey: project?.project_key ?? null,
+      projectName: project?.name_of_project ?? "Unknown project",
+      municipality: project?.municipality ?? null,
+      riskTier: project?.risk_tier ?? null,
+      projectStatus: project?.status ?? null,
+      projectStatusLabel: project?.status
+        ? (STATUS_LABELS[project.status] ?? project.status)
+        : null,
+      statusObserved: selectedRaw.status_observed,
+      statusLabel: STATUS_LABELS[selectedRaw.status_observed] ?? selectedRaw.status_observed,
+      percentComplete: selectedRaw.percent_complete,
+      remarks: selectedRaw.remarks,
+      signedPhotoUrls,
+    };
+  }
+
+  // Loop health, from the rows already fetched.
+  const now = Date.now();
+  const filedLast7 = filtered.filter(
+    (r) => now - new Date(r.visited_at).getTime() < 7 * 24 * 60 * 60 * 1000
+  ).length;
+  const withPhotos = filtered.filter((r) => (r.photo_urls ?? []).length > 0).length;
+  const headline =
+    filtered.length === 0
+      ? "No field reports have been filed yet — the loop's input is empty."
+      : `${filtered.length} report${filtered.length === 1 ? "" : "s"} · ${filedLast7} in the last 7 days · ${withPhotos} with photos`;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-brand-navy">Reports</h1>
-        <p className="text-sm text-slate-500">
-          Every field monitoring report ever filed, across all PPAs — the audit trail behind the
-          ML feedback loop.
-        </p>
+    <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div>
+          <h1 className="text-xl font-semibold text-brand-navy">Reports</h1>
+          <p className="text-xs text-slate-500">{headline}</p>
+        </div>
+        <ReportsFilters inspectors={inspectors ?? []} />
       </div>
 
-      <ReportsFilters inspectors={inspectors ?? []} />
+      {error && (
+        <p className="shrink-0 text-sm text-red-600">Could not load reports: {error.message}</p>
+      )}
 
-      <Card className="border-brand-navy/10 p-0">
-        <CardHeader className="border-b border-brand-navy/10 px-5 py-4">
-          <CardTitle>{reports.length} report(s){reports.length === MAX_ROWS ? " (showing most recent)" : ""}</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {error && <p className="p-5 text-sm text-red-600">{error.message}</p>}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Visited</TableHead>
-                <TableHead>Inspector</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Status observed</TableHead>
-                <TableHead>% complete</TableHead>
-                <TableHead>Remarks</TableHead>
-                <TableHead>Photos</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reports.map((r) => {
-                const project = r.project as unknown as {
-                  id: string;
-                  name_of_project: string;
-                  project_key: string;
-                } | null;
-                const inspector = r.inspector as unknown as { full_name: string | null } | null;
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell>{new Date(r.visited_at).toLocaleString()}</TableCell>
-                    <TableCell>{inspector?.full_name ?? "Unknown"}</TableCell>
-                    <TableCell>
-                      {project ? (
-                        <Link
-                          href={`/manager/ppas/${project.id}`}
-                          className="font-medium text-slate-900 hover:underline"
-                        >
-                          {project.name_of_project}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="capitalize">
-                      {r.status_observed.replaceAll("_", " ")}
-                    </TableCell>
-                    <TableCell>
-                      {r.percent_complete != null ? `${r.percent_complete}%` : "—"}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">{r.remarks ?? "—"}</TableCell>
-                    <TableCell>
-                      {r.signedPhotoUrls.length > 0 ? (
-                        <div className="flex gap-1.5">
-                          {r.signedPhotoUrls.map((url, i) => (
-                            <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                              {/* eslint-disable-next-line @next/next/no-img-element -- freshly-signed remote URL from Supabase Storage, not a static/local asset next/image can optimize */}
-                              <img
-                                src={url}
-                                alt={`Site photo ${i + 1}`}
-                                className="size-10 rounded border border-brand-navy/10 object-cover"
-                              />
-                            </a>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {reports.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-slate-400">
-                    No monitoring reports match this filter.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_1.1fr]">
+        <Card className="flex flex-col p-3 lg:min-h-0">
+          <div className="min-h-80 flex-1 overflow-y-auto pr-1 lg:min-h-0">
+            <ReportList reports={listItems} selectedId={selectedId} />
+          </div>
+        </Card>
+
+        <Card className="flex flex-col p-4 lg:min-h-0">
+          <div className="min-h-80 flex-1 overflow-y-auto pr-1 lg:min-h-0">
+            <ReportDetail report={selected} />
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -22,15 +22,18 @@ export function ReportsFilters({ inspectors }: ReportsFiltersProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    // shrink-0 + fixed widths: as a flex item in the page header this
+    // block was being squeezed and wrapping onto a second line, which
+    // costs vertical space the pinned layout doesn't have.
+    <div className="flex shrink-0 items-center gap-2">
       <Input
         placeholder="Search by project name..."
         defaultValue={searchParams.get("q") ?? ""}
         onChange={(e) => setParam("q", e.target.value)}
-        className="max-w-xs"
+        className="h-9 w-56"
       />
       <select
-        className="h-10 rounded-md border border-brand-navy/10 bg-white px-3 text-sm"
+        className="h-9 rounded-md border border-brand-navy/10 bg-white px-3 text-sm"
         defaultValue={searchParams.get("inspector") ?? ""}
         onChange={(e) => setParam("inspector", e.target.value)}
       >
