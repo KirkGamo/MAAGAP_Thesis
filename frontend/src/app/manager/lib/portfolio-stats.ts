@@ -96,7 +96,10 @@ export function countByMunicipalityAndType(rows: PortfolioRow[]): MunicipalityTy
 // PPAs per year (year of fund release)
 // ---------------------------------------------------------------------
 
-export const UNDATED_YEAR_LABEL = "No release date";
+// Short on purpose: long axis labels are the first casualties of
+// Recharts' tick thinning, and this bucket can be the tallest bar in the
+// chart -- the page renders an explanatory footnote alongside it.
+export const UNDATED_YEAR_LABEL = "Undated";
 
 /** Above this share of undated rows, hiding them behind a footnote would
  * misrepresent the portfolio's shape, so they get their own bucket at the

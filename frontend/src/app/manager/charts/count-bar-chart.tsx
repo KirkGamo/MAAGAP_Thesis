@@ -53,7 +53,10 @@ export function CountBarChart({
       showYAxis={showYAxis}
       yAxisWidth={yAxisWidth}
       valueFormatter={formatCount}
-      allowDecimals={false}
+      // Integer-only ticks are right for count axes but wrong for the
+      // percent mode, whose axis domain is 0..1 -- forcing integers there
+      // makes Recharts emit ticks at 1/2/3/4, rendered as 100%..400%.
+      allowDecimals={type === "percent"}
     />
   );
 }

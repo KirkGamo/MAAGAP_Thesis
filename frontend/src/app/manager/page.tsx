@@ -223,10 +223,12 @@ export default async function ManagerOverviewPage() {
                 colors={TYPE_COLORS}
                 type="stacked"
               />
-              {!years.includesUndatedBucket && years.undatedCount > 0 && (
+              {years.undatedCount > 0 && (
                 <p className="mt-2 text-xs text-slate-400">
-                  {years.undatedCount.toLocaleString()} PPAs without a recorded release date are
-                  not charted.
+                  {years.undatedCount.toLocaleString()} PPAs have no recorded release date
+                  {years.includesUndatedBucket
+                    ? " — grouped under the chart's right-most “Undated” bar."
+                    : " and are not charted."}
                 </p>
               )}
             </>
@@ -279,7 +281,7 @@ export default async function ManagerOverviewPage() {
           {budget.data.length > 0 ? (
             <>
               <CurrencyBarChart
-                className="mt-4 h-64"
+                className="mt-4 h-80"
                 data={budget.data}
                 index="municipality"
                 categories={[BUDGET_CATEGORY]}
@@ -312,10 +314,14 @@ export default async function ManagerOverviewPage() {
       {/* ---------------- Risk assessment ---------------- */}
       <div>
         <h2 className="text-lg font-semibold text-brand-navy">Risk assessment</h2>
+        {/* Explicit {" "} after the count expression: this repo's Next
+            build fuses the boundary space away when the following text
+            node contains an HTML entity (compare the Next steps card's
+            pre-existing use of the same convention). */}
         <p className="text-sm text-slate-500">
-          {totalScored.toLocaleString()} of {rows.length.toLocaleString()} live PPAs currently
-          carry a model risk score; the rest lack the monitoring-event sequence the ensemble&apos;s
-          LSTM requires and stay unscored rather than being guessed.
+          {totalScored.toLocaleString()} of {rows.length.toLocaleString()}{" "}
+          live PPAs currently carry a model risk score; the rest lack the monitoring-event
+          sequence the ensemble&apos;s LSTM requires and stay unscored rather than being guessed.
         </p>
       </div>
 
@@ -372,8 +378,8 @@ export default async function ManagerOverviewPage() {
           to import new monitoring data, review the full project list, and switch to a map view;{" "}
           <span className="font-medium text-brand-navy">Schedule</span> to see the latest
           PuLP-optimized inspector routes; <span className="font-medium text-brand-navy">Inspectors</span>{" "}
-          to manage who&apos;s active; and <span className="font-medium text-brand-navy">Models</span> to
-          review the ML stack&apos;s validation performance.
+          to manage who&apos;s active; and <span className="font-medium text-brand-navy">Models</span>{" "}
+          to review the ML stack&apos;s validation performance.
         </p>
       </Card>
     </div>
