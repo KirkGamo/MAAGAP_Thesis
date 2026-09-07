@@ -9,9 +9,15 @@ import { KpiHeader } from "./kpi-header";
 import { KpiHeaderSkeleton } from "./kpi-header-skeleton";
 import { MunicipalityPpaChart } from "./charts/municipality-ppa-chart";
 import { CountBarChart } from "./charts/count-bar-chart";
+import { CurrencyBarChart } from "./charts/currency-bar-chart";
 import {
+  budgetByMunicipality,
+  BUDGET_CATEGORY,
   countByMunicipalityAndType,
+  countByStatus,
+  countByType,
   countByYearAndType,
+  STATUS_COUNT_CATEGORY,
   TYPE_CATEGORIES,
   TYPE_COLORS,
   type PortfolioRow,
@@ -111,6 +117,9 @@ export default async function ManagerOverviewPage() {
   // -- Portfolio demographics (all rows) --------------------------------
   const municipality = countByMunicipalityAndType(rows);
   const years = countByYearAndType(rows);
+  const statuses = countByStatus(rows);
+  const types = countByType(rows);
+  const budget = budgetByMunicipality(rows, MAX_MUNICIPALITIES_SHOWN);
 
   // -- Risk assessment (scored rows only) -------------------------------
   const counts: Record<RiskTier, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
@@ -223,6 +232,72 @@ export default async function ManagerOverviewPage() {
             </>
           ) : (
             <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded release date yet.</p>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <MetricLabel>PPAs by status</MetricLabel>
+          <CountBarChart
+            className="mt-4 h-64"
+            data={statuses}
+            index="status"
+            categories={[STATUS_COUNT_CATEGORY]}
+            colors={["blue"]}
+            layout="vertical"
+            showLegend={false}
+            yAxisWidth={130}
+          />
+        </Card>
+
+        <Card>
+          <MetricLabel>PPAs by project type</MetricLabel>
+          <CountBarChart
+            className="mt-4 h-40"
+            data={types.percentData}
+            index="split"
+            categories={TYPE_CATEGORIES}
+            colors={TYPE_COLORS}
+            layout="vertical"
+            type="percent"
+            showYAxis={false}
+          />
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+            {Object.entries(types.counts).map(([type, count]) => (
+              <span key={type}>
+                {type} <span className="font-medium text-brand-navy">{count.toLocaleString()}</span>
+              </span>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <MetricLabel>
+            Total amount per municipality (top {MAX_MUNICIPALITIES_SHOWN})
+          </MetricLabel>
+          {budget.data.length > 0 ? (
+            <>
+              <CurrencyBarChart
+                className="mt-4 h-64"
+                data={budget.data}
+                index="municipality"
+                categories={[BUDGET_CATEGORY]}
+                colors={["violet"]}
+                layout="vertical"
+                showLegend={false}
+                yAxisWidth={110}
+              />
+              {budget.excludedNoAmount + budget.excludedNoMunicipality > 0 && (
+                <p className="mt-2 text-xs text-slate-400">
+                  Excludes {budget.excludedNoAmount.toLocaleString()} PPAs with no recorded
+                  amount{budget.excludedNoMunicipality > 0 &&
+                    ` and ${budget.excludedNoMunicipality.toLocaleString()} with no resolved municipality`}.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded amount yet.</p>
           )}
         </Card>
       </div>
