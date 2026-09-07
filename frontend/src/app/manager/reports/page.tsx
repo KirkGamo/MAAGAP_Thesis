@@ -168,11 +168,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     };
   }
 
-  // Loop health, from the rows already fetched.
-  const now = Date.now();
-  const filedLast7 = filtered.filter(
-    (r) => now - new Date(r.visited_at).getTime() < 7 * 24 * 60 * 60 * 1000
-  ).length;
+  // Loop health, from the rows already fetched. Reports the newest
+  // report's date rather than a "in the last N days" count: it says the
+  // same thing about staleness, is more precise about it, and keeps this
+  // render a pure function of its data instead of the wall clock.
+  const latestVisit = filtered[0]?.visited_at ?? null;
   const awaiting = rescoreTrackingEnabled
     ? filtered.filter((r) => (r.rescore_state ?? "pending") === "pending").length
     : 0;
@@ -184,7 +184,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       ? "No field reports have been filed yet — the loop's input is empty."
       : [
           `${filtered.length} report${filtered.length === 1 ? "" : "s"}`,
-          `${filedLast7} in the last 7 days`,
+          latestVisit
+            ? `latest ${new Date(latestVisit).toLocaleDateString()}`
+            : "no dated visits",
           rescoreTrackingEnabled
             ? `${awaiting} awaiting re-score${failed > 0 ? `, ${failed} failed` : ""}`
             : "re-score tracking not enabled",

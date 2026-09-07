@@ -95,6 +95,11 @@ export interface SubmitReportInput {
   percentComplete?: number;
   remarks?: string;
   photoUrls?: string[];
+  /** When the visit actually happened, ISO. Defaults to now. Field work
+   * is often written up the next morning, and `visited_at` feeds the
+   * LSTM's monitoring-event sequence, so letting it default to the typing
+   * time silently misdates the observation. */
+  visitedAt?: string;
 }
 
 export type SubmitReportResult =
@@ -305,6 +310,15 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
 
   const previousStatus = project.status;
 
+  // A visit can be backdated but never postdated: a future observation is
+  // either a typo or a claim about work not yet inspected, and it would
+  // land in the model's event sequence as one.
+  const now = new Date();
+  const requested = input.visitedAt ? new Date(input.visitedAt) : now;
+  const visitedAt = (
+    Number.isNaN(requested.getTime()) || requested > now ? now : requested
+  ).toISOString();
+
   const baseRow = {
     project_id: input.projectId,
     inspector_id: user.id,
@@ -312,6 +326,7 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     percent_complete: input.percentComplete ?? null,
     remarks: input.remarks ?? null,
     photo_urls: input.photoUrls ?? null,
+    visited_at: visitedAt,
   };
 
   // Try to record the re-score as pending. If
@@ -378,7 +393,10 @@ export async function submitReport(input: SubmitReportInput): Promise<SubmitRepo
     statusObserved: input.statusObserved,
     percentComplete: input.percentComplete ?? null,
     amountSpent: null, // not yet collected by the inspector report form — see module docstring
-    observedAt: new Date().toISOString(),
+    // The observation's own timestamp, not the submission's -- this is
+    // what live_scoring anchors the new LSTM event and the elapsed-time
+    // features to.
+    observedAt: visitedAt,
     photoUrl: input.photoUrls?.[0] ?? null,
     reportId,
   });

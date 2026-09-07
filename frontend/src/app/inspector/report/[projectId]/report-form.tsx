@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,24 @@ const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
 ];
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
+
+/** `datetime-local` wants local wall-clock time, not UTC -- toISOString()
+ * would shift it (see lib/local-date.ts for the same trap on dates). */
+function toLocalDateTimeValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
+interface ReportDraft {
+  statusObserved: ProjectStatus;
+  percentComplete: string;
+  remarks: string;
+  visitedAt: string;
+  awaitingSend?: boolean;
+}
 
 type PhotoUploadState = {
   file: File;
@@ -42,6 +60,81 @@ export function ReportForm({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [photos, setPhotos] = useState<PhotoUploadState[]>([]);
+  const [visitedAt, setVisitedAt] = useState(() => toLocalDateTimeValue(new Date()));
+  const [isOffline, setIsOffline] = useState(false);
+  /** A submit was attempted but couldn't complete (offline, or the
+   * request failed). The notes are on the device and will be re-sent. */
+  const [awaitingSend, setAwaitingSend] = useState(false);
+
+  const draftKey = `maagap:report-draft:${projectId}`;
+
+  /**
+   * Field connectivity is the normal failure here, not the exception.
+   * Everything typed is mirrored into localStorage on every keystroke so
+   * a dropped connection, a backgrounded browser, or an accidental
+   * navigation can't cost an inspector a site visit's worth of notes --
+   * previously a failed submit left the form intact only until the page
+   * was closed, and offline queuing was called out as deliberately
+   * out of scope.
+   */
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<ReportDraft>;
+        /* eslint-disable react-hooks/set-state-in-effect -- restoring
+           persisted notes on mount is a one-shot sync from an external
+           store (localStorage), which cannot be read during render
+           without breaking SSR hydration. Runs once per project; it
+           cannot cascade. */
+        if (draft.statusObserved) setStatusObserved(draft.statusObserved);
+        if (draft.percentComplete) setPercentComplete(draft.percentComplete);
+        if (draft.remarks) setRemarks(draft.remarks);
+        if (draft.visitedAt) setVisitedAt(draft.visitedAt);
+        if (draft.awaitingSend) setAwaitingSend(true);
+        /* eslint-enable react-hooks/set-state-in-effect */
+      }
+    } catch {
+      // A blocked or full localStorage must never stop a report being
+      // filed -- the draft is a convenience, the submit is the job.
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    const sync = () => setIsOffline(!navigator.onLine);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+
+  const saveDraft = useCallback(
+    (draft: ReportDraft) => {
+      try {
+        window.localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        // see above
+      }
+    },
+    [draftKey]
+  );
+
+  // Mirror every keystroke, so nothing typed is ever only in memory.
+  useEffect(() => {
+    saveDraft({ statusObserved, percentComplete, remarks, visitedAt, awaitingSend });
+  }, [saveDraft, statusObserved, percentComplete, remarks, visitedAt, awaitingSend]);
+
+  function clearDraft() {
+    try {
+      window.localStorage.removeItem(draftKey);
+    } catch {
+      // see above
+    }
+    setAwaitingSend(false);
+  }
 
   /**
    * Storage RLS (see supabase/storage_monitoring_photos.sql) requires every
@@ -116,32 +209,100 @@ export function ReportForm({ projectId }: { projectId: string }) {
 
   const isUploadingPhotos = photos.some((p) => p.status === "uploading");
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const send = useCallback(() => {
     setError(null);
     startTransition(async () => {
       const photoUrls = photos
         .filter((p) => p.status === "uploaded" && p.storagePath)
         .map((p) => p.storagePath!);
 
-      const res = await submitReport({
-        projectId,
-        statusObserved,
-        percentComplete: percentComplete ? Number(percentComplete) : undefined,
-        remarks: remarks || undefined,
-        photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
-      });
-      if (res.success) {
-        router.replace("/inspector");
-        router.refresh();
-      } else {
-        setError(res.error);
+      try {
+        const res = await submitReport({
+          projectId,
+          statusObserved,
+          percentComplete: percentComplete ? Number(percentComplete) : undefined,
+          remarks: remarks || undefined,
+          photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
+          visitedAt: new Date(visitedAt).toISOString(),
+        });
+        if (res.success) {
+          clearDraft();
+          router.replace("/inspector");
+          router.refresh();
+        } else {
+          // A rejection from the server is a real answer, not a lost
+          // connection -- keep the notes but don't schedule a retry that
+          // would just be rejected again.
+          setError(res.error);
+        }
+      } catch {
+        setAwaitingSend(true);
+        setError(
+          "Couldn't reach the office. Your report is saved on this phone and will send itself once you have signal."
+        );
       }
     });
+    // clearDraft/router are stable enough for this callback's purpose;
+    // the values it closes over are the submitted ones.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos, projectId, statusObserved, percentComplete, remarks, visitedAt, router]);
+
+  // Auto-send once connectivity returns, so an inspector who submitted in
+  // a dead spot doesn't have to remember to come back to this screen.
+  // Driven by the browser's `online` event rather than by an effect
+  // watching state: coming back into signal IS the trigger, and a ref
+  // keeps the listener pointing at the current form values without
+  // re-subscribing on every keystroke.
+  const retryRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    retryRef.current = () => {
+      if (awaitingSend && !isPending) send();
+    };
+  });
+
+  useEffect(() => {
+    const onOnline = () => retryRef.current();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (isOffline) {
+      setAwaitingSend(true);
+      setError(
+        "You're offline. Your report is saved on this phone and will send itself once you have signal."
+      );
+      return;
+    }
+    send();
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      {(isOffline || awaitingSend) && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-800">
+          {isOffline
+            ? "You're offline. Everything you type is saved on this phone, and the report will send itself when you're back in signal."
+            : "This report is waiting to send. It will go out automatically — leave this screen open if you can."}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="visited_at">Date and time of visit</Label>
+        {/* Reports are often written up the next morning; visited_at
+            anchors the observation in the LSTM's event sequence, so it
+            must be the visit's time, not the typing time. */}
+        <Input
+          id="visited_at"
+          type="datetime-local"
+          className="h-12 text-base"
+          max={toLocalDateTimeValue(new Date())}
+          value={visitedAt}
+          onChange={(e) => setVisitedAt(e.target.value)}
+        />
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="status_observed">Status observed</Label>
         <select
