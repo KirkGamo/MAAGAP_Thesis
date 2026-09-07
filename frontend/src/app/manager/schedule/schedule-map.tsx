@@ -1,8 +1,9 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+import { useEffect } from "react";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import {
   ILOILO_PROVINCE_CENTER,
   ILOILO_PROVINCE_DEFAULT_ZOOM,
@@ -45,6 +46,23 @@ function inspectorDivIcon(color: string) {
 }
 
 /**
+ * Leaflet only measures its container once, at mount -- in the schedule
+ * workspace the map lives in a flex pane whose size depends on the
+ * viewport (see page.tsx's single-screen grid), so without this it renders
+ * tiles for whatever size the pane happened to have at hydration and never
+ * repaints when the pane grows/shrinks (classic gray-tiles symptom).
+ */
+function InvalidateOnResize() {
+  const map = useMap();
+  useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+}
+
+/**
  * Phase 12: the map half of the Schedule tab's "map + inspector itinerary"
  * combo (the user's chosen approach over a node-link graph or a
  * timeline-only view — see the architecture discussion before this
@@ -53,6 +71,10 @@ function inspectorDivIcon(color: string) {
  * of the up-to-1,000-project population the Risk Map handles, so
  * clustering would just hide the very routing detail this view exists to
  * show.
+ *
+ * Sizing: fills its parent (the workspace's map pane) instead of the old
+ * fixed 460px -- the parent chain must resolve a real height (the
+ * schedule page guarantees this with min-h/flex-1 wrappers).
  */
 export function ScheduleMap({ points }: { points: ScheduleMapPoint[] }) {
   return (
@@ -60,8 +82,9 @@ export function ScheduleMap({ points }: { points: ScheduleMapPoint[] }) {
       center={ILOILO_PROVINCE_CENTER}
       zoom={ILOILO_PROVINCE_DEFAULT_ZOOM}
       scrollWheelZoom
-      style={{ height: "460px", width: "100%", borderRadius: "0.5rem" }}
+      style={{ height: "100%", width: "100%", borderRadius: "0.5rem" }}
     >
+      <InvalidateOnResize />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

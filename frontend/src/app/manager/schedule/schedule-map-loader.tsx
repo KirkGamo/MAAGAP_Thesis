@@ -9,7 +9,7 @@ import type { ScheduleMapPoint } from "./schedule-map";
 const ScheduleMap = dynamic(() => import("./schedule-map").then((m) => m.ScheduleMap), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[460px] w-full items-center justify-center rounded-md bg-slate-100 text-sm text-slate-400">
+    <div className="flex h-full min-h-80 w-full items-center justify-center rounded-md bg-slate-100 text-sm text-slate-400">
       Loading map...
     </div>
   ),
