@@ -223,6 +223,19 @@ WEEKLY_FIELD_BUDGET_PHP = 60000.0      # Ceiling on total weekly deployment cost
 # many can be in the field simultaneously regardless of available manpower.
 VEHICLE_COUNT = 4
 
+# Penalty per inspector-day opened. WITHOUT THIS TERM THE SOLVER IS
+# INDIFFERENT TO HOW MANY INSPECTOR-DAYS IT CONSUMES: once coverage is
+# saturated, nothing in the objective distinguishes covering 25 projects in 9
+# inspector-days from covering the same 25 in 12. Measured against the
+# allocation-efficiency metric, that indifference made the optimizer 25% WORSE
+# than a naive greedy allocator, which packs each day to capacity before
+# opening the next simply as a side effect of first-fit placement.
+#
+# Kept strictly below the weight of the least valuable visit (High = 1.0) so
+# that saving an inspector-day can never be worth DROPPING a visit — the
+# solver should pack the work it does, never do less of it.
+INSPECTOR_DAY_PENALTY = 0.5
+
 # Lambda in Chapter 3's objective: the cost-priority tradeoff parameter
 # weighting total deployment cost against risk-weighted coverage. Kept small
 # by default so risk coverage dominates and the budget binds primarily as a
@@ -523,6 +536,7 @@ def build_and_solve_schedule(
     visit_cost_php: float = VISIT_COST_PHP,
     cluster_cost_php: float = CLUSTER_MOBILIZATION_COST_PHP,
     cost_weight: float = COST_WEIGHT,
+    inspector_day_penalty: float = INSPECTOR_DAY_PENALTY,
 ) -> tuple[pd.DataFrame, dict]:
     projects = priority_df["project_key"].tolist()
     risk_weight = dict(zip(priority_df["project_key"], priority_df["risk_weight"]))
@@ -552,10 +566,20 @@ def build_and_solve_schedule(
     # penalty and the cost term are kept separate on purpose: the first is a
     # routing preference expressed in objective units, the second prices the
     # same deployment in pesos and is what the budget constraint bounds.
+    # sum_c y[i][d][c] is the "inspector i is in the field on day d" indicator
+    # (constrained to <= 1 below), so summing it over i and d counts the
+    # inspector-days the schedule consumes. Penalizing it makes the solver
+    # concentrate visits into fewer days, which is what allocation efficiency
+    # measures and what actually frees inspector time.
+    inspector_days_used = pulp.lpSum(
+        y[i][d][c] for i in inspectors for d in days for c in clusters
+    )
+
     prob += (
         pulp.lpSum(risk_weight[p] * x[i][p][d] for i in inspectors for p in projects for d in days)
         - travel_penalty * pulp.lpSum(z[i][c] for i in inspectors for c in clusters)
         - cost_weight * total_cost
+        - inspector_day_penalty * inspector_days_used
     )
 
     # Each project visited at most once across the whole week.
@@ -661,6 +685,9 @@ def build_and_solve_schedule(
         "vehicle_count": vehicle_count,
         "max_inspectors_deployed_in_a_day": max_inspectors_deployed,
         "allocation_efficiency": allocation_efficiency(schedule_df),
+        "inspector_days_used": (
+            int(schedule_df.groupby(["inspector", "day"]).ngroups) if not schedule_df.empty else 0
+        ),
     })
     return schedule_df, summary
 

@@ -49,15 +49,42 @@ what a human planner with a list and a calendar actually does.
     random       — shuffled order, averaged over replications. Guards against
                    the sequential ordering being accidentally favourable.
     risk_ranked  — highest predicted risk first, but no geographic or capacity
-                   lookahead. This is the STRONGEST baseline: it gives manual
-                   practice full credit for the one thing an experienced
-                   planner certainly does do, which is deal with the obviously
-                   critical projects first. The headline improvement is
-                   reported against THIS one.
+                   lookahead. The strongest baseline, and the conservative
+                   comparison.
 
-Reporting against the strongest available baseline is deliberate. Quoting an
-improvement over the weakest baseline would be the easiest way to manufacture a
-number above 15%, and the least defensible at a panel.
+TWO COMPARISONS, NOT ONE — AND WHY BOTH MUST BE REPORTED
+------------------------------------------------------------------------------
+`risk_ranked` orders by meta_prob, which is MAAGAP's own model output. PPDO has
+no risk model today, so no planner there can produce that ordering. It is
+therefore NOT a model of current manual practice; it is a counterfactual in
+which a planner already holds MAAGAP's predictions and allocates them by hand.
+`sequential` and `random` need no model, and are what allocating a monitoring
+list without predictive support actually looks like.
+
+Measured across capacity levels, the two comparisons answer different
+questions and give different answers:
+
+  - Against current practice (no model), where capacity binds, the optimizer
+    improves allocation efficiency by roughly 25-33%, clearing the 15% target.
+  - Against the model-equipped counterfactual, it improves it by 0%.
+
+Read together, those say the measurable efficiency gain comes from RISK
+PRIORITIZATION — that is, from the predictive half of MAAGAP — and not from
+the integer program. What the integer program contributes is certified
+optimality and declarative handling of budget, vehicle and geographic
+constraints that a greedy heuristic satisfies only by construction and cannot
+be shown to satisfy optimally. That is a real contribution, but it is not an
+efficiency contribution, and this module reports it as what it is.
+
+A third finding constrains both: when capacity is SLACK — as it is on the live
+25-project candidate pool against roughly 60 schedulable visit slots — every
+allocator scores identically, because everything gets visited regardless. The
+improvement figures above exist only in the constrained regime, which is why
+scenario_sweep() reports improvement as a function of demand-to-capacity ratio
+rather than quoting a single number.
+
+Quoting only the largest of these figures would be the easiest way to
+manufacture a result above 15%, and the least defensible at a panel.
 
 *** PPDO CONFIRMATION STILL REQUIRED ***
 ------------------------------------------------------------------------------
@@ -210,7 +237,37 @@ BASELINES: dict[str, Callable[[pd.DataFrame, np.random.Generator], list[int]]] =
     "risk_ranked": order_risk_ranked,
 }
 
-HEADLINE_BASELINE = "risk_ranked"  # the strongest one; see module docstring
+# WHICH BASELINES REPRESENT CURRENT PRACTICE, AND WHICH DO NOT
+# ---------------------------------------------------------------------------
+# This distinction was not drawn when the baselines were first specified, and
+# drawing it changes how the results must be read.
+#
+# `risk_ranked` orders projects by meta_prob — MAAGAP's own model output. PPDO
+# has no risk model today, so a planner there cannot produce that ordering. It
+# is therefore NOT a model of current manual practice; it is a counterfactual
+# in which a planner already has MAAGAP's predictions and allocates by hand.
+#
+# `sequential` and `random` require no model. They are what allocating a
+# monitoring list without predictive support actually looks like, and they are
+# the comparison Objective 4's phrase "current manual approaches" denotes.
+#
+# Both comparisons are reported. Against current practice the question is
+# whether MAAGAP helps at all; against the model-equipped counterfactual the
+# question is what the integer program contributes over simply sorting by the
+# model's output. Reporting only one of the two would misstate the result in
+# whichever direction that one flattered.
+BASELINE_INFORMATION_SETS = {
+    "sequential": "no model — represents current manual practice",
+    "random": "no model — represents current manual practice",
+    "risk_ranked": "uses MAAGAP predictions — counterfactual, not current practice",
+}
+
+# Declared before measurement and deliberately left unchanged: the most
+# conservative comparison, against the strongest baseline.
+HEADLINE_BASELINE = "risk_ranked"
+
+# The comparison that answers Objective 4's actual wording.
+PRACTICE_BASELINE = "sequential"
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +351,21 @@ def monte_carlo(
     prob_sigma: float,
     absence_rate: float,
     seed: int,
+    inspector_count: int = 2,
 ) -> dict:
+    """
+    Replicated comparison under uncertainty.
+
+    `inspector_count` defaults to 2 rather than the full roster of 6 because
+    the scenario sweep shows every allocator scoring identically once capacity
+    is slack: 25 candidates against ~60 visit slots means everything is visited
+    regardless of how it is allocated, and a Monte Carlo run there would
+    faithfully report 0% several hundred times while measuring nothing. Two
+    inspectors puts demand and capacity near parity, which is the regime in
+    which allocation decisions have consequences — and is also the realistic
+    one, since the live portfolio is far larger than the 25 projects currently
+    scoreable end-to-end.
+    """
     rng = np.random.default_rng(seed)
     per_baseline: dict[str, list[float]] = {name: [] for name in BASELINES}
     optimizer_eff: list[float] = []
@@ -305,7 +376,8 @@ def monte_carlo(
         if pool.empty:
             skipped += 1
             continue
-        outcome = compare_once(pool, rng, inspectors=sample_inspectors(rng, absence_rate))
+        available = sample_inspectors(rng, absence_rate)[:inspector_count]
+        outcome = compare_once(pool, rng, inspectors=available or [INSPECTOR_IDS[0]])
         if outcome is None:
             skipped += 1
             continue
@@ -330,6 +402,7 @@ def monte_carlo(
         }
 
     return {
+        "inspector_count": inspector_count,
         "replications_requested": replications,
         "replications_skipped": skipped,
         "prob_sigma": prob_sigma,
@@ -339,6 +412,93 @@ def monte_carlo(
         ),
         "improvement_over": {name: describe(vals) for name, vals in per_baseline.items()},
     }
+
+
+# ---------------------------------------------------------------------------
+# Scenario sweep — where does optimization actually pay?
+# ---------------------------------------------------------------------------
+
+def scenario_sweep(
+    priority_df: pd.DataFrame,
+    inspector_counts: list[int],
+    vehicle_counts: Optional[list[int]] = None,
+) -> list[dict]:
+    """
+    Runs the optimizer and the baselines across a range of capacity levels.
+
+    WHY THIS EXISTS, AND WHY A SINGLE NUMBER WAS NOT ENOUGH
+    ----------------------------------------------------------------------
+    On the live candidate pool the optimizer and all three baselines score
+    IDENTICALLY: 25 candidate projects against roughly 60 schedulable visit
+    slots means the resource is not scarce, everything gets visited either
+    way, and there is nothing left to optimize. An improvement figure measured
+    only there would report 0% and say nothing about the method.
+
+    Optimization can only add value when capacity binds. Objective 4 calls for
+    measurement "through simulated project scenarios", and this is that: hold
+    the real pool's tier mix, cluster distribution and risk weights fixed, and
+    vary the inspector and vehicle capacity so that the ratio of demand to
+    capacity sweeps from slack to severely constrained.
+
+    Reporting improvement as a function of scarcity is a stronger result than a
+    single number would have been, because it states the condition under which
+    the method helps instead of implying it always does.
+    """
+    results = []
+    for n_inspectors in inspector_counts:
+        inspectors = INSPECTOR_IDS[:n_inspectors]
+        vehicles = min(n_inspectors, (vehicle_counts or [VEHICLE_COUNT])[0])
+        capacity = n_inspectors * len(WORKDAYS) * DAILY_CAPACITY
+        try:
+            schedule_df, summary = build_and_solve_schedule(
+                priority_df, inspectors=inspectors, vehicle_count=vehicles,
+                weekly_budget_php=10_000_000.0,
+            )
+        except ValueError as exc:
+            logger.warning("  %d inspectors: solver could not run (%s)", n_inspectors, exc)
+            continue
+
+        opt_eff = allocation_efficiency(schedule_df)
+        rng = np.random.default_rng(42)
+        entry = {
+            "inspectors": n_inspectors,
+            "vehicles": vehicles,
+            "nominal_visit_capacity": capacity,
+            "candidates": int(len(priority_df)),
+            "demand_to_capacity": round(len(priority_df) / capacity, 3),
+            "optimizer_efficiency": opt_eff,
+            "optimizer_visits": int(len(schedule_df)),
+            "optimizer_risk_weight": round(
+                float(schedule_df["risk_tier"].map(RISK_WEIGHTS).fillna(0).sum()), 2
+            ) if not schedule_df.empty else 0.0,
+            "baselines": {},
+        }
+        for name, order_fn in BASELINES.items():
+            base_df = greedy_allocate(
+                priority_df, order_fn(priority_df, rng), inspectors=inspectors,
+                vehicle_count=vehicles, weekly_budget_php=10_000_000.0,
+            )
+            base_eff = allocation_efficiency(base_df)
+            entry["baselines"][name] = {
+                "efficiency": base_eff,
+                "visits": int(len(base_df)),
+                "risk_weight": round(
+                    float(base_df["risk_tier"].map(RISK_WEIGHTS).fillna(0).sum()), 2
+                ) if not base_df.empty else 0.0,
+                "improvement": (
+                    round((opt_eff - base_eff) / base_eff, 4)
+                    if (base_eff and opt_eff is not None) else None
+                ),
+            }
+        results.append(entry)
+        logger.info(
+            "  %d inspectors (demand/capacity %.2f): optimizer eff %.4f vs risk_ranked %.4f "
+            "-> %+.1f%%",
+            n_inspectors, entry["demand_to_capacity"], opt_eff or 0.0,
+            entry["baselines"][HEADLINE_BASELINE]["efficiency"] or 0.0,
+            100 * (entry["baselines"][HEADLINE_BASELINE]["improvement"] or 0.0),
+        )
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -378,10 +538,15 @@ def run(
     logger.info("Point comparison on the unperturbed pool ...")
     point = compare_once(priority_df, np.random.default_rng(seed))
 
+    logger.info("Scenario sweep across capacity levels ...")
+    sweep = scenario_sweep(priority_df, inspector_counts=[1, 2, 3, 4, 6])
+
     logger.info("Monte Carlo: %d replications ...", replications)
     mc = monte_carlo(priority_df, replications, prob_sigma, absence_rate, seed)
 
     results = {
+        "baseline_information_sets": BASELINE_INFORMATION_SETS,
+        "practice_baseline": PRACTICE_BASELINE,
         "efficiency_metric": (
             "total risk weight of visited projects / inspector-days consumed; "
             "defined in optimization_engine.allocation_efficiency()"
@@ -394,17 +559,28 @@ def run(
         ),
         "candidate_pool_size": int(len(priority_df)),
         "point_comparison": point,
+        "scenario_sweep": sweep,
         "monte_carlo": mc,
     }
 
     headline = mc["improvement_over"].get(HEADLINE_BASELINE, {})
+    practice = mc["improvement_over"].get(PRACTICE_BASELINE, {})
+    if practice.get("n"):
+        logger.warning(
+            "OBJECTIVE 4, vs CURRENT PRACTICE (%s, no model): mean %.1f%%, median %.1f%%, "
+            "90%% interval [%.1f%%, %.1f%%]. Met the 15%% target in %.1f%% of %d replications.",
+            PRACTICE_BASELINE,
+            100 * practice["mean_improvement"], 100 * practice["median_improvement"],
+            100 * practice["p05"], 100 * practice["p95"],
+            100 * practice["share_meeting_15pct_target"], practice["n"],
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(results, indent=2), encoding="utf-8")
     logger.warning("Wrote %s", output)
 
     if headline.get("n"):
         logger.warning(
-            "OBJECTIVE 4 HEADLINE — improvement over the %s baseline: mean %.1f%%, "
+            "OBJECTIVE 4, vs MODEL-EQUIPPED COUNTERFACTUAL (%s): mean %.1f%%, "
             "median %.1f%%, 90%% interval [%.1f%%, %.1f%%]. Met the 15%% target in "
             "%.1f%% of %d replications.",
             HEADLINE_BASELINE,
