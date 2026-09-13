@@ -533,6 +533,10 @@ async def get_model_metrics():
     tree_models = _read_json("tree_models_metrics.json")
     lstm = _read_json("lstm_model_metrics.json")
     meta_learner = _read_json("meta_learner_metrics.json")
+    # Objective 2's regression half: MAE in days from train_regressors.py.
+    # Absent until that script has been run, and the endpoint stays available
+    # without it -- the classification artifacts are the required ones.
+    regression = _read_json("regression_metrics.json")
 
     if tree_models is None and lstm is None and meta_learner is None:
         raise HTTPException(
@@ -573,6 +577,7 @@ async def get_model_metrics():
         "lstm": lstm,
         "meta_learner": meta_learner,
         "confusion_matrix": confusion_matrix,
+        "regression": regression,
     }
 
 

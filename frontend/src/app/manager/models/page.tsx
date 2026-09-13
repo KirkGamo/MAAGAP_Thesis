@@ -5,6 +5,34 @@ interface TreeModelMetrics {
   test_metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
 }
 
+interface RegressionPopulationMetrics {
+  n: number;
+  mae_days: number | null;
+  rmse_days?: number;
+  r2?: number | null;
+  baseline_mae_days?: number;
+  skill_vs_baseline?: number | null;
+  mean_observed_delay_days?: number;
+}
+
+interface RegressionModelEntry {
+  oof_metrics: RegressionPopulationMetrics;
+  test_metrics: RegressionPopulationMetrics;
+  test_metrics_direct_dates_only: RegressionPopulationMetrics;
+  test_metrics_clamped_included: RegressionPopulationMetrics;
+}
+
+interface RegressionMetrics {
+  target: string;
+  units: string;
+  n_train: number;
+  n_test: number;
+  n_features: number;
+  clamped_rows_excluded: { train: number; test: number };
+  baseline: { description: string; value_days: number };
+  models: Record<string, RegressionModelEntry>;
+}
+
 interface ModelMetricsResponse {
   tree_models: {
     n_train: number;
@@ -28,11 +56,21 @@ interface ModelMetricsResponse {
     true_negative: number;
     false_negative: number;
   } | null;
+  regression: RegressionMetrics | null;
 }
 
 function pct(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
+
+function days(value: number | null | undefined): string {
+  return value == null ? "--" : `${value.toFixed(1)} d`;
+}
+
+const REGRESSOR_LABELS: Record<string, string> = {
+  random_forest_regressor: "Random Forest",
+  xgboost_regressor: "XGBoost",
+};
 
 /**
  * Phase 12: Models tab, a view-only dashboard over ml-service's real,
@@ -90,7 +128,7 @@ export default async function ModelsPage() {
     );
   }
 
-  const { tree_models, lstm, meta_learner, confusion_matrix } = data;
+  const { tree_models, lstm, meta_learner, confusion_matrix, regression } = data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -142,6 +180,8 @@ export default async function ModelsPage() {
         </Card>
       )}
 
+      {regression && <RegressionCard regression={regression} />}
+
       {tree_models && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Card>
@@ -182,6 +222,84 @@ function PageHeader() {
         (meta-learner) stack, from the most recent training run.
       </p>
     </div>
+  );
+}
+
+/**
+ * Objective 2's regression half: Mean Absolute Error in days, from
+ * train_regressors.py. Three things are shown deliberately rather than just
+ * the headline number, because the headline alone is not defensible:
+ *
+ *  - the constant-predictor baseline it is measured against (an MAE in days
+ *    means nothing without one),
+ *  - that the Phase 8 clamped rows are excluded, and how many,
+ *  - the directly-observed-date subpopulation, where error roughly doubles.
+ *
+ * That last figure is the honest one and is shown at equal weight, not in a
+ * footnote -- it is the measured size of the pipeline's proxy-date dependence.
+ */
+function RegressionCard({ regression }: { regression: RegressionMetrics }) {
+  const entries = Object.entries(regression.models);
+  if (entries.length === 0) return null;
+
+  const [bestName, best] = entries.reduce((acc, cur) =>
+    (cur[1].test_metrics.mae_days ?? Infinity) < (acc[1].test_metrics.mae_days ?? Infinity)
+      ? cur
+      : acc,
+  );
+  const direct = best.test_metrics_direct_dates_only;
+
+  return (
+    <Card>
+      <MetricLabel>Delay magnitude (regression) — test set</MetricLabel>
+      <Metric>{days(best.test_metrics.mae_days)}</Metric>
+      <p className="text-xs text-slate-500">
+        Mean Absolute Error of the best regressor ({REGRESSOR_LABELS[bestName] ?? bestName}),
+        predicting days past the standard duration. Baseline{" "}
+        {days(best.test_metrics.baseline_mae_days)} — skill{" "}
+        {best.test_metrics.skill_vs_baseline == null
+          ? "--"
+          : pct(best.test_metrics.skill_vs_baseline)}
+        .
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {entries.map(([name, entry]) => (
+          <StatBlock
+            key={name}
+            label={`${REGRESSOR_LABELS[name] ?? name} MAE`}
+            value={days(entry.test_metrics.mae_days)}
+          />
+        ))}
+        <StatBlock label="RMSE" value={days(best.test_metrics.rmse_days)} />
+        <StatBlock
+          label="R²"
+          value={best.test_metrics.r2 == null ? "--" : best.test_metrics.r2.toFixed(3)}
+        />
+      </div>
+
+      <div className="mt-4 rounded-md bg-amber-50 p-3">
+        <p className="text-xs font-semibold text-amber-900">
+          On directly-observed completion dates only (n={direct.n}): {days(direct.mae_days)}
+        </p>
+        <p className="mt-1 text-xs text-amber-800">
+          Error roughly doubles and R² turns negative on the {direct.n} test projects whose
+          completion date was recorded directly rather than recovered by proxy. About 92–94% of the
+          labelled population relies on a proxy date, so this figure is the measured size of that
+          dependence — the model is substantially learning the recovery mechanism, not delay alone.
+          That subpopulation is also small and differently distributed (it finishes well inside the
+          standard duration), so neither number should be read on its own.
+        </p>
+      </div>
+
+      <p className="mt-3 text-xs text-slate-400">
+        {regression.n_train} train / {regression.n_test} test rows over {regression.n_features}{" "}
+        features. Excludes {regression.clamped_rows_excluded.train} train and{" "}
+        {regression.clamped_rows_excluded.test} test rows whose actual duration is pinned by the
+        Phase 8 clamp rather than observed — including them would deflate the target and flatter
+        this number.
+      </p>
+    </Card>
   );
 }
 
