@@ -196,6 +196,69 @@ WEEKLY_CAPACITY = 12           # Max site visits per inspector per week.
 TRAVEL_PENALTY = 0.75          # Objective-function cost per distinct cluster an inspector visits in the week.
 MAX_PROJECTS_CONSIDERED = 150  # Cap the candidate pool for solver tractability (highest-risk-first).
 
+# ---------------------------------------------------------------------------
+# BUDGET AND EQUIPMENT — Chapter 3's remaining two constraint classes.
+#
+# Chapter 3 formulates the allocation problem "under constraints such as
+# budget, manpower, and equipment" and prints a budget ceiling explicitly.
+# Only manpower (the capacity limits above) and geography were implemented;
+# the constants below add the other two.
+#
+# PLACEHOLDER COST FIGURES — CONFIRM WITH PPDO BEFORE OPERATIONAL USE.
+# These are order-of-magnitude estimates for a provincial field visit, not
+# figures taken from PPDO's travel/per-diem schedule. Treat them exactly as
+# MUNICIPALITY_CLUSTERS above is treated: a clearly-flagged placeholder for a
+# domain expert to replace, never validated ground truth. Every peso figure
+# the optimizer reports inherits their uncertainty.
+# ---------------------------------------------------------------------------
+
+VISIT_COST_PHP = 850.0                 # Per-diem + fuel attributable to one site visit.
+CLUSTER_MOBILIZATION_COST_PHP = 1200.0 # Cost of an inspector working a cluster at all in a week.
+WEEKLY_FIELD_BUDGET_PHP = 60000.0      # Ceiling on total weekly deployment cost.
+
+# Equipment: service vehicles available on any single day. Fewer than the
+# inspector count, which is the point — the Delimitation names vehicle
+# availability as a real logistical hurdle bounding inspection frequency.
+# Inspectors deployed on the same day each need a vehicle, so this caps how
+# many can be in the field simultaneously regardless of available manpower.
+VEHICLE_COUNT = 4
+
+# Lambda in Chapter 3's objective: the cost-priority tradeoff parameter
+# weighting total deployment cost against risk-weighted coverage. Kept small
+# by default so risk coverage dominates and the budget binds primarily as a
+# hard constraint (which is how Chapter 3 lists it); raise it to make the
+# solver trade coverage away for cost directly.
+COST_WEIGHT = 0.0001
+
+
+def allocation_efficiency(schedule_df: pd.DataFrame) -> Optional[float]:
+    """
+    ALLOCATION EFFICIENCY — Objective 4's success metric, defined here once so
+    that every measurement of it uses the same formula.
+
+        efficiency = (total risk weight of projects visited)
+                     / (inspector-days consumed to visit them)
+
+    Read as "how much monitoring risk is retired per inspector-day spent". It
+    is the natural quantity for this problem because the scarce resource is
+    inspector time, not project count, and because visiting one Critical
+    project is genuinely worth more than visiting one High project — which a
+    raw coverage-rate metric cannot express.
+
+    Defined BEFORE any comparison was run, so the 15% improvement target in
+    Objective 4 is measured against a fixed yardstick rather than one chosen
+    after seeing which yardstick flattered the result.
+    """
+    if schedule_df is None or schedule_df.empty:
+        return None
+    risk_weight_total = float(
+        schedule_df["risk_tier"].map(RISK_WEIGHTS).fillna(0.0).sum()
+    )
+    inspector_days = int(schedule_df.groupby(["inspector", "day"]).ngroups)
+    if inspector_days == 0:
+        return None
+    return round(risk_weight_total / inspector_days, 4)
+
 
 # ---------------------------------------------------------------------------
 # Step 1 — score the ongoing-project population end-to-end (RF, XGBoost,
@@ -455,6 +518,11 @@ def build_and_solve_schedule(
     daily_capacity: int = DAILY_CAPACITY,
     weekly_capacity: int = WEEKLY_CAPACITY,
     travel_penalty: float = TRAVEL_PENALTY,
+    vehicle_count: int = VEHICLE_COUNT,
+    weekly_budget_php: float = WEEKLY_FIELD_BUDGET_PHP,
+    visit_cost_php: float = VISIT_COST_PHP,
+    cluster_cost_php: float = CLUSTER_MOBILIZATION_COST_PHP,
+    cost_weight: float = COST_WEIGHT,
 ) -> tuple[pd.DataFrame, dict]:
     projects = priority_df["project_key"].tolist()
     risk_weight = dict(zip(priority_df["project_key"], priority_df["risk_weight"]))
@@ -470,11 +538,24 @@ def build_and_solve_schedule(
     y = pulp.LpVariable.dicts("cluster_day", (inspectors, days, clusters), cat="Binary")
     z = pulp.LpVariable.dicts("cluster_week", (inspectors, clusters), cat="Binary")
 
-    # Objective: maximize risk-weighted coverage, minus a penalty for each
-    # distinct cluster an inspector's week touches (travel-friction proxy).
+    # Total deployment cost in pesos: one charge per visit, plus a mobilization
+    # charge per cluster an inspector works during the week. Referenced by both
+    # the objective's cost term and the budget constraint below.
+    total_cost = (
+        visit_cost_php * pulp.lpSum(x[i][p][d] for i in inspectors for p in projects for d in days)
+        + cluster_cost_php * pulp.lpSum(z[i][c] for i in inspectors for c in clusters)
+    )
+
+    # Objective: maximize risk-weighted coverage, minus a travel-friction
+    # penalty per distinct cluster an inspector's week touches, minus
+    # Chapter 3's cost term (lambda * total deployment cost). The travel
+    # penalty and the cost term are kept separate on purpose: the first is a
+    # routing preference expressed in objective units, the second prices the
+    # same deployment in pesos and is what the budget constraint bounds.
     prob += (
         pulp.lpSum(risk_weight[p] * x[i][p][d] for i in inspectors for p in projects for d in days)
         - travel_penalty * pulp.lpSum(z[i][c] for i in inspectors for c in clusters)
+        - cost_weight * total_cost
     )
 
     # Each project visited at most once across the whole week.
@@ -507,6 +588,19 @@ def build_and_solve_schedule(
         for c in clusters:
             for d in days:
                 prob += z[i][c] >= y[i][d][c], f"activate_cluster_week_{i}_{c}_{d}"
+
+    # BUDGET: total weekly deployment cost may not exceed the field budget.
+    prob += total_cost <= weekly_budget_php, "weekly_budget"
+
+    # EQUIPMENT: at most `vehicle_count` inspectors deployed on any one day.
+    # sum_c y[i][d][c] is already constrained to <= 1 above, so it is exactly
+    # the indicator "inspector i is in the field on day d" — the vehicle pool
+    # needs no additional decision variables to express.
+    for d in days:
+        prob += (
+            pulp.lpSum(y[i][d][c] for i in inspectors for c in clusters) <= vehicle_count,
+            f"vehicles_{d}",
+        )
 
     solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=SOLVER_TIME_LIMIT_SECONDS, gapRel=SOLVER_MIP_GAP)
     prob.solve(solver)
@@ -550,6 +644,24 @@ def build_and_solve_schedule(
         "inspectors_used": inspectors,
         "clusters_touched": schedule_df["cluster"].nunique() if not schedule_df.empty else 0,
     }
+
+    # Realized cost and how hard the two new constraints bound, so a reader can
+    # see whether budget or vehicles actually shaped this particular solve.
+    realized_cluster_weeks = int(
+        sum(1 for i in inspectors for c in clusters if (pulp.value(z[i][c]) or 0) > 0.5)
+    )
+    realized_cost = visit_cost_php * len(schedule_df) + cluster_cost_php * realized_cluster_weeks
+    max_inspectors_deployed = 0
+    if not schedule_df.empty:
+        max_inspectors_deployed = int(schedule_df.groupby("day")["inspector"].nunique().max())
+    summary.update({
+        "total_cost_php": round(realized_cost, 2),
+        "weekly_budget_php": weekly_budget_php,
+        "budget_utilization": round(realized_cost / weekly_budget_php, 4) if weekly_budget_php else None,
+        "vehicle_count": vehicle_count,
+        "max_inspectors_deployed_in_a_day": max_inspectors_deployed,
+        "allocation_efficiency": allocation_efficiency(schedule_df),
+    })
     return schedule_df, summary
 
 
