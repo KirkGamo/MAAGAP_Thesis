@@ -666,19 +666,14 @@ Subject to:
 
 Where wj represent project priority weights, *P(success)* the predicted success probability from the risk scoring module, cij unit costs, and   the cost-priority tradeoff parameter.
 
-*NSGA-II Algorithm*
+*Solution Method: Branch-and-Cut via PuLP/CBC*
 
-The Non-dominated Sorting Genetic Algorithm II (NSGA-II) solves this multi-objective problem by finding Pareto-optimal solutions. Recent research demonstrates NSGA-II's effectiveness for resource allocation in complex networks. A 2025 study applied NSGA-II for multi-objective disaster recovery scheduling in virtual cloud platforms, achieving optimal load balance degrees 21.1% and 19.0% lower than MOEA/D and NSGA-III respectively in small-scale failure scenarios, and 35.7% and 25.0% lower in large-scale disaster scenarios \[41\].
+The model above is linear in its decision variables, and the deployment decisions it produces are indivisible: an inspector either visits a given project on a given day or does not. It is therefore solved exactly, as a mixed-integer linear program, using the PuLP modeling library with the COIN-OR Branch-and-Cut (CBC) solver.
 
-NSGA-II uses:
+Exact solution is preferred over a population-based metaheuristic for three reasons specific to this study's setting. First, the Delimitation of this study explicitly excludes non-linear and heuristic optimization methods in favour of a mathematically rigorous approach that fits within standard LGU computing constraints; at the scale this problem actually reaches—on the order of six inspectors, five workdays, and the High- and Critical-risk subset of the ongoing portfolio—branch-and-cut returns a certified optimal solution in minutes on commodity hardware, so no tractability argument for approximating it arises. Second, a deterministic solver returns the same schedule for the same inputs. This matters when the output is a public-sector resource allocation that must be explained to oversight bodies and, if challenged, reproduced exactly; a stochastic metaheuristic returns a different Pareto front per run and per random seed. Third, the solver reports its own termination status, so an infeasible or unbounded configuration is surfaced as such rather than silently returning the best individual found so far.
 
-1. Non-dominated sorting: Classifies solutions into Pareto fronts based on dominance
+Multi-objective evolutionary methods, of which the Non-dominated Sorting Genetic Algorithm II (NSGA-II) \[41\] is the most widely applied, remain the appropriate choice where the objectives are genuinely non-commensurable and the decision-maker requires a Pareto front to select from. Such methods have been applied successfully to resource allocation in multi-UAV maritime search and rescue \[43\], post-disaster relief distribution \[61\], and industrial productivity and renewable energy allocation \[39, 40\]. In the present formulation, however, the competing considerations—risk-weighted monitoring coverage against travel friction and deployment cost—are commensurable and are combined into a single weighted objective with an explicit tradeoff parameter. A Pareto front would therefore present the PPDO with a selection it has no principled basis on which to make. These methods are accordingly documented here as considered and deliberately excluded, not as the method adopted.
 
-2. Crowding distance: Maintains solution diversity
-
-3. Genetic operators: Selection, crossover (PC=0.80), and mutation (Pm=0.05) generate new solutions
-
-Recent studies have applied NSGA-II to various resource allocation problems including multi-UAV maritime search and rescue \[43\], post-disaster relief distribution \[61\], and industrial productivity optimization1 \[39\]. Enhanced NSGA-II algorithms with simulated annealing-based strategies have shown improved performance for real-world multi-objective optimization problems \[40\].
 
 *Optimization Evaluation*
 
