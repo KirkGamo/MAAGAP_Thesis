@@ -87,32 +87,26 @@ ARTIFACTS_DIR = Path(__file__).resolve().parent.parent / "artifacts"
 READY_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "ready"
 
 # ---------------------------------------------------------------------------
-# Risk tier thresholds — must match Chapter 3 exactly.
+# Risk tier thresholds — imported, never redefined. Chapter 3's boundaries have
+# exactly one definition in this repo (Objective 3's logic consistency
+# requirement); see ml-service/common/risk_tiers.py for why.
 # ---------------------------------------------------------------------------
 
-RISK_TIER_THRESHOLDS = {
-    "Low": (0.0, 0.3),
-    "Medium": (0.3, 0.7),
-    "High": (0.7, 0.9),
-    "Critical": (0.9, 1.0),
-}
+try:
+    from common.risk_tiers import (  # noqa: F401
+        RISK_TIER_THRESHOLDS,
+        probabilities_to_risk_tiers,
+        probability_to_risk_tier,
+    )
+except ImportError:  # run as `python models/train_meta_learner.py` from ml-service/
+    import sys
 
-
-def probability_to_risk_tier(prob: float) -> str:
-    """Map a single P(RedFlag=1) probability to one of the four Chapter 3
-    risk tiers. Boundaries: Low [0, 0.3), Medium [0.3, 0.7), High [0.7, 0.9),
-    Critical [0.9, 1.0]."""
-    if prob < 0.3:
-        return "Low"
-    if prob < 0.7:
-        return "Medium"
-    if prob < 0.9:
-        return "High"
-    return "Critical"
-
-
-def probabilities_to_risk_tiers(probs: np.ndarray) -> np.ndarray:
-    return np.array([probability_to_risk_tier(p) for p in probs])
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from common.risk_tiers import (  # noqa: F401
+        RISK_TIER_THRESHOLDS,
+        probabilities_to_risk_tiers,
+        probability_to_risk_tier,
+    )
 
 
 # ---------------------------------------------------------------------------

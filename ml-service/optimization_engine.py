@@ -131,17 +131,11 @@ from train_trees import build_feature_matrix  # noqa: E402
 from train_lstm import PAD_VALUE, apply_sequence_scaler  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Risk tier thresholds — must match Chapter 3 / train_meta_learner.py exactly.
+# Risk tier thresholds — imported from the single shared definition rather than
+# restated here, so this module and train_meta_learner.py cannot drift apart.
 # ---------------------------------------------------------------------------
 
-def probability_to_risk_tier(prob: float) -> str:
-    if prob < 0.3:
-        return "Low"
-    if prob < 0.7:
-        return "Medium"
-    if prob < 0.9:
-        return "High"
-    return "Critical"
+from common.risk_tiers import probability_to_risk_tier  # noqa: E402
 
 
 RISK_WEIGHTS = {"High": 1.0, "Critical": 2.5}  # Critical weighted higher: objective prioritizes it.

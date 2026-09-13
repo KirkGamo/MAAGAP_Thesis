@@ -97,15 +97,15 @@ except ImportError:  # imported from inside ml-service/ without the package root
     from data_pipeline.status_vocabulary import canonical_from_app_status
 
 
-def probability_to_risk_tier(prob: float) -> str:
-    """Must match train_meta_learner.py's thresholds exactly (Chapter 3)."""
-    if prob < 0.3:
-        return "Low"
-    if prob < 0.7:
-        return "Medium"
-    if prob < 0.9:
-        return "High"
-    return "Critical"
+# Risk tiers come from the one shared definition — this module previously kept
+# its own copy of the threshold ladder alongside two others (Objective 3).
+try:
+    from common.risk_tiers import probability_to_risk_tier
+except ImportError:  # imported from inside ml-service/ without the package root
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from common.risk_tiers import probability_to_risk_tier
 
 
 @dataclass
