@@ -677,13 +677,21 @@ Multi-objective evolutionary methods, of which the Non-dominated Sorting Genetic
 
 *Optimization Evaluation*
 
-Resource allocation performance is evaluated through:
+Resource allocation performance is evaluated against a single efficiency metric, fixed before any comparison was run so that the improvement target is measured against a stationary yardstick. Allocation efficiency is defined as the total risk weight of the projects visited divided by the inspector-days consumed in visiting them:
 
-* Efficiency improvement: Comparison of optimized allocation against baseline manual approaches, targeting 15% improvement in resource utilization efficiency
+Allocation Efficiency \= (Σ wⱼ for scheduled projects) / (inspector-days used)
 
-* Feasibility validation: Expert review confirming recommendations respect real-world constraints
+Read as the monitoring risk retired per inspector-day expended. This quantity is used rather than a raw coverage rate because the scarce resource in this problem is inspector time rather than project count, and because a Critical-tier visit is worth more than a High-tier visit—a distinction a coverage rate cannot express.
 
-* Simulation testing: Monte Carlo simulation assessing robustness under uncertainty
+Evaluation proceeds in three parts:
+
+* **Efficiency improvement against modelled manual practice.** The optimizer is compared against three greedy allocators that place each project into the first slot where it fits, in a specified order: candidate-pool order (first-come-first-served), randomized order, and risk-ranked order. All three enforce exactly the same feasibility constraints as the optimizer—daily and weekly capacity, one cluster per inspector-day, the vehicle pool, and the weekly budget—because a schedule violating those is not executable, and permitting a baseline to violate them would manufacture an advantage rather than measure one. What the baselines lack is lookahead: each placement is committed without regard to how it constrains later ones, which is what a planner working a list against a calendar does. The headline improvement is reported against the risk-ranked baseline, the strongest of the three, since it credits manual practice with the one thing an experienced planner certainly does—addressing the obviously critical projects first.
+
+* **Feasibility validation.** Structured review with PPDO field-operations staff, confirming that generated schedules respect travel realities, administrative load, and vehicle availability as actually experienced. This also serves to confirm or replace the cost and capacity parameters, which are presently documented placeholders rather than figures drawn from PPDO's travel and per-diem schedule.
+
+* **Monte Carlo robustness testing.** Because a single solve on a single candidate pool demonstrates little, the comparison is repeated over randomized replications in which each project's predicted probability is perturbed by Gaussian noise and re-tiered, and each inspector is independently unavailable for the week with fixed probability. The improvement is therefore reported as a distribution—mean, median, and a 90% interval, together with the proportion of replications meeting the 15% target—rather than as a point estimate. Results are recorded in Chapter 4.
+
+The 15% figure stated in Objective 4 is treated throughout as a target to be measured against, not as a finding to be reproduced. Where the measured improvement falls below it, the measured value is reported and its causes discussed.
 
 *Model Interpretability and Transparency*
 
