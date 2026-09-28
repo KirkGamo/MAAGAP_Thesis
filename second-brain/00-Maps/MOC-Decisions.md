@@ -29,5 +29,6 @@ Every significant, non-obvious decision on this project, in roughly the order th
 - [[02-Decisions/D18-Geographic-Distance-Costing|D18: Geographic Distance Costing]] — replacing a flat per-cluster travel charge with real centroid distances from PPDO's barangay point layer, after measuring the flat figure wrong by 6.3x.
 - [[02-Decisions/D19-PAGASA-Weather-Features|D19: PAGASA Weather Features]] — real daily observations replacing the calendar proxy, pre-registered and then measured: a small effect, and feature importance (46.9% of Random Forest) overstating it badly.
 - [[02-Decisions/D20-Drop-Synthetic-Contractor-Features|D20: Removing the Synthetic Contractor Features]] — PPDO has no contractor records, so the fabricated stand-ins were ablated and removed; three of four headline metrics improved.
+- [[02-Decisions/D21-Two-Learner-Fallback|D21: Two-Learner Fallback]] — scoring coverage 668 → 2,393 by diagnosing that the bottleneck was crosswalk identity rather than sequence scarcity; recovers Objective 4's 15% target.
 
 See [[MOC-Known-Issues]] for the limitations these decisions left behind, and [[99-Log]] for the chronological work history.
