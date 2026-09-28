@@ -285,6 +285,60 @@ def evaluate(model: LogisticRegression, test_df: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def load_tabular_only_oof() -> pd.DataFrame:
+    """
+    The FULL tabular OOF set, without the inner join against LSTM coverage.
+
+    D21: the three-learner meta-model can only score a project that has an LSTM
+    event sequence, and sequences are built by iterating the fund-transfer
+    crosswalk. Monitoring rows that the crosswalk could not link to a
+    fund-transfer row are keyed MON_ONLY_<mon_row_id> and therefore never get
+    one -- 1,725 of the 2,393 ongoing projects, leaving only 668 scoreable
+    end-to-end.
+
+    Those rows are not poor quality. Measured against the scoreable ones they
+    are equally complete on every tabular feature: 100% AMOUNT, 99.6% D_start,
+    99.5% weather coverage, 100% project type, 99.8% resolvable municipality.
+    They lack a sequence because of how project identity is assembled, not
+    because of anything about the projects.
+
+    So a second meta-learner is trained on the two tabular base learners alone,
+    and used only where no sequence exists. It trains on the full OOF set
+    rather than the LSTM-covered subset, which is roughly three times the rows.
+    """
+    tabular_oof = pd.read_csv(ARTIFACTS_DIR / "oof_predictions_tabular.csv")
+    if "y_true" not in tabular_oof.columns and "y_true_x" in tabular_oof.columns:
+        tabular_oof = tabular_oof.rename(columns={"y_true_x": "y_true"})
+    return tabular_oof
+
+
+def train_two_learner(oof_df: pd.DataFrame) -> LogisticRegression:
+    """Same specification as the three-learner model, minus the LSTM input, so
+    the two are directly comparable."""
+    X = oof_df[["random_forest_oof_prob", "xgboost_oof_prob"]].to_numpy()
+    y = oof_df["y_true"].to_numpy()
+    model = LogisticRegression(max_iter=1000, class_weight="balanced")
+    model.fit(X, y)
+    return model
+
+
+def evaluate_two_learner(model: LogisticRegression, test_df: pd.DataFrame) -> tuple[dict, np.ndarray]:
+    X = test_df[["random_forest_oof_prob", "xgboost_oof_prob"]].to_numpy()
+    y = test_df["y_true"].to_numpy()
+    probs = model.predict_proba(X)[:, 1]
+    preds = (probs >= 0.5).astype(int)
+    metrics = {
+        "n_train_rows": None,
+        "n_test": int(len(y)),
+        "accuracy": round(float(accuracy_score(y, preds)), 4),
+        "precision": round(float(precision_score(y, preds, zero_division=0)), 4),
+        "recall": round(float(recall_score(y, preds, zero_division=0)), 4),
+        "f1": round(float(f1_score(y, preds, zero_division=0)), 4),
+        "auc_roc": round(float(roc_auc_score(y, probs)), 4),
+    }
+    return metrics, probs
+
+
 def run() -> None:
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -314,6 +368,35 @@ def run() -> None:
     predictions_path = ARTIFACTS_DIR / "meta_learner_test_predictions.csv"
     predictions_out.to_csv(predictions_path, index=False)
     logger.info("Saved per-project test predictions + risk tiers to %s", predictions_path)
+
+    # ---------------------------------------------------------------------
+    # D21: two-learner fallback for projects with no LSTM sequence.
+    # ---------------------------------------------------------------------
+    logger.info("Training the two-learner fallback (no LSTM input)...")
+    two_oof = load_tabular_only_oof()
+    two_model = train_two_learner(two_oof)
+
+    tabular_test = pd.read_csv(ARTIFACTS_DIR / "test_predictions_tabular.csv")
+    rename = {
+        "random_forest_test_prob": "random_forest_oof_prob",
+        "xgboost_test_prob": "xgboost_oof_prob",
+        "random_forest_prob": "random_forest_oof_prob",
+        "xgboost_prob": "xgboost_oof_prob",
+    }
+    tabular_test = tabular_test.rename(columns={k: v for k, v in rename.items() if k in tabular_test.columns})
+    two_metrics, _ = evaluate_two_learner(two_model, tabular_test)
+    two_metrics["n_train_rows"] = int(len(two_oof))
+
+    joblib.dump(two_model, ARTIFACTS_DIR / "meta_learner_two.joblib")
+    with open(ARTIFACTS_DIR / "meta_learner_two_metrics.json", "w") as f:
+        json.dump(two_metrics, f, indent=2)
+
+    logger.warning(
+        "Two-learner fallback: trained on %d rows (vs %d for the three-learner model), "
+        "test AUC %.4f vs %.4f. Used ONLY where no LSTM sequence exists; such scores are "
+        "tagged score_basis='two_learner' so the provenance is explicit.",
+        len(two_oof), len(oof_df), two_metrics["auc_roc"], metrics["auc_roc"],
+    )
 
 
 if __name__ == "__main__":

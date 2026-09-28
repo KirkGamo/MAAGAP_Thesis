@@ -397,17 +397,54 @@ def score_ongoing_projects() -> pd.DataFrame:
     tabular_scores = score_tabular(inference_df)
     lstm_scores = score_lstm()
 
-    merged = tabular_scores.merge(lstm_scores, on="project_key", how="inner")
-    dropped = len(tabular_scores) - len(merged)
-    logger.warning(
-        "%d of %d ongoing projects had no matching LSTM sequence and were excluded "
-        "from meta-learner scoring (see module docstring's coverage caveat).",
-        dropped, len(tabular_scores),
-    )
+    # D21: LEFT join, not inner. Projects without an LSTM sequence are scored
+    # by the two-learner fallback instead of being dropped.
+    #
+    # Sequences are built by iterating the fund-transfer crosswalk, so a
+    # monitoring row the crosswalk could not link is keyed MON_ONLY_<id> and
+    # never gets one -- previously 1,725 of 2,393 ongoing projects, leaving
+    # only 668 scoreable and pinning the scheduling problem in the
+    # capacity-slack regime where D17 found every allocator ties.
+    #
+    # Those rows are not poor quality: they match the scoreable ones on every
+    # tabular feature (100% AMOUNT, 99.6% D_start, 99.5% weather, 99.8%
+    # resolvable municipality). They lack a sequence because of how project
+    # identity is assembled, not because of anything about the projects.
+    merged = tabular_scores.merge(lstm_scores, on="project_key", how="left")
+    has_lstm = merged["lstm_prob"].notna()
 
     meta_learner = joblib.load(ARTIFACTS_DIR / "meta_learner.joblib")
-    X_meta = merged[["random_forest_prob", "xgboost_prob", "lstm_prob"]].values
-    merged["meta_prob"] = meta_learner.predict_proba(X_meta)[:, 1]
+    merged["meta_prob"] = np.nan
+    merged["score_basis"] = "two_learner"
+    merged.loc[has_lstm, "score_basis"] = "three_learner"
+
+    if has_lstm.any():
+        X3 = merged.loc[has_lstm, ["random_forest_prob", "xgboost_prob", "lstm_prob"]].values
+        merged.loc[has_lstm, "meta_prob"] = meta_learner.predict_proba(X3)[:, 1]
+
+    two_path = ARTIFACTS_DIR / "meta_learner_two.joblib"
+    if (~has_lstm).any():
+        if two_path.exists():
+            two_learner = joblib.load(two_path)
+            X2 = merged.loc[~has_lstm, ["random_forest_prob", "xgboost_prob"]].values
+            merged.loc[~has_lstm, "meta_prob"] = two_learner.predict_proba(X2)[:, 1]
+        else:
+            logger.warning(
+                "%d projects lack an LSTM sequence and meta_learner_two.joblib is absent — "
+                "they stay unscored. Run train_meta_learner.py to build the fallback.",
+                int((~has_lstm).sum()),
+            )
+
+    merged = merged[merged["meta_prob"].notna()].copy()
+    logger.warning(
+        "Scored %d ongoing projects: %d with the three-learner model, %d via the "
+        "two-learner fallback (no LSTM sequence). Fallback scores are tagged "
+        "score_basis='two_learner' so the provenance is explicit rather than hidden.",
+        len(merged),
+        int((merged["score_basis"] == "three_learner").sum()),
+        int((merged["score_basis"] == "two_learner").sum()),
+    )
+
     merged["risk_tier"] = merged["meta_prob"].apply(probability_to_risk_tier)
 
     location_lookup = inference_df.set_index("project_key")["LOCATION"]
