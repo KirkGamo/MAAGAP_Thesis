@@ -27,5 +27,6 @@ Every significant, non-obvious decision on this project, in roughly the order th
 - [[02-Decisions/D16-Observed-Status-Feature-Encoding|D16: Observed Status Feature Encoding]] — replacing 57 typo-keyed one-hot columns with 7 canonical labels plus 3 condition flags, retrained with the target held fixed as a controlled before/after.
 - [[02-Decisions/D17-Allocation-Efficiency-Measurement|D17: Allocation Efficiency Measurement]] — defining the efficiency metric and baselines Objective 4 needed, the two optimizer defects measuring them exposed, and why **the 15% improvement claim is not supported**.
 - [[02-Decisions/D18-Geographic-Distance-Costing|D18: Geographic Distance Costing]] — replacing a flat per-cluster travel charge with real centroid distances from PPDO's barangay point layer, after measuring the flat figure wrong by 6.3x.
+- [[02-Decisions/D19-PAGASA-Weather-Features|D19: PAGASA Weather Features]] — real daily observations replacing the calendar proxy, pre-registered and then measured: a small effect, and feature importance (46.9% of Random Forest) overstating it badly.
 
 See [[MOC-Known-Issues]] for the limitations these decisions left behind, and [[99-Log]] for the chronological work history.

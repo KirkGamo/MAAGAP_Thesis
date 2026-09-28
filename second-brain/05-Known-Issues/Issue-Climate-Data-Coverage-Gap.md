@@ -1,6 +1,6 @@
 ---
 tags: [open-issue, data-availability]
-status: active
+status: resolved
 created: 2026-08-15
 updated: 2026-08-15
 ---
@@ -26,3 +26,14 @@ A follow-up PAGASA request once 2025 data clears PAGASA's own QC/finalization pi
 ## Resolved: delimitation mismatch
 
 The min `D_start` in the labeled population was originally **2010-01-17** — earlier than Chapter 1's declared 2016-2025 historical scope. Investigated and resolved as part of the broader 2026-08-15 data-quality cleanup: traced to 3 confirmed data-entry errors (raw Excel-serial dates 8-13 years before every peer in their own monitoring batch), not a delimitation-text problem. See [[../02-Decisions/D09-Study-Period-Floor]] for the full investigation — the labeled population's `D_start` now runs 2015-01-27 to 2025-12-23.
+
+
+---
+
+## Resolved 2026-09-28
+
+PPDO delivered the PAGASA data and it is **not** capped at 2024-12-31 as the request form implied. The received series runs **2015-01-01 to 2026-09-30** for daily precipitation and 2016-05-01 to 2026-09-30 for temperature, covering the labelled population's full span (D_start 2015-01-27 .. 2025-12-23) with **99.9% of rows joined** and no labelled window truncated.
+
+The 238-row (4.13%) 2025 tail this note was written about is therefore fully covered, and the coarse `is_wet_season_release` proxy is no longer the only weather signal.
+
+A residual, much smaller limitation replaces it, recorded in [[../02-Decisions/D19-PAGASA-Weather-Features]]: temperature begins 2016-05, so `mean_tmax_c_180d` is NaN for 171 training rows. And the substantive constraint is no longer coverage at all but **spatial resolution** — one station serves all 44 Iloilo LGUs, so weather varies by date and never by location.

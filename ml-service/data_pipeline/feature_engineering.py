@@ -799,6 +799,34 @@ def engineer_features(
     is_wet[released.isna()] = np.nan
     df["is_wet_season_release"] = is_wet
 
+    # D19: real PAGASA observations, keyed on the SAME resolved D_start used
+    # just above and by construct_target_variable() -- not a recomputation from
+    # the raw column, which is the inconsistency this function's own docstring
+    # warns about. Every window is anchored to D_start plus a constant, so none
+    # can encode the completion date; see the module's leakage note.
+    #
+    # is_wet_season_release is deliberately RETAINED alongside these, so the
+    # ablation can show whether observed rainfall actually beats the calendar
+    # proxy it supersedes -- a comparison the manuscript currently asserts
+    # without testing.
+    try:
+        try:
+            from data_pipeline.external.pagasa import attach_weather_features
+        except ImportError:
+            # Run as `python data_pipeline/feature_engineering.py` from
+            # ml-service/, so sys.path[0] is data_pipeline/ rather than the
+            # package root. Same fallback shape as inference/live_scoring.py.
+            import sys as _sys
+
+            _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from data_pipeline.external.pagasa import attach_weather_features
+
+        df = attach_weather_features(df, released)
+    except Exception as exc:  # never let an external source break the pipeline
+        logger.warning(
+            "PAGASA weather features unavailable (%s) — continuing without them.", exc
+        )
+
     df["municipality_canonical"] = df["LOCATION"].astype(str).map(
         lambda s: canonicalize_municipality(s.split(",")[-1])
     )
