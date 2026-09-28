@@ -58,7 +58,7 @@ location. Any feature built on it inherits that limit.
 Usage
 -----
     python scripts/extract_pagasa_pdfs.py
-    python scripts/extract_pagasa_pdfs.py --source-dir . --output-dir data/external
+    python scripts/extract_pagasa_pdfs.py --source-dir data/raw/pagasa --output-dir data/external
 """
 
 from __future__ import annotations
@@ -509,7 +509,7 @@ def run(source_dir: Path, output_dir: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--source-dir", type=Path, default=REPO_ROOT)
+    ap.add_argument("--source-dir", type=Path, default=REPO_ROOT / "data" / "raw" / "pagasa")
     ap.add_argument("--output-dir", type=Path, default=REPO_ROOT / "data" / "external")
     args = ap.parse_args(argv)
     run(args.source_dir, args.output_dir)

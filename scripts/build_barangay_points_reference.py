@@ -67,7 +67,9 @@ from data_pipeline.preprocess import canonicalize_municipality  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("build_barangay_points")
 
-DEFAULT_SOURCE = REPO_ROOT / "T_2026PROJILO26823_layer_TableToExcel.xlsx"
+DEFAULT_SOURCE = (
+    REPO_ROOT / "data" / "raw" / "ppdo" / "T_2026PROJILO26823_layer_TableToExcel.xlsx"
+)
 DEFAULT_OUTPUT = (
     REPO_ROOT / "ml-service" / "data_pipeline" / "reference" / "lmb_barangay_points_iloilo.csv"
 )
