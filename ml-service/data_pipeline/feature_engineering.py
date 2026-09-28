@@ -873,13 +873,34 @@ def engineer_features(
     ]
     df = pd.get_dummies(df, columns=categorical_cols, prefix=categorical_cols, dummy_na=False)
 
+    # D20: the synthetic contractor join is DELIBERATELY NOT PERFORMED.
+    #
+    # PPDO confirmed it holds no contractor performance records -- no register
+    # of delivery reliability or historical delay rates exists -- so
+    # Issue-Synthetic-Contractor-Data cannot be closed by acquiring real data.
+    # The five features this join produced (historical_delay_rate,
+    # reliability_score, three contractor_spec_* one-hots) were drawn from a
+    # generated distribution, and an ablation measured their worth at +0.0016
+    # AUC for Random Forest and +0.0000 for XGBoost while holding 2.9% and 5.3%
+    # of feature importance.
+    #
+    # Rather than condition a public-sector risk model on invented contractor
+    # attributes for no measurable gain, they are removed. No fabricated value
+    # now informs any reported result.
+    #
+    # The `contractors` argument is retained rather than deleted: it documents
+    # the join that used to exist, and restoring it is a one-line change should
+    # real contractor records ever become available. generate_synthetic_data.py
+    # is likewise retained -- it passes through the REAL monitoring rows the
+    # pipeline consumes, and only the contractor join is being dropped.
     if contractors is not None and "contractor_id" in df.columns:
-        join_cols = ["contractor_id", "historical_delay_rate", "reliability_score", "specialization"]
-        df = df.merge(contractors[join_cols], on="contractor_id", how="left")
-        df = pd.get_dummies(df, columns=["specialization"], prefix="contractor_spec", dummy_na=True)
-        logger.info("Step 9: joined synthetic contractor features on contractor_id")
-    else:
-        logger.warning("Step 9: no contractor table provided/joinable — skipping contractor feature join")
+        logger.warning(
+            "Step 9: contractor table supplied but NOT joined (D20) — contractor features are "
+            "synthetic and were removed after an ablation showed them worth <=0.0016 AUC. "
+            "See second-brain/02-Decisions/D20-Drop-Synthetic-Contractor-Features.md"
+        )
+    if "contractor_id" in df.columns:
+        df = df.drop(columns=["contractor_id"])
 
     logger.info("Step 9: engineered feature set -> %d columns total", df.shape[1])
     return df

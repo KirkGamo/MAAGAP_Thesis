@@ -1,6 +1,6 @@
 ---
 tags: [open-issue, data-availability]
-status: active
+status: resolved
 created: 2026-08-08
 updated: 2026-08-08
 ---
@@ -16,3 +16,14 @@ This is Chapter 1's declared Data Availability limitation, not a bug. These feat
 ## What would resolve it
 
 Real contractor-project linkage data. Flagged as a natural next step in [[HANDOFF]].
+
+
+---
+
+## Resolved 2026-09-29 — by removal, not acquisition
+
+PPDO confirmed it does not hold contractor performance records: no register of delivery reliability or historical delay rates exists, and no alternative source was available. This issue could therefore never be closed the way it was written, by obtaining real data.
+
+It is closed instead by **removing the synthetic features entirely** — see [[../02-Decisions/D20-Drop-Synthetic-Contractor-Features]]. An ablation measured them at +0.0016 AUC for Random Forest and +0.0000 for XGBoost, so removal cost almost nothing; the meta-learner and the delay MAE both *improved*.
+
+No fabricated value now informs any reported result. The residual limitation is one of scope rather than data quality: contractor-specific effects on delay are outside what this study can explain, recorded in the manuscript's Data Availability limitation and flagged for future work.
