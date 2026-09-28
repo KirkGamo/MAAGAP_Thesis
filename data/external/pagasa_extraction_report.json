@@ -1,0 +1,126 @@
+{
+  "station": "ILOILO RADAR (98637), Jaro, Iloilo",
+  "precipitation": {
+    "files": 12,
+    "daily_rows": 4288,
+    "duplicate_dates_dropped": 0,
+    "date_min": "2015-01-01",
+    "date_max": "2026-09-30",
+    "days_with_reading": 4262,
+    "pages_failing_checksum": 4
+  },
+  "temperature": {
+    "files": 11,
+    "daily_rows": 3805,
+    "duplicate_dates_dropped": 0,
+    "date_min": "2016-05-01",
+    "date_max": "2026-09-30",
+    "days_with_tmax": 3789,
+    "days_with_tmin": 3792
+  },
+  "temperature_quality_flags": {
+    "tmin_exceeds_tmax": {
+      "count": 7,
+      "dates": [
+        "2017-03-02",
+        "2017-10-28",
+        "2017-12-16",
+        "2017-12-17",
+        "2018-08-09",
+        "2019-02-02",
+        "2022-11-11"
+      ]
+    },
+    "outside_plausible_envelope": {
+      "count": 16,
+      "dates": [
+        "2017-01-16",
+        "2017-10-28",
+        "2017-12-15",
+        "2017-12-16",
+        "2017-12-17",
+        "2018-02-08",
+        "2018-11-21",
+        "2018-12-03",
+        "2019-02-02",
+        "2019-12-01",
+        "2022-10-30",
+        "2023-01-11",
+        "2024-09-17",
+        "2024-10-25",
+        "2025-04-29",
+        "2026-02-06"
+      ]
+    },
+    "note": "Reported, not corrected. 2018-12-03 carries tmin=1.0 with no tmax and no observation time, which is not a credible Iloilo reading."
+  },
+  "pages_source_sum_errors": 2,
+  "pages_with_inconsistent_days": 2,
+  "source_inconsistent_days": [
+    "2015-07-31",
+    "2022-12-01",
+    "2022-12-25"
+  ],
+  "pages_blank": 7,
+  "pages_monthly_summary": 12,
+  "pages_unreadable": [],
+  "checksum_failures": [
+    {
+      "file": "SUMMARY OF DAILY PCPN 2015 ILOILO.pdf",
+      "page": 7,
+      "year": 2015,
+      "month": 7,
+      "days": 31,
+      "printed_sum_24h": 478.5,
+      "extracted_sum_24h": 474.5,
+      "sum_ok": false,
+      "rowwise_mismatches": 1,
+      "inconsistent_days": [
+        "2015-07-31"
+      ],
+      "verdict": "source has internally inconsistent day(s); verify against the page"
+    },
+    {
+      "file": "SUMMARY OF DAILY PCPN 2021 ILOILO .pdf",
+      "page": 12,
+      "year": 2021,
+      "month": 12,
+      "days": 31,
+      "printed_sum_24h": 114.4,
+      "extracted_sum_24h": 96.4,
+      "sum_ok": false,
+      "rowwise_mismatches": 0,
+      "inconsistent_days": [],
+      "verdict": "source SUM row disagrees with its own daily rows"
+    },
+    {
+      "file": "SUMMARY OF DAILY PCPN 2022 ILOILO .pdf",
+      "page": 12,
+      "year": 2022,
+      "month": 12,
+      "days": 31,
+      "printed_sum_24h": 127.8,
+      "extracted_sum_24h": 130.2,
+      "sum_ok": false,
+      "rowwise_mismatches": 2,
+      "inconsistent_days": [
+        "2022-12-01",
+        "2022-12-25"
+      ],
+      "verdict": "source has internally inconsistent day(s); verify against the page"
+    },
+    {
+      "file": "SUMMARY OF DAILY PCPN 2025 ILOILO.pdf",
+      "page": 12,
+      "year": 2025,
+      "month": 12,
+      "days": 31,
+      "printed_sum_24h": 91.6,
+      "extracted_sum_24h": 45.8,
+      "sum_ok": false,
+      "rowwise_mismatches": 0,
+      "inconsistent_days": [],
+      "verdict": "source SUM row disagrees with its own daily rows"
+    }
+  ]
+}

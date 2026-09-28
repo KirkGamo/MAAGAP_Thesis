@@ -28,3 +28,8 @@ pulp>=2.8
 fastapi>=0.115
 uvicorn[standard]>=0.32
 supabase>=2.10
+
+# PAGASA weather PDF extraction (scripts/extract_pagasa_pdfs.py). The source
+# sheets are ruled tables, which pdfplumber reads reliably; it is a build-time
+# tool for the reference data, not a runtime dependency of the ML service.
+pdfplumber>=0.11
