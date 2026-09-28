@@ -136,6 +136,7 @@ from train_lstm import PAD_VALUE, apply_sequence_scaler  # noqa: E402
 # ---------------------------------------------------------------------------
 
 from common.risk_tiers import probability_to_risk_tier  # noqa: E402
+from common.geography import cluster_mobilization_costs  # noqa: E402
 
 
 RISK_WEIGHTS = {"High": 1.0, "Critical": 2.5}  # Critical weighted higher: objective prioritizes it.
@@ -242,6 +243,34 @@ INSPECTOR_DAY_PENALTY = 0.5
 # hard constraint (which is how Chapter 3 lists it); raise it to make the
 # solver trade coverage away for cost directly.
 COST_WEIGHT = 0.0001
+
+
+def resolve_cluster_costs(
+    clusters: list[str], flat_fallback_php: float = CLUSTER_MOBILIZATION_COST_PHP
+) -> dict[str, float]:
+    """
+    Per-cluster weekly mobilization cost, priced by the real round-trip distance
+    from the PPDO base to each cluster's centroid (PPDO's 2026-09 LMB barangay
+    point layer).
+
+    This replaces a single flat charge applied to every cluster equally. Measured
+    against the current grouping, that flat figure was wrong by a factor of 6.3:
+    Central Metro's centroid is 14.3 km from base and North Coastal's is 90.1 km,
+    and both were charged PHP 1,200. Distance-priced, they are PHP 428 and
+    PHP 2,704.
+
+    Clusters with no locatable municipality (e.g. UNKNOWN_CLUSTER) keep the flat
+    fallback rather than being priced at zero, which would make them look free
+    and attract every visit.
+    """
+    members: dict[str, list[str]] = {}
+    for municipality, cluster in MUNICIPALITY_CLUSTERS.items():
+        members.setdefault(cluster, []).append(municipality)
+
+    costs = cluster_mobilization_costs(
+        {c: members.get(c, []) for c in clusters}, flat_fallback_php=flat_fallback_php
+    )
+    return {c: costs.get(c, flat_fallback_php) for c in clusters}
 
 
 def allocation_efficiency(schedule_df: pd.DataFrame) -> Optional[float]:
@@ -555,9 +584,13 @@ def build_and_solve_schedule(
     # Total deployment cost in pesos: one charge per visit, plus a mobilization
     # charge per cluster an inspector works during the week. Referenced by both
     # the objective's cost term and the budget constraint below.
+    # Each cluster is priced by its real round-trip distance from the PPDO base
+    # rather than a single flat charge shared by all of them.
+    cluster_cost_of = resolve_cluster_costs(clusters, flat_fallback_php=cluster_cost_php)
+
     total_cost = (
         visit_cost_php * pulp.lpSum(x[i][p][d] for i in inspectors for p in projects for d in days)
-        + cluster_cost_php * pulp.lpSum(z[i][c] for i in inspectors for c in clusters)
+        + pulp.lpSum(cluster_cost_of[c] * z[i][c] for i in inspectors for c in clusters)
     )
 
     # Objective: maximize risk-weighted coverage, minus a travel-friction
@@ -674,7 +707,12 @@ def build_and_solve_schedule(
     realized_cluster_weeks = int(
         sum(1 for i in inspectors for c in clusters if (pulp.value(z[i][c]) or 0) > 0.5)
     )
-    realized_cost = visit_cost_php * len(schedule_df) + cluster_cost_php * realized_cluster_weeks
+    realized_cost = visit_cost_php * len(schedule_df) + sum(
+        cluster_cost_of[c]
+        for i in inspectors
+        for c in clusters
+        if (pulp.value(z[i][c]) or 0) > 0.5
+    )
     max_inspectors_deployed = 0
     if not schedule_df.empty:
         max_inspectors_deployed = int(schedule_df.groupby("day")["inspector"].nunique().max())
@@ -685,6 +723,7 @@ def build_and_solve_schedule(
         "vehicle_count": vehicle_count,
         "max_inspectors_deployed_in_a_day": max_inspectors_deployed,
         "allocation_efficiency": allocation_efficiency(schedule_df),
+        "cluster_mobilization_costs_php": cluster_cost_of,
         "inspector_days_used": (
             int(schedule_df.groupby(["inspector", "day"]).ngroups) if not schedule_df.empty else 0
         ),
