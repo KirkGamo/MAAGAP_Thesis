@@ -114,7 +114,12 @@ REGION_VI_LABEL_CANDIDATES = (
 
 DATASET_CONFIGS: dict[str, dict[str, Any]] = {
     "prices": {
-        # **PRICES_DATASET_ID** — placeholder, confirm exact subfolder + table.
+        # **PRICES_DATASET_ID** — RESOLVED, but not here. The Prices category has no
+        # Region VI construction-materials index (CMRPI/CMWPI are NCR-only), so the
+        # usable series turned out to be regional CPI by commodity group, which needs
+        # two base-year tables chained via year-on-year change. That is purpose-built
+        # in scripts/fetch_psa_cpi_region6.py rather than bent into this generic
+        # client. See second-brain/02-Decisions/D22-PSA-Economic-Indicators.md.
         "path": ["2M", "PI"],  # Price Indices subfolder (candidate; verify)
         "table_id": "REPLACE_ME_2M_TABLE_ID.px",
         "series_label": "Prices (Region VI)",

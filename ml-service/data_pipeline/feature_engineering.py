@@ -827,6 +827,24 @@ def engineer_features(
             "PAGASA weather features unavailable (%s) — continuing without them.", exc
         )
 
+    # PSA Region VI consumer price inflation, keyed on the same resolved
+    # D_start. Completes Objective 1's external contextual variables alongside
+    # the weather block; same leakage discipline, same graceful degradation.
+    try:
+        try:
+            from data_pipeline.external.psa import attach_psa_features
+        except ImportError:
+            import sys as _sys
+
+            _sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from data_pipeline.external.psa import attach_psa_features
+
+        df = attach_psa_features(df, released)
+    except Exception as exc:
+        logger.warning(
+            "PSA economic features unavailable (%s) — continuing without them.", exc
+        )
+
     df["municipality_canonical"] = df["LOCATION"].astype(str).map(
         lambda s: canonicalize_municipality(s.split(",")[-1])
     )
