@@ -144,8 +144,12 @@ def attach_psa_features(
             means.append(np.nan)
             continue
         end = start + pd.Timedelta(days=window_days)
-        total = _at(cum, end) - _at(cum, start)
-        n = _at(cnt, end) - _at(cnt, start)
+        # Strictly-before lower bound, so the start month is INSIDE the window.
+        # `_at(cum, start)` includes the start month and subtracting it drops
+        # D_start's own month -- the same off-by-one fixed in pagasa.py.
+        before = start - pd.Timedelta(days=1)
+        total = _at(cum, end) - _at(cum, before)
+        n = _at(cnt, end) - _at(cnt, before)
         means.append(total / n if n > 0 else np.nan)
     out["cpi_repair_materials_yoy_mean_180d"] = means
 

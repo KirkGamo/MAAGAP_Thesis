@@ -1,0 +1,110 @@
+name: CI
+
+# R2: nothing ran automatically before this. The 58 Python tests executed only
+# when someone remembered, and one sat red across multiple sessions without
+# blocking anything.
+#
+# Split into a fast gate and a slow one. The optimizer suites each solve real
+# CBC programs and take four to six minutes, which is too slow to sit in front
+# of every push -- if the gate is slow, people stop waiting for it. The fast
+# job guards every commit; the solver job runs on pushes to main and on demand.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # The service refuses to start without a secret (S1). CI supplies a throwaway
+  # one rather than setting ALLOW_UNAUTHENTICATED, so the authentication tests
+  # exercise the real guarded path instead of the bypass.
+  ML_SERVICE_WEBHOOK_SECRET: ci-test-secret-not-a-real-credential
+
+jobs:
+  python-fast:
+    name: Python tests (fast)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ml-service/requirements.txt
+          pip install pytest
+
+      - name: Run fast tests
+        # Excludes the CBC solver suites; they run in the job below.
+        run: |
+          pytest tests/ -q \
+            --ignore=tests/test_optimization_engine.py \
+            --ignore=tests/test_optimization_constraints.py
+
+  python-solver:
+    name: Python tests (CBC solver)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only where the wait is worth it. Feature branches get the fast gate.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ml-service/requirements.txt
+          pip install pytest
+
+      - name: Run solver tests
+        run: pytest tests/test_optimization_engine.py tests/test_optimization_constraints.py -q
+
+  frontend:
+    name: Frontend typecheck and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        # Non-blocking for now: lint has never run in CI, so the first run is a
+        # baseline rather than a verdict. Tighten to blocking once the existing
+        # findings are cleared.
+        run: npm run lint || echo "::warning::lint reported findings (non-blocking)"
+        continue-on-error: true
+
+      - name: Unit tests
+        # Added by R1. Skips cleanly until the first test exists, so this file
+        # does not need editing when they land.
+        run: |
+          if npm run | grep -qE "^\s+test"; then
+            npm test -- --run
+          else
+            echo "::warning::no frontend test script yet (R1)"
+          fi

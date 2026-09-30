@@ -181,19 +181,33 @@ def _window_stats(
         idx = series.index.searchsorted(when, side="right") - 1
         return float(series.iloc[idx]) if idx >= 0 else 0.0
 
+    def _before(series: pd.Series, when: pd.Timestamp) -> float:
+        """Cumulative value STRICTLY BEFORE `when`.
+
+        Window aggregates are `_at(end) - _before(start)`, not
+        `_at(end) - _at(start)`. The latter subtracts the cumulative total
+        *including* the start day, which silently drops D_start itself from
+        every window -- the project's first day of execution. Caught by
+        tests/test_external_features.py, which counted two rain days in a
+        three-day window containing two.
+        """
+        if pd.isna(when):
+            return np.nan
+        return _at(series, when - pd.Timedelta(days=1))
+
     for i, start in starts.items():
         if pd.isna(start) or start < lo or start > hi:
             continue  # outside the observed record; left NaN, counted by caller
         end = start + pd.Timedelta(days=window_days)
         prior = start - pd.Timedelta(days=antecedent_days)
 
-        total = _at(frames["rain_sum"], end) - _at(frames["rain_sum"], start)
-        ndays = _at(frames["rain_days"], end) - _at(frames["rain_days"], start)
-        heavy = _at(frames["heavy_days"], end) - _at(frames["heavy_days"], start)
-        tsum = _at(frames["tmax_sum"], end) - _at(frames["tmax_sum"], start)
-        tn = _at(frames["tmax_n"], end) - _at(frames["tmax_n"], start)
-        hot = _at(frames["hot_days"], end) - _at(frames["hot_days"], start)
-        prior_total = _at(frames["rain_sum"], start) - _at(frames["rain_sum"], prior)
+        total = _at(frames["rain_sum"], end) - _before(frames["rain_sum"], start)
+        ndays = _at(frames["rain_days"], end) - _before(frames["rain_days"], start)
+        heavy = _at(frames["heavy_days"], end) - _before(frames["heavy_days"], start)
+        tsum = _at(frames["tmax_sum"], end) - _before(frames["tmax_sum"], start)
+        tn = _at(frames["tmax_n"], end) - _before(frames["tmax_n"], start)
+        hot = _at(frames["hot_days"], end) - _before(frames["hot_days"], start)
+        prior_total = _before(frames["rain_sum"], start) - _before(frames["rain_sum"], prior)
 
         window = r.loc[start:end]
         out.at[i, "rain_total_mm_180d"] = total
