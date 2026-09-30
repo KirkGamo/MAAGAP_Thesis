@@ -2,7 +2,7 @@
 tags: [decision, ml-pipeline, features, objective-1, pre-registered]
 status: active
 created: 2026-09-28
-updated: 2026-09-28
+updated: 2026-09-30
 ---
 
 # D19: PAGASA Weather Features — pre-registration
@@ -151,3 +151,35 @@ Against: delay MAE worsens by 1.13 days, within run-to-run noise but in the wron
 - [[D16-Observed-Status-Feature-Encoding]] — the controlled-retrain discipline followed here
 - [[D17-Allocation-Efficiency-Measurement]] — the other place where measuring overturned an assumption
 - [[../05-Known-Issues/Issue-Climate-Data-Coverage-Gap]] — now largely resolved; the delivered data runs to 2026
+
+
+---
+
+## Correction, 2026-09-30 — window off-by-one
+
+The figures above were computed with a window-aggregation bug. Aggregates used
+`cumulative_at(end) - cumulative_at(start)`, and because the cumulative value at
+the start day already includes that day, subtracting it silently dropped
+**D_start itself** — the project's own first day of execution — from every
+window.
+
+Found by `tests/test_external_features.py`, which counted rain days across a
+three-day window containing two and got one. Windows are now inclusive of
+D_start, as the docstrings always claimed.
+
+Recomputed and retrained on the corrected features, target held fixed
+(N=5884, D=8277, K=1159, train 4,119 / test 1,765, meta-learner 1,451):
+
+| | before fix | after fix |
+|---|---|---|
+| Random Forest AUC | 0.9210 | 0.9222 |
+| Random Forest accuracy | 0.8521 | 0.8516 |
+| XGBoost AUC | 0.9767 | 0.9762 |
+| Meta-learner AUC | 0.9600 | 0.9581 |
+| Meta-learner accuracy | 0.8963 | 0.8880 |
+| Delay MAE | 86.54 d | 86.38 d |
+
+**No conclusion in this record changes.** The shifts are within this stack's
+run-to-run noise and the ablation findings — small incremental contribution,
+importance overstating it — hold in both directions. The corrected figures are
+the ones to quote in Chapter 4.

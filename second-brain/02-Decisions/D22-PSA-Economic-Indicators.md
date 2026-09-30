@@ -2,7 +2,7 @@
 tags: [decision, ml-pipeline, features, objective-1]
 status: active
 created: 2026-09-29
-updated: 2026-09-29
+updated: 2026-09-30
 ---
 
 # D22: PSA Region VI economic indicators
@@ -81,3 +81,35 @@ Kept. Every classification metric improves, Random Forest materially so, and the
 
 - [[D19-PAGASA-Weather-Features]] — the other half of Objective 1's external variables, same pattern
 - [[D20-Drop-Synthetic-Contractor-Features]] — the third data point in the importance-versus-ablation pattern
+
+
+---
+
+## Correction, 2026-09-30 — window off-by-one
+
+The figures above were computed with a window-aggregation bug. Aggregates used
+`cumulative_at(end) - cumulative_at(start)`, and because the cumulative value at
+the start day already includes that day, subtracting it silently dropped
+**D_start itself** — the project's own first day of execution — from every
+window.
+
+Found by `tests/test_external_features.py`, which counted rain days across a
+three-day window containing two and got one. Windows are now inclusive of
+D_start, as the docstrings always claimed.
+
+Recomputed and retrained on the corrected features, target held fixed
+(N=5884, D=8277, K=1159, train 4,119 / test 1,765, meta-learner 1,451):
+
+| | before fix | after fix |
+|---|---|---|
+| Random Forest AUC | 0.9210 | 0.9222 |
+| Random Forest accuracy | 0.8521 | 0.8516 |
+| XGBoost AUC | 0.9767 | 0.9762 |
+| Meta-learner AUC | 0.9600 | 0.9581 |
+| Meta-learner accuracy | 0.8963 | 0.8880 |
+| Delay MAE | 86.54 d | 86.38 d |
+
+**No conclusion in this record changes.** The shifts are within this stack's
+run-to-run noise and the ablation findings — small incremental contribution,
+importance overstating it — hold in both directions. The corrected figures are
+the ones to quote in Chapter 4.
