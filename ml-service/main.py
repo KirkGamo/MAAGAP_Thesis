@@ -107,6 +107,35 @@ def _load_env_file(path: Path = ENV_FILE) -> int:
 _load_env_file()
 
 # ---------------------------------------------------------------------------
+# B2: one validated settings object, built and checked once at import.
+#
+# Configuration used to be read ad hoc from os.environ across several modules,
+# each with its own fallback. Nothing stated what the service required and
+# nothing checked -- which is the root of S1: a guard reading
+# `if WEBHOOK_SECRET and ...` let an unset variable silently disable
+# authentication. The specific hole is closed; the shape that produced it is a
+# property of reading configuration without validating it.
+#
+# common/settings.py states every rule once, including that an absent secret is
+# a refusal to start rather than authentication off, and reports invalid
+# configuration by naming the variable instead of raising a pydantic traceback
+# at a deployer.
+# ---------------------------------------------------------------------------
+try:
+    from common.settings import MLServiceSettings
+except ImportError:  # imported from inside ml-service/ without the package root
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from common.settings import MLServiceSettings
+
+settings = MLServiceSettings.from_env()
+settings.log_startup_summary()
+
+# Aliases, so this module and its tests keep their existing names with a single
+# source of truth behind them.
+
+# ---------------------------------------------------------------------------
 # S5: CORS is declared, not left to chance.
 #
 # No CORSMiddleware was configured, so browsers blocked cross-origin calls by
@@ -122,11 +151,7 @@ _load_env_file()
 # from the server side, where CORS does not apply. An entry here is only needed
 # for genuine browser-to-service calls, which currently do not exist.
 # ---------------------------------------------------------------------------
-ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get("ML_SERVICE_ALLOWED_ORIGINS", "").split(",")
-    if o.strip()
-]
+ALLOWED_ORIGINS = settings.allowed_origins
 
 app.add_middleware(
     CORSMiddleware,
@@ -136,7 +161,7 @@ app.add_middleware(
     allow_headers=["X-Webhook-Secret", "Content-Type"],
 )
 
-WEBHOOK_SECRET = os.environ.get("ML_SERVICE_WEBHOOK_SECRET") or ""
+WEBHOOK_SECRET = settings.webhook_secret
 
 # S1: an absent secret must not silently disable authentication.
 #
@@ -152,41 +177,12 @@ WEBHOOK_SECRET = os.environ.get("ML_SERVICE_WEBHOOK_SECRET") or ""
 # still possible for local development, but only by asking for it explicitly,
 # and every such request is logged. The safe path is the default path; the
 # unsafe one cannot be reached by omission.
-ALLOW_UNAUTHENTICATED = os.environ.get("ALLOW_UNAUTHENTICATED", "").strip().lower() in {
-    "1", "true", "yes", "on",
-}
+ALLOW_UNAUTHENTICATED = settings.allow_unauthenticated
 
-if not WEBHOOK_SECRET and not ALLOW_UNAUTHENTICATED:
-    raise RuntimeError(
-        "ML_SERVICE_WEBHOOK_SECRET is not set. This service will not start without "
-        "it, because an absent secret would leave /api/v1/update-monitoring (which "
-        "mutates risk tiers) and /api/v1/run-optimizer (which spends minutes of CPU) "
-        "open to anyone who can reach the port.\n\n"
-        "Fix: set ML_SERVICE_WEBHOOK_SECRET in ml-service/.env (see .env.example).\n"
-        "For local development without a secret, set ALLOW_UNAUTHENTICATED=1 "
-        "explicitly -- never in any environment reachable from outside localhost."
-    )
 
-if ALLOW_UNAUTHENTICATED and not WEBHOOK_SECRET:
-    logger.error(
-        "RUNNING WITHOUT AUTHENTICATION. ALLOW_UNAUTHENTICATED is set and no webhook "
-        "secret is configured, so guarded endpoints accept any caller. This is for "
-        "local development only."
-    )
 
-if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")):
-    # Warned at startup, not just at the moment of failure: without these,
-    # EVERY write-back this service performs is a silent no-op — the live
-    # re-score never reaches projects.risk_tier (_maybe_patch_supabase) and
-    # a monitoring report never leaves 'Awaiting re-score'
-    # (_mark_rescore_state). Both look like the service working fine.
-    logger.warning(
-        "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set — this service can score, "
-        "but nothing it computes will be written back to Supabase. Live risk-tier updates "
-        "and monitoring-report re-score outcomes will both silently no-op. Fix: copy "
-        "ml-service/.env.example to ml-service/.env and fill it in (values are in "
-        "frontend/.env.local; note SUPABASE_URL is called NEXT_PUBLIC_SUPABASE_URL there)."
-    )
+# The Supabase-credentials warning is emitted by settings.log_startup_summary(),
+# stated once alongside every other configuration rule rather than here (B2).
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +202,7 @@ if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE
 # ---------------------------------------------------------------------------
 
 RATE_LIMIT_WINDOW_SECONDS = 60.0
-RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("ML_SERVICE_RATE_LIMIT_PER_MINUTE", "10"))
+RATE_LIMIT_MAX_REQUESTS = settings.rate_limit_per_minute
 
 _rate_buckets: dict[str, list[float]] = defaultdict(list)
 
@@ -253,7 +249,7 @@ def _check_webhook_secret(x_webhook_secret: Optional[str]) -> None:
       timing -- cheap to avoid, and this system's own thesis claims public
       sector accountability.
     """
-    if ALLOW_UNAUTHENTICATED and not WEBHOOK_SECRET:
+    if settings.is_unauthenticated:
         logger.warning(
             "Unauthenticated request permitted by ALLOW_UNAUTHENTICATED — "
             "local development mode."
@@ -324,8 +320,8 @@ def _mark_rescore_state(
     if not report_id:
         return
 
-    url = os.environ.get("SUPABASE_URL")
-    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    url = settings.supabase_url
+    service_role_key = settings.supabase_service_role_key
     if not (url and service_role_key):
         # Logged, never silent: without this line a report sits at
         # 'pending' forever in the Manager Portal with a Retry button that
@@ -417,8 +413,8 @@ def _maybe_patch_supabase(
     honest-placeholder pattern used elsewhere in this project (see
     submit-report.ts's docstring), except here the code path itself is
     real; only its credentials are optional."""
-    url = os.environ.get("SUPABASE_URL")
-    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    url = settings.supabase_url
+    service_role_key = settings.supabase_service_role_key
     if not (url and service_role_key):
         logger.info(
             "SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured — refreshed score for %s "
