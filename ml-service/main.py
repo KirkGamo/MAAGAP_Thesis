@@ -28,13 +28,17 @@ Environment variables:
                                  `_persist_live_score` docstring).
 """
 
+import hmac
 import logging
 import os
+import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from inference.live_scoring import ARTIFACTS_DIR, LIVE_SCORES_PATH, score_project
@@ -102,12 +106,72 @@ def _load_env_file(path: Path = ENV_FILE) -> int:
 
 _load_env_file()
 
-WEBHOOK_SECRET = os.environ.get("ML_SERVICE_WEBHOOK_SECRET")
-if not WEBHOOK_SECRET:
-    logger.warning(
-        "ML_SERVICE_WEBHOOK_SECRET is not set — /webhooks/monitoring-report and "
-        "/api/v1/update-monitoring will accept requests WITHOUT authentication. "
-        "Set this env var before deploying anywhere reachable outside localhost."
+# ---------------------------------------------------------------------------
+# S5: CORS is declared, not left to chance.
+#
+# No CORSMiddleware was configured, so browsers blocked cross-origin calls by
+# default -- protective, but by accident. Once the frontend deploys to Vercel
+# and this service deploys elsewhere, the first person to hit a CORS error will
+# reach for allow_origins=["*"], which on a service holding project risk data
+# and inspector schedules is the wrong reflex.
+#
+# Declaring an empty allow-list now means that day's change is adding an origin
+# to ML_SERVICE_ALLOWED_ORIGINS, not disabling a control.
+#
+# Note the frontend does NOT need this: its Server Components call this service
+# from the server side, where CORS does not apply. An entry here is only needed
+# for genuine browser-to-service calls, which currently do not exist.
+# ---------------------------------------------------------------------------
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("ML_SERVICE_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["X-Webhook-Secret", "Content-Type"],
+)
+
+WEBHOOK_SECRET = os.environ.get("ML_SERVICE_WEBHOOK_SECRET") or ""
+
+# S1: an absent secret must not silently disable authentication.
+#
+# The previous guard read `if WEBHOOK_SECRET and x != WEBHOOK_SECRET`, so a
+# missing or empty env var short-circuited the check and every guarded endpoint
+# became unauthenticated -- including /api/v1/update-monitoring, which mutates
+# risk tiers through the service-role client, and /api/v1/run-optimizer, which
+# spends minutes of CPU per call. The service started normally, served
+# normally, and logged nothing unusual. A typo in a deploy config or an
+# unmounted .env was enough to turn authentication off.
+#
+# The service now REFUSES TO START without a secret. Running unauthenticated is
+# still possible for local development, but only by asking for it explicitly,
+# and every such request is logged. The safe path is the default path; the
+# unsafe one cannot be reached by omission.
+ALLOW_UNAUTHENTICATED = os.environ.get("ALLOW_UNAUTHENTICATED", "").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
+if not WEBHOOK_SECRET and not ALLOW_UNAUTHENTICATED:
+    raise RuntimeError(
+        "ML_SERVICE_WEBHOOK_SECRET is not set. This service will not start without "
+        "it, because an absent secret would leave /api/v1/update-monitoring (which "
+        "mutates risk tiers) and /api/v1/run-optimizer (which spends minutes of CPU) "
+        "open to anyone who can reach the port.\n\n"
+        "Fix: set ML_SERVICE_WEBHOOK_SECRET in ml-service/.env (see .env.example).\n"
+        "For local development without a secret, set ALLOW_UNAUTHENTICATED=1 "
+        "explicitly -- never in any environment reachable from outside localhost."
+    )
+
+if ALLOW_UNAUTHENTICATED and not WEBHOOK_SECRET:
+    logger.error(
+        "RUNNING WITHOUT AUTHENTICATION. ALLOW_UNAUTHENTICATED is set and no webhook "
+        "secret is configured, so guarded endpoints accept any caller. This is for "
+        "local development only."
     )
 
 if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY")):
@@ -125,8 +189,77 @@ if not (os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE
     )
 
 
+# ---------------------------------------------------------------------------
+# S4: rate limiting for the routes that cost real resources.
+#
+# /api/v1/run-optimizer triggers full model scoring plus a CBC solve -- minutes
+# of CPU. A 409 already prevents CONCURRENT runs and a 30-minute stale timeout
+# clears a wedged one, but nothing bounded the request RATE, so a caller could
+# keep the service permanently busy by firing a request the moment each run
+# finished.
+#
+# Deliberately dependency-free and in-process. That is honest about its scope:
+# the limit is per worker, so two workers permit twice the rate. This service
+# already assumes a single worker elsewhere (the optimizer status file is
+# unsynchronised), and a shared limiter should arrive together with shared run
+# state rather than ahead of it.
+# ---------------------------------------------------------------------------
+
+RATE_LIMIT_WINDOW_SECONDS = 60.0
+RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("ML_SERVICE_RATE_LIMIT_PER_MINUTE", "10"))
+
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _client_key(request: Optional[Request]) -> str:
+    if request is None:
+        return "unknown"
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(request: Optional[Request]) -> None:
+    """Sliding-window limit per client. Raises 429 when exceeded."""
+    if RATE_LIMIT_MAX_REQUESTS <= 0:
+        return
+    key = _client_key(request)
+    now = time.monotonic()
+    bucket = _rate_buckets[key]
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+    bucket[:] = [t for t in bucket if t > cutoff]
+    if len(bucket) >= RATE_LIMIT_MAX_REQUESTS:
+        retry_after = int(max(1, RATE_LIMIT_WINDOW_SECONDS - (now - bucket[0])))
+        logger.warning("Rate limit hit by %s on an expensive route.", key)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many requests. Retry in {retry_after}s.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    bucket.append(now)
+
+
 def _check_webhook_secret(x_webhook_secret: Optional[str]) -> None:
-    if WEBHOOK_SECRET and x_webhook_secret != WEBHOOK_SECRET:
+    """
+    Authenticate a guarded request.
+
+    Two deliberate properties, both absent from the previous version:
+
+    * It fails CLOSED. A missing secret cannot disable the check, because the
+      service refuses to start in that state (see ALLOW_UNAUTHENTICATED above).
+    * It compares in constant time. A plain `!=` short-circuits on the first
+      differing byte, leaking the secret's length and prefix through response
+      timing -- cheap to avoid, and this system's own thesis claims public
+      sector accountability.
+    """
+    if ALLOW_UNAUTHENTICATED and not WEBHOOK_SECRET:
+        logger.warning(
+            "Unauthenticated request permitted by ALLOW_UNAUTHENTICATED — "
+            "local development mode."
+        )
+        return
+    if not x_webhook_secret or not hmac.compare_digest(x_webhook_secret, WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="Invalid or missing X-Webhook-Secret header.")
 
 
@@ -312,12 +445,14 @@ def _maybe_patch_supabase(
 async def update_monitoring(
     payload: UpdateMonitoringPayload,
     background_tasks: BackgroundTasks,
+    request: Request = None,  # noqa: B008 — FastAPI injects
     x_webhook_secret: Optional[str] = Header(None),
 ):
     """Accepts an inspector's field-monitoring observation and queues a
     background re-score. Returns 202 immediately — the caller (the
     Next.js Server Action) must not block on model inference."""
     _check_webhook_secret(x_webhook_secret)
+    _check_rate_limit(request)
     background_tasks.add_task(_run_rescore, payload)
     return UpdateMonitoringResponse(
         accepted=True, project_key=payload.project_key,
@@ -341,11 +476,15 @@ async def monitoring_report_webhook(
 
 
 @app.get("/api/v1/live-score/{project_key}")
-async def get_live_score(project_key: str):
+async def get_live_score(
+    project_key: str,
+    x_webhook_secret: Optional[str] = Header(None),
+):
     """Returns the most recently computed live score for a project, if any.
     Lets the frontend (or a manual check) confirm a background re-score
     actually completed, since the POST routes above return before scoring
     finishes."""
+    _check_webhook_secret(x_webhook_secret)
     import json
 
     if not LIVE_SCORES_PATH.exists():
@@ -357,7 +496,9 @@ async def get_live_score(project_key: str):
 
 
 @app.get("/api/v1/latest-schedule")
-async def get_latest_schedule():
+async def get_latest_schedule(
+    x_webhook_secret: Optional[str] = Header(None),
+):
     """Serves ml-service/optimization_engine.py's most recent PuLP solve
     output (artifacts/inspector_schedule.csv) as JSON, plus its summary
     stats (artifacts/inspector_schedule_summary.json), so the Next.js
@@ -369,6 +510,7 @@ async def get_latest_schedule():
 
     Read-only: this does NOT re-run optimization_engine.py. It serves
     whatever that script last wrote to disk."""
+    _check_webhook_secret(x_webhook_secret)
     import csv
     import json
 
@@ -452,12 +594,14 @@ def _run_optimizer_job(started_at: str) -> None:
 @app.post("/api/v1/run-optimizer", status_code=202)
 async def run_optimizer(
     background_tasks: BackgroundTasks,
+    request: Request = None,  # noqa: B008 — FastAPI injects
     x_webhook_secret: Optional[str] = Header(None),
 ):
     """Starts a full optimizer run (risk scoring + PuLP solve) in the
     background. Secret-guarded like the monitoring webhook — this spends
     minutes of CPU, so it must not be open to anonymous callers."""
     _check_webhook_secret(x_webhook_secret)
+    _check_rate_limit(request)
 
     status = _read_optimizer_status()
     if status.get("state") == "running":
@@ -488,10 +632,16 @@ async def run_optimizer(
 
 
 @app.get("/api/v1/optimizer-status")
-async def get_optimizer_status():
+async def get_optimizer_status(
+    x_webhook_secret: Optional[str] = Header(None),
+):
     """Read-only progress of the most recent optimizer run, plus when the
     schedule CSV on disk was last generated (by any run, background or
-    CLI). Unauthenticated by design, like the other read-only GETs."""
+    CLI). Secret-guarded like every other route: S2 found that the
+    read-only GETs leaked operational data, most seriously
+    latest-schedule, which returns which inspector is at which project
+    on which day."""
+    _check_webhook_secret(x_webhook_secret)
     status = _read_optimizer_status()
     generated_at = None
     if SCHEDULE_CSV_PATH.exists():
@@ -502,7 +652,9 @@ async def get_optimizer_status():
 
 
 @app.get("/api/v1/model-metrics")
-async def get_model_metrics():
+async def get_model_metrics(
+    x_webhook_secret: Optional[str] = Header(None),
+):
     """Phase 12, Models tab: read-only validation results for the Level 0
     (Random Forest, XGBoost, LSTM) and Level 1 (meta-learner) stack.
 
@@ -522,6 +674,7 @@ async def get_model_metrics():
     same >=0.5 decision threshold train_meta_learner.py used to compute
     its own reported accuracy (recomputing it against y_true confirms this:
     the resulting accuracy matches meta_learner_metrics.json's exactly)."""
+    _check_webhook_secret(x_webhook_secret)
     import json
 
     def _read_json(filename: str) -> Optional[dict]:
