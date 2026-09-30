@@ -345,9 +345,11 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
             <ShapChart features={project.shap_top_features} />
           ) : (
             <p className="text-sm text-slate-400">
-              Not yet computed for this project -- SHAP values are attached the next time this
-              project is scored (either the next full pipeline/seed run, or its next field
-              monitoring update).
+              Feature contributions are precomputed for High and Critical projects, where the
+              reasoning behind a score is most likely to be acted on. This project is below that
+              threshold, so no SHAP breakdown is stored — the risk indicators above describe the
+              same underlying signals in plain language. A contribution breakdown is attached
+              automatically if this project is ever scored High or Critical.
             </p>
           )}
         </CardContent>

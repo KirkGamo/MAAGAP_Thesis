@@ -346,23 +346,106 @@ def score_tabular(inference_df: pd.DataFrame) -> pd.DataFrame:
     rf = joblib.load(ARTIFACTS_DIR / "random_forest.joblib")
     xgb = joblib.load(ARTIFACTS_DIR / "xgboost.joblib")
 
-    from inference.explain import explain_batch
-
-    try:
-        shap_top_features = explain_batch(rf, xgb, X_inf, kept_columns)
-    except Exception:
-        logger.exception(
-            "SHAP explanation batch failed -- continuing with risk_tier/risk_probability "
-            "scored normally, but shap_top_features will be left NULL for this batch."
-        )
-        shap_top_features = [None] * len(X_inf)
-
-    return pd.DataFrame({
+    # E1: SHAP is NOT computed here any more. It used to run for every row in
+    # this function, before any risk tier was known -- 4,786 explainer calls on
+    # the last full run, the large majority of the job's wall time. The
+    # explanations are then read only when a manager opens one project's detail
+    # page, and the pages worth opening are the High and Critical ones.
+    #
+    # explain_scored_projects() below computes them AFTER tiers are assigned,
+    # for the actionable subset only. The feature matrix is returned alongside
+    # the probabilities so that second pass does not have to rebuild it.
+    scored = pd.DataFrame({
         "project_key": inference_df["project_key"].values,
         "random_forest_prob": rf.predict_proba(X_inf)[:, 1],
         "xgboost_prob": xgb.predict_proba(X_inf)[:, 1],
-        "shap_top_features": shap_top_features,
     })
+    # Key the matrix by project_key so the later explanation pass aligns by
+    # identity rather than by position, which the LEFT join and tier filtering
+    # would otherwise invalidate.
+    X_keyed = X_inf.copy()
+    X_keyed.index = pd.Index(inference_df["project_key"].values, name="project_key")
+    scored.attrs["X_inf"] = X_keyed
+    scored.attrs["kept_columns"] = kept_columns
+    return scored
+
+
+# Tiers whose detail pages a manager plausibly opens, and therefore the only
+# ones whose explanations are precomputed. Anything else is explained on demand
+# by inference/explain.py's single-row path.
+EXPLAINED_TIERS = ("High", "Critical")
+
+
+def explain_scored_projects(
+    merged: pd.DataFrame,
+    X_inf: pd.DataFrame,
+    kept_columns: list[str],
+    tiers: tuple[str, ...] = EXPLAINED_TIERS,
+) -> list:
+    """
+    Per-project SHAP explanations for the actionable tiers only.
+
+    Objective 4's interpretability commitment is that a manager can ask "why
+    this classification?" of a project in front of them. That is satisfied by
+    explaining the projects they can act on, plus the single-row path for
+    anything else opened on demand -- not by explaining all 2,393 rows on every
+    batch run, most of which are Low tier and will never be opened.
+
+    Returns a list aligned to `merged`, with None where no explanation was
+    computed. Failure is non-fatal, exactly as before: a project keeps its risk
+    tier and probability and simply has no stored explanation.
+    """
+    out: list = [None] * len(merged)
+    if "risk_tier" not in merged.columns:
+        return out
+
+    wanted = merged["risk_tier"].isin(tiers).to_numpy()
+    n_wanted = int(wanted.sum())
+    if n_wanted == 0:
+        logger.info("No %s-tier projects to explain.", "/".join(tiers))
+        return out
+
+    # X_inf is aligned to the pre-merge scoring frame; select by project_key so
+    # the mapping survives the left join and the row filtering above it.
+    if X_inf.index.name != "project_key":
+        logger.warning(
+            "Feature matrix is not keyed by project_key — skipping SHAP for this batch. "
+            "Risk tiers are unaffected."
+        )
+        return out
+
+    key_to_pos = {k: i for i, k in enumerate(X_inf.index)}
+    slots, idx = [], []
+    for slot, (key, want) in enumerate(zip(merged["project_key"], wanted)):
+        if want and key in key_to_pos:
+            slots.append(slot)
+            idx.append(key_to_pos[key])
+
+    from inference.explain import explain_batch
+
+    try:
+        subset = X_inf.iloc[idx]
+        explanations = explain_batch(
+            joblib.load(ARTIFACTS_DIR / "random_forest.joblib"),
+            joblib.load(ARTIFACTS_DIR / "xgboost.joblib"),
+            subset,
+            kept_columns,
+        )
+    except Exception:
+        logger.exception(
+            "SHAP explanation batch failed -- projects keep their risk_tier and "
+            "risk_probability, but shap_top_features will be NULL for this batch."
+        )
+        return out
+
+    logger.warning(
+        "SHAP computed for %d of %d scored projects (%s tiers only) — previously all %d "
+        "were explained on every run.",
+        n_wanted, len(merged), "/".join(tiers), len(merged),
+    )
+    for slot, expl in zip(slots, explanations):
+        out[slot] = expl
+    return out
 
 
 def score_lstm() -> pd.DataFrame:
@@ -446,6 +529,13 @@ def score_ongoing_projects() -> pd.DataFrame:
     )
 
     merged["risk_tier"] = merged["meta_prob"].apply(probability_to_risk_tier)
+
+    # E1: explain only what a manager can act on, now that tiers are known.
+    merged["shap_top_features"] = explain_scored_projects(
+        merged,
+        tabular_scores.attrs.get("X_inf", pd.DataFrame()),
+        tabular_scores.attrs.get("kept_columns", []),
+    )
 
     location_lookup = inference_df.set_index("project_key")["LOCATION"]
     name_lookup = inference_df.set_index("project_key")["NAME OF PROJECT"]
