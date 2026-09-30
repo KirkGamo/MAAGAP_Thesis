@@ -70,10 +70,32 @@ def test_guarded_get_routes_reject_an_unauthenticated_caller(route: str):
 
 
 @pytest.mark.skipif(not SECRET, reason="no webhook secret configured in this environment")
-@pytest.mark.parametrize("route", ["/api/v1/update-monitoring", "/api/v1/run-optimizer"])
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/api/v1/update-monitoring",
+        "/api/v1/run-optimizer",
+        # The webhook was NOT covered here originally, and that gap hid a real
+        # bug: it delegates to update_monitoring(), which later grew a `request`
+        # parameter, and the positional call bound the secret to it. The route
+        # kept returning 202 to callers whose secret was never actually checked.
+        "/webhooks/monitoring-report",
+    ],
+)
 def test_guarded_post_routes_reject_an_unauthenticated_caller(route: str):
     payload = {"project_key": "NOT_A_REAL_KEY", "status_observed": "On-going"}
     assert client.post(route, json=payload).status_code == 401
+
+
+@pytest.mark.skipif(not SECRET, reason="no webhook secret configured in this environment")
+def test_the_webhook_alias_accepts_a_correct_secret():
+    """The other direction: the delegation must still WORK, not merely reject.
+    A fix that made the alias reject everything would pass the test above."""
+    payload = {"project_key": "NOT_A_REAL_KEY", "status_observed": "On-going"}
+    response = client.post(
+        "/webhooks/monitoring-report", json=payload, headers={"X-Webhook-Secret": SECRET}
+    )
+    assert response.status_code == 202
 
 
 @pytest.mark.skipif(not SECRET, reason="no webhook secret configured in this environment")

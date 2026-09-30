@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -165,3 +167,50 @@ class MLServiceSettings(BaseModel):
             self.rate_limit_per_minute or "disabled",
             len(self.allowed_origins),
         )
+
+
+# ---------------------------------------------------------------------------
+# .env loading and the single shared instance.
+#
+# This lives here rather than in main.py because api/deps.py and the routers
+# need settings too, and they must be importable without main.py having run
+# first -- otherwise the HTTP layer can only be imported through the
+# application entry point, which makes the routers untestable in isolation.
+#
+# The precedence rule is deliberate and load-bearing: variables already present
+# in the environment are NEVER overwritten, so a container's own configuration
+# always wins over a committed .env file.
+# ---------------------------------------------------------------------------
+
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+
+def load_env_file(path: Path = ENV_FILE) -> int:
+    """Populate os.environ from a KEY=VALUE file, without overriding anything
+    already set. Returns how many variables were loaded."""
+    if not path.exists():
+        return 0
+    loaded = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded += 1
+    if loaded:
+        logger.info("Loaded %d environment variable(s) from %s", loaded, path)
+    return loaded
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> MLServiceSettings:
+    """The one settings instance, built on first use.
+
+    Cached so that importing main.py and api/deps.py in either order yields the
+    same object and validates exactly once.
+    """
+    load_env_file()
+    return MLServiceSettings.from_env()

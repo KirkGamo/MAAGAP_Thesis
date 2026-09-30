@@ -28,23 +28,33 @@ Environment variables:
                                  `_persist_live_score` docstring).
 """
 
-import hmac
 import logging
 import os
-import time
-from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-
-from inference.live_scoring import ARTIFACTS_DIR, LIVE_SCORES_PATH, score_project
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("maagap.main")
+
+# ---------------------------------------------------------------------------
+# B2: one validated settings object, built and checked once at import. The
+# rules it enforces -- most importantly that an absent webhook secret is a
+# refusal to start rather than authentication silently off -- live in
+# common/settings.py so they are stated once instead of re-checked at each use
+# site.
+# ---------------------------------------------------------------------------
+try:
+    from common.settings import get_settings
+except ImportError:  # imported from inside ml-service/ without the package root
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from common.settings import get_settings
+
+settings = get_settings()
+settings.log_startup_summary()
 
 app = FastAPI(
     title="MAAGAP ML Service",
@@ -52,104 +62,17 @@ app = FastAPI(
         "Predictive risk assessment + resource allocation microservice for "
         "PPDO Iloilo Province project management (MAAGAP thesis system)."
     ),
-    version="0.8.0",
+    version="0.9.0",
 )
 
-ENV_FILE = Path(__file__).resolve().parent / ".env"
-
-
-def _load_env_file(path: Path = ENV_FILE) -> int:
-    """Loads KEY=VALUE pairs from ml-service/.env into the environment.
-
-    Environment variables are per-shell on Windows, so before this existed
-    the service had to be started from a terminal that had exported
-    SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and ML_SERVICE_WEBHOOK_SECRET
-    by hand. Forgetting was not loud: the service starts fine without
-    them, scores fine, and every write-back it performs silently no-ops --
-    live risk-tier patches and monitoring-report re-score outcomes both
-    vanish while everything looks healthy.
-
-    Deliberately hand-rolled rather than using python-dotenv: that package
-    is only present here as a transitive dependency of supabase/uvicorn,
-    never declared in requirements.txt, so depending on it would make
-    credential loading break the day the dependency tree shifts -- exactly
-    the silent failure this is meant to prevent. The format needed is
-    KEY=VALUE, so the parser is a few lines.
-
-    Existing environment variables always win: an explicit export, a CI
-    secret, or a container's own environment must never be overridden by a
-    stale file on someone's laptop.
-    """
-    if not path.exists():
-        return 0
-
-    loaded = 0
-    try:
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
-                loaded += 1
-    except OSError as exc:
-        logger.warning("Could not read %s: %s", path, exc)
-        return 0
-
-    if loaded:
-        logger.info("Loaded %d environment variable(s) from %s", loaded, path)
-    return loaded
-
-
-_load_env_file()
-
 # ---------------------------------------------------------------------------
-# B2: one validated settings object, built and checked once at import.
-#
-# Configuration used to be read ad hoc from os.environ across several modules,
-# each with its own fallback. Nothing stated what the service required and
-# nothing checked -- which is the root of S1: a guard reading
-# `if WEBHOOK_SECRET and ...` let an unset variable silently disable
-# authentication. The specific hole is closed; the shape that produced it is a
-# property of reading configuration without validating it.
-#
-# common/settings.py states every rule once, including that an absent secret is
-# a refusal to start rather than authentication off, and reports invalid
-# configuration by naming the variable instead of raising a pydantic traceback
-# at a deployer.
-# ---------------------------------------------------------------------------
-try:
-    from common.settings import MLServiceSettings
-except ImportError:  # imported from inside ml-service/ without the package root
-    import sys as _sys
-
-    _sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from common.settings import MLServiceSettings
-
-settings = MLServiceSettings.from_env()
-settings.log_startup_summary()
-
-# Aliases, so this module and its tests keep their existing names with a single
-# source of truth behind them.
-
-# ---------------------------------------------------------------------------
-# S5: CORS is declared, not left to chance.
-#
-# No CORSMiddleware was configured, so browsers blocked cross-origin calls by
-# default -- protective, but by accident. Once the frontend deploys to Vercel
-# and this service deploys elsewhere, the first person to hit a CORS error will
-# reach for allow_origins=["*"], which on a service holding project risk data
-# and inspector schedules is the wrong reflex.
-#
-# Declaring an empty allow-list now means that day's change is adding an origin
-# to ML_SERVICE_ALLOWED_ORIGINS, not disabling a control.
-#
-# Note the frontend does NOT need this: its Server Components call this service
-# from the server side, where CORS does not apply. An entry here is only needed
-# for genuine browser-to-service calls, which currently do not exist.
+# S5: CORS is declared, not left to chance. Empty by default and usually
+# correct -- the Next.js frontend calls this service from the SERVER side,
+# where CORS does not apply. An entry is only needed for genuine
+# browser-to-service calls, which currently do not exist. Declaring it empty
+# means the first deploy-day CORS error is fixed by adding an origin rather
+# than by reaching for allow_origins=["*"] on a service holding project risk
+# data and inspector schedules.
 # ---------------------------------------------------------------------------
 ALLOWED_ORIGINS = settings.allowed_origins
 
@@ -161,573 +84,39 @@ app.add_middleware(
     allow_headers=["X-Webhook-Secret", "Content-Type"],
 )
 
-WEBHOOK_SECRET = settings.webhook_secret
+# ---------------------------------------------------------------------------
+# B1: routes live in api/routers/, one module per concern. main.py builds the
+# app, declares middleware, and mounts them -- nothing else. Previously this
+# file was 735 lines holding eight endpoints, their Pydantic models,
+# background-task orchestration, status-file I/O and metric assembly, so every
+# new endpoint enlarged the blast radius of a merge.
+# ---------------------------------------------------------------------------
+from api.routers import metrics, monitoring, optimizer, schedule  # noqa: E402
 
-# S1: an absent secret must not silently disable authentication.
-#
-# The previous guard read `if WEBHOOK_SECRET and x != WEBHOOK_SECRET`, so a
-# missing or empty env var short-circuited the check and every guarded endpoint
-# became unauthenticated -- including /api/v1/update-monitoring, which mutates
-# risk tiers through the service-role client, and /api/v1/run-optimizer, which
-# spends minutes of CPU per call. The service started normally, served
-# normally, and logged nothing unusual. A typo in a deploy config or an
-# unmounted .env was enough to turn authentication off.
-#
-# The service now REFUSES TO START without a secret. Running unauthenticated is
-# still possible for local development, but only by asking for it explicitly,
-# and every such request is logged. The safe path is the default path; the
-# unsafe one cannot be reached by omission.
-ALLOW_UNAUTHENTICATED = settings.allow_unauthenticated
-
-
-
-# The Supabase-credentials warning is emitted by settings.log_startup_summary(),
-# stated once alongside every other configuration rule rather than here (B2).
-
+app.include_router(monitoring.router)
+app.include_router(schedule.router)
+app.include_router(optimizer.router)
+app.include_router(metrics.router)
 
 # ---------------------------------------------------------------------------
-# S4: rate limiting for the routes that cost real resources.
+# Backwards-compatible re-exports.
 #
-# /api/v1/run-optimizer triggers full model scoring plus a CBC solve -- minutes
-# of CPU. A 409 already prevents CONCURRENT runs and a 30-minute stale timeout
-# clears a wedged one, but nothing bounded the request RATE, so a caller could
-# keep the service permanently busy by firing a request the moment each run
-# finished.
-#
-# Deliberately dependency-free and in-process. That is honest about its scope:
-# the limit is per worker, so two workers permit twice the rate. This service
-# already assumes a single worker elsewhere (the optimizer status file is
-# unsynchronised), and a shared limiter should arrive together with shared run
-# state rather than ahead of it.
+# tests/ and any operator script reference these on `main`. They are aliases
+# for the real definitions, which now live in api/deps.py and the routers --
+# kept so this refactor moves code without breaking callers.
 # ---------------------------------------------------------------------------
-
-RATE_LIMIT_WINDOW_SECONDS = 60.0
-RATE_LIMIT_MAX_REQUESTS = settings.rate_limit_per_minute
-
-_rate_buckets: dict[str, list[float]] = defaultdict(list)
-
-
-def _client_key(request: Optional[Request]) -> str:
-    if request is None:
-        return "unknown"
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _check_rate_limit(request: Optional[Request]) -> None:
-    """Sliding-window limit per client. Raises 429 when exceeded."""
-    if RATE_LIMIT_MAX_REQUESTS <= 0:
-        return
-    key = _client_key(request)
-    now = time.monotonic()
-    bucket = _rate_buckets[key]
-    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
-    bucket[:] = [t for t in bucket if t > cutoff]
-    if len(bucket) >= RATE_LIMIT_MAX_REQUESTS:
-        retry_after = int(max(1, RATE_LIMIT_WINDOW_SECONDS - (now - bucket[0])))
-        logger.warning("Rate limit hit by %s on an expensive route.", key)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many requests. Retry in {retry_after}s.",
-            headers={"Retry-After": str(retry_after)},
-        )
-    bucket.append(now)
-
-
-def _check_webhook_secret(x_webhook_secret: Optional[str]) -> None:
-    """
-    Authenticate a guarded request.
-
-    Two deliberate properties, both absent from the previous version:
-
-    * It fails CLOSED. A missing secret cannot disable the check, because the
-      service refuses to start in that state (see ALLOW_UNAUTHENTICATED above).
-    * It compares in constant time. A plain `!=` short-circuits on the first
-      differing byte, leaking the secret's length and prefix through response
-      timing -- cheap to avoid, and this system's own thesis claims public
-      sector accountability.
-    """
-    if settings.is_unauthenticated:
-        logger.warning(
-            "Unauthenticated request permitted by ALLOW_UNAUTHENTICATED — "
-            "local development mode."
-        )
-        return
-    if not x_webhook_secret or not hmac.compare_digest(x_webhook_secret, WEBHOOK_SECRET):
-        raise HTTPException(status_code=401, detail="Invalid or missing X-Webhook-Secret header.")
-
-
-class UpdateMonitoringPayload(BaseModel):
-    """Matches the inspector mobile submission described in Phase 8 Task 2:
-    project identity, newly observed status, optional percent complete,
-    optional amount spent, and an observation timestamp."""
-
-    project_key: str = Field(..., description="Matches projects.project_key in Supabase / the ML feature tables.")
-    status_observed: str = Field(
-        ..., description='One of: "completed", "on_going", "not_yet_implemented", "for_bidding".'
-    )
-    percent_complete: Optional[float] = Field(None, ge=0, le=100)
-    amount_spent: Optional[float] = Field(None, ge=0, description="Budget spent to date, in PHP.")
-    observed_at: Optional[datetime] = Field(
-        None, description="Defaults to server-received time (UTC) if omitted."
-    )
-    report_id: Optional[str] = Field(
-        None,
-        description=(
-            "The monitoring_reports row this observation came from, when the caller has one. "
-            "Used only to write the re-score outcome back to that row's rescore_state "
-            "(see supabase/add_monitoring_reports_rescore_state.sql), so a dropped or failed "
-            "re-score is visible in the Manager Portal and retryable, instead of vanishing the "
-            "way this fire-and-forget webhook previously allowed. Not a model input."
-        ),
-    )
-    photo_url: Optional[str] = Field(
-        None,
-        description=(
-            "Phase 10, Task 4: a Supabase Storage path/URL for one of the Inspector's "
-            "site photos on this visit (see monitoring_reports.photo_urls in Supabase, "
-            "which is the record of truth for the full set — this webhook only ever "
-            "receives one representative photo alongside the re-score signal). Not a "
-            "model feature: none of RF/XGBoost/LSTM/the meta-learner consume image data, "
-            "so this field does not affect risk_tier or risk_probability. It is accepted "
-            "and logged/persisted (see _run_rescore below) purely so this endpoint's "
-            "payload can be inspected/audited without needing a separate Supabase query, "
-            "and so any future visual-evidence feature (e.g. image-based progress "
-            "verification) has a place to land without another payload migration."
-        ),
-    )
-
-
-class UpdateMonitoringResponse(BaseModel):
-    accepted: bool
-    project_key: str
-    message: str
-
-
-def _mark_rescore_state(
-    report_id: Optional[str], state: str, error: Optional[str] = None
-) -> None:
-    """Records how a re-score ended on the monitoring report that triggered
-    it. Best-effort and never raises: this is observability for a webhook
-    that is itself fire-and-forget, so failing to write the state must not
-    turn into a second silent failure on top of the first.
-
-    No-ops when the caller sent no report_id (e.g. a manual curl, or a
-    frontend running against a database where
-    add_monitoring_reports_rescore_state.sql hasn't been applied yet)."""
-    if not report_id:
-        return
-
-    url = settings.supabase_url
-    service_role_key = settings.supabase_service_role_key
-    if not (url and service_role_key):
-        # Logged, never silent: without this line a report sits at
-        # 'pending' forever in the Manager Portal with a Retry button that
-        # cannot possibly resolve it, and the cause is invisible.
-        logger.warning(
-            "Re-score for report %s finished as %r but SUPABASE_URL/"
-            "SUPABASE_SERVICE_ROLE_KEY are not set, so the outcome cannot be written back. "
-            "The report will stay 'Awaiting re-score' in the Manager Portal.",
-            report_id, state,
-        )
-        return
-
-    try:
-        from supabase import create_client
-
-        client = create_client(url, service_role_key)
-        client.table("monitoring_reports").update(
-            {
-                "rescore_state": state,
-                "rescored_at": datetime.now(timezone.utc).isoformat(),
-                "rescore_error": error,
-            }
-        ).eq("id", report_id).execute()
-        logger.info("Marked report %s rescore_state=%s.", report_id, state)
-    except Exception:
-        logger.exception("Could not record rescore_state for report %s (non-fatal).", report_id)
-
-
-def _run_rescore(payload: UpdateMonitoringPayload) -> None:
-    """The actual background job: re-score the one project and persist the
-    result. Runs after the HTTP response has already been sent (see the
-    202 Accepted pattern in the route below) so the Inspector's submission
-    is never blocked on model inference."""
-    observed_at = payload.observed_at or datetime.now(timezone.utc)
-    try:
-        result = score_project(
-            project_key=payload.project_key,
-            status_observed=payload.status_observed,
-            observed_at=observed_at,
-            percent_complete=payload.percent_complete,
-            amount_spent=payload.amount_spent,
-        )
-    except FileNotFoundError as exc:
-        logger.error("Re-score failed for %s — pipeline artifacts missing: %s", payload.project_key, exc)
-        _mark_rescore_state(payload.report_id, "failed", f"Pipeline artifacts missing: {exc}")
-        return
-    except Exception as exc:
-        logger.exception("Unhandled error re-scoring project %s", payload.project_key)
-        _mark_rescore_state(payload.report_id, "failed", str(exc))
-        return
-
-    if not result.found:
-        # Not an error: the project has no trained representation to
-        # re-score (see live_scoring.score_project's `found` flag), so
-        # retrying would do exactly the same nothing.
-        logger.warning("Re-score skipped for %s: %s", payload.project_key, result.message)
-        _mark_rescore_state(payload.report_id, "skipped", result.message)
-        return
-
-    logger.info(
-        "Re-scored %s -> tier=%s meta_prob=%.4f (rf=%.4f xgb=%.4f lstm=%.4f)",
-        payload.project_key, result.risk_tier, result.meta_prob,
-        result.random_forest_prob, result.xgboost_prob, result.lstm_prob,
-    )
-    if payload.photo_url:
-        # Not a model input (see UpdateMonitoringPayload.photo_url's
-        # docstring) -- logged only, for audit visibility on this endpoint.
-        # The record of truth for an Inspector's photos is Supabase's
-        # monitoring_reports.photo_urls, written directly by
-        # actions/submit-report.ts before this webhook ever fires.
-        logger.info("Photo attached to %s's monitoring report: %s", payload.project_key, payload.photo_url)
-
-    _maybe_patch_supabase(
-        payload.project_key, result.risk_tier, result.meta_prob, result.shap_top_features
-    )
-    _mark_rescore_state(payload.report_id, "done")
-
-
-def _maybe_patch_supabase(
-    project_key: str,
-    risk_tier: Optional[str],
-    risk_probability: Optional[float],
-    shap_top_features: Optional[list] = None,
-) -> None:
-    """Best-effort push of the refreshed score back into Supabase's
-    `projects` table, so the Manager Portal's backlog/map views reflect it
-    without waiting on a full pipeline re-run. No-ops with a log line if
-    Supabase service-role credentials aren't configured — this mirrors the
-    honest-placeholder pattern used elsewhere in this project (see
-    submit-report.ts's docstring), except here the code path itself is
-    real; only its credentials are optional."""
-    url = settings.supabase_url
-    service_role_key = settings.supabase_service_role_key
-    if not (url and service_role_key):
-        logger.info(
-            "SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not configured — refreshed score for %s "
-            "persisted locally only (see %s). Set both env vars to also push it live.",
-            project_key, LIVE_SCORES_PATH,
-        )
-        return
-
-    try:
-        from supabase import create_client
-
-        update_payload = {"risk_tier": risk_tier, "risk_probability": risk_probability}
-        if shap_top_features is not None:
-            update_payload["shap_top_features"] = shap_top_features
-
-        client = create_client(url, service_role_key)
-        client.table("projects").update(update_payload).eq("project_key", project_key).execute()
-        logger.info("Patched Supabase projects row for %s.", project_key)
-    except Exception:
-        logger.exception("Best-effort Supabase patch failed for %s (non-fatal).", project_key)
-
-
-@app.post("/api/v1/update-monitoring", response_model=UpdateMonitoringResponse, status_code=202)
-async def update_monitoring(
-    payload: UpdateMonitoringPayload,
-    background_tasks: BackgroundTasks,
-    request: Request = None,  # noqa: B008 — FastAPI injects
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Accepts an inspector's field-monitoring observation and queues a
-    background re-score. Returns 202 immediately — the caller (the
-    Next.js Server Action) must not block on model inference."""
-    _check_webhook_secret(x_webhook_secret)
-    _check_rate_limit(request)
-    background_tasks.add_task(_run_rescore, payload)
-    return UpdateMonitoringResponse(
-        accepted=True, project_key=payload.project_key,
-        message="Update accepted; re-scoring in background.",
-    )
-
-
-@app.post("/webhooks/monitoring-report", response_model=UpdateMonitoringResponse, status_code=202)
-async def monitoring_report_webhook(
-    payload: UpdateMonitoringPayload,
-    background_tasks: BackgroundTasks,
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Alias of /api/v1/update-monitoring under the URL path
-    submit-report.ts's notifyMlService() already calls
-    (`${FASTAPI_ML_SERVICE_URL}/webhooks/monitoring-report`), so the
-    frontend placeholder becomes real without also needing a frontend
-    change. /api/v1/update-monitoring is kept as the Task 2-specified,
-    more RESTful route name for direct/manual use (docs, curl, Postman)."""
-    return await update_monitoring(payload, background_tasks, x_webhook_secret)
-
-
-@app.get("/api/v1/live-score/{project_key}")
-async def get_live_score(
-    project_key: str,
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Returns the most recently computed live score for a project, if any.
-    Lets the frontend (or a manual check) confirm a background re-score
-    actually completed, since the POST routes above return before scoring
-    finishes."""
-    _check_webhook_secret(x_webhook_secret)
-    import json
-
-    if not LIVE_SCORES_PATH.exists():
-        raise HTTPException(status_code=404, detail="No live scores recorded yet.")
-    store = json.loads(LIVE_SCORES_PATH.read_text())
-    if project_key not in store:
-        raise HTTPException(status_code=404, detail=f"No live score recorded for {project_key}.")
-    return store[project_key]
-
-
-@app.get("/api/v1/latest-schedule")
-async def get_latest_schedule(
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Serves ml-service/optimization_engine.py's most recent PuLP solve
-    output (artifacts/inspector_schedule.csv) as JSON, plus its summary
-    stats (artifacts/inspector_schedule_summary.json), so the Next.js
-    frontend's "Deploy latest schedule" action (actions/deploy-schedule.ts)
-    can read it without assuming it's colocated on the same filesystem as
-    this service -- the same reasoning /api/v1/model-metrics documents for
-    reading training artifacts through an HTTP call rather than a direct
-    file read from the frontend process.
-
-    Read-only: this does NOT re-run optimization_engine.py. It serves
-    whatever that script last wrote to disk."""
-    _check_webhook_secret(x_webhook_secret)
-    import csv
-    import json
-
-    schedule_path = ARTIFACTS_DIR / "inspector_schedule.csv"
-    if not schedule_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="No inspector schedule found yet -- run optimization_engine.py first.",
-        )
-
-    with open(schedule_path, newline="") as f:
-        rows = list(csv.DictReader(f))
-
-    summary_path = ARTIFACTS_DIR / "inspector_schedule_summary.json"
-    summary = json.loads(summary_path.read_text()) if summary_path.exists() else None
-
-    generated_at = datetime.fromtimestamp(
-        schedule_path.stat().st_mtime, tz=timezone.utc
-    ).isoformat()
-
-    return {"rows": rows, "summary": summary, "generated_at": generated_at}
-
-
-# ---------------------------------------------------------------------------
-# Optimizer run management (schedule workspace phase 3 — see
-# SCHEDULE_WORKFLOW_IMPROVEMENT_PLAN.md at the repo root). POST starts a
-# background solve; GET serves its progress. The run is minutes-long
-# (tabular + LSTM scoring before the CBC solve), so the POST returns 202
-# immediately and the frontend polls — the same accepted-then-background
-# pattern update-monitoring uses, for the same reason.
-# ---------------------------------------------------------------------------
-
-OPTIMIZER_STATUS_PATH = ARTIFACTS_DIR / "optimizer_run_status.json"
-SCHEDULE_CSV_PATH = ARTIFACTS_DIR / "inspector_schedule.csv"
-
-# A "running" status older than this is treated as stale (service was
-# killed mid-run and never wrote a terminal state) rather than blocking
-# every future run behind a phantom.
-OPTIMIZER_RUN_STALE_SECONDS = 30 * 60
-
-
-def _read_optimizer_status() -> dict:
-    import json
-
-    if not OPTIMIZER_STATUS_PATH.exists():
-        return {"state": "idle"}
-    try:
-        return json.loads(OPTIMIZER_STATUS_PATH.read_text())
-    except (OSError, ValueError):
-        return {"state": "idle"}
-
-
-def _write_optimizer_status(state: str, started_at: str, error: Optional[str] = None) -> None:
-    import json
-
-    payload = {
-        "state": state,
-        "started_at": started_at,
-        "finished_at": datetime.now(timezone.utc).isoformat() if state in ("done", "failed") else None,
-        "error": error,
-    }
-    OPTIMIZER_STATUS_PATH.write_text(json.dumps(payload, indent=2))
-
-
-def _run_optimizer_job(started_at: str) -> None:
-    """Background job: full score + solve, exactly what running
-    optimization_engine.py from the CLI does. Imported lazily so this
-    module's startup stays light (optimization_engine pulls in the model
-    stack, TensorFlow included, at scoring time)."""
-    try:
-        from optimization_engine import run as run_optimization
-
-        run_optimization(str(SCHEDULE_CSV_PATH))
-        _write_optimizer_status("done", started_at)
-        logger.info("Optimizer run finished; schedule written to %s", SCHEDULE_CSV_PATH)
-    except Exception as exc:
-        logger.exception("Optimizer run failed")
-        _write_optimizer_status("failed", started_at, error=str(exc))
-
-
-@app.post("/api/v1/run-optimizer", status_code=202)
-async def run_optimizer(
-    background_tasks: BackgroundTasks,
-    request: Request = None,  # noqa: B008 — FastAPI injects
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Starts a full optimizer run (risk scoring + PuLP solve) in the
-    background. Secret-guarded like the monitoring webhook — this spends
-    minutes of CPU, so it must not be open to anonymous callers."""
-    _check_webhook_secret(x_webhook_secret)
-    _check_rate_limit(request)
-
-    status = _read_optimizer_status()
-    if status.get("state") == "running":
-        started = status.get("started_at")
-        stale = True
-        if started:
-            try:
-                started_dt = datetime.fromisoformat(started)
-                stale = (
-                    datetime.now(timezone.utc) - started_dt
-                ).total_seconds() > OPTIMIZER_RUN_STALE_SECONDS
-            except ValueError:
-                pass
-        if not stale:
-            raise HTTPException(
-                status_code=409,
-                detail="An optimizer run is already in progress — wait for it to finish.",
-            )
-        logger.warning("Discarding stale 'running' optimizer status from %s", started)
-
-    started_at = datetime.now(timezone.utc).isoformat()
-    _write_optimizer_status("running", started_at)
-    background_tasks.add_task(_run_optimizer_job, started_at)
-    return {
-        "accepted": True,
-        "message": "Optimizer run started — poll /api/v1/optimizer-status for progress.",
-    }
-
-
-@app.get("/api/v1/optimizer-status")
-async def get_optimizer_status(
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Read-only progress of the most recent optimizer run, plus when the
-    schedule CSV on disk was last generated (by any run, background or
-    CLI). Secret-guarded like every other route: S2 found that the
-    read-only GETs leaked operational data, most seriously
-    latest-schedule, which returns which inspector is at which project
-    on which day."""
-    _check_webhook_secret(x_webhook_secret)
-    status = _read_optimizer_status()
-    generated_at = None
-    if SCHEDULE_CSV_PATH.exists():
-        generated_at = datetime.fromtimestamp(
-            SCHEDULE_CSV_PATH.stat().st_mtime, tz=timezone.utc
-        ).isoformat()
-    return {**status, "schedule_generated_at": generated_at}
-
-
-@app.get("/api/v1/model-metrics")
-async def get_model_metrics(
-    x_webhook_secret: Optional[str] = Header(None),
-):
-    """Phase 12, Models tab: read-only validation results for the Level 0
-    (Random Forest, XGBoost, LSTM) and Level 1 (meta-learner) stack.
-
-    Deliberately view-only -- this endpoint reads whatever
-    train_trees.py/train_lstm.py/train_meta_learner.py last wrote to
-    artifacts/*.json, it does NOT trigger a retrain. Confirmed with the
-    user before building the Models tab: a live "retrain now" button would
-    need real background-job infrastructure (a multi-minute training run
-    can't run inline in a request/response cycle), which is a substantially
-    bigger addition than displaying already-computed results and carries
-    real risk of hanging a request during a live defense demo. If that's
-    wanted later, it's a clearly-scoped follow-up, not folded in here.
-
-    The confusion matrix isn't pre-serialized anywhere (only aggregate
-    accuracy/precision/recall/F1/AUC-ROC are) -- it's recomputed here from
-    meta_learner_test_predictions.csv's y_true/meta_prob columns using the
-    same >=0.5 decision threshold train_meta_learner.py used to compute
-    its own reported accuracy (recomputing it against y_true confirms this:
-    the resulting accuracy matches meta_learner_metrics.json's exactly)."""
-    _check_webhook_secret(x_webhook_secret)
-    import json
-
-    def _read_json(filename: str) -> Optional[dict]:
-        path = ARTIFACTS_DIR / filename
-        if not path.exists():
-            return None
-        return json.loads(path.read_text())
-
-    tree_models = _read_json("tree_models_metrics.json")
-    lstm = _read_json("lstm_model_metrics.json")
-    meta_learner = _read_json("meta_learner_metrics.json")
-    # Objective 2's regression half: MAE in days from train_regressors.py.
-    # Absent until that script has been run, and the endpoint stays available
-    # without it -- the classification artifacts are the required ones.
-    regression = _read_json("regression_metrics.json")
-
-    if tree_models is None and lstm is None and meta_learner is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "No training artifacts found yet -- run train_trees.py, "
-                "train_lstm.py, and train_meta_learner.py at least once."
-            ),
-        )
-
-    confusion_matrix = None
-    predictions_path = ARTIFACTS_DIR / "meta_learner_test_predictions.csv"
-    if predictions_path.exists():
-        import csv
-
-        true_positive = false_positive = true_negative = false_negative = 0
-        with open(predictions_path, newline="") as f:
-            for row in csv.DictReader(f):
-                y_true = int(row["y_true"])
-                y_pred = 1 if float(row["meta_prob"]) >= 0.5 else 0
-                if y_true == 1 and y_pred == 1:
-                    true_positive += 1
-                elif y_true == 0 and y_pred == 1:
-                    false_positive += 1
-                elif y_true == 0 and y_pred == 0:
-                    true_negative += 1
-                else:
-                    false_negative += 1
-        confusion_matrix = {
-            "true_positive": true_positive,
-            "false_positive": false_positive,
-            "true_negative": true_negative,
-            "false_negative": false_negative,
-        }
-
-    return {
-        "tree_models": tree_models,
-        "lstm": lstm,
-        "meta_learner": meta_learner,
-        "confusion_matrix": confusion_matrix,
-        "regression": regression,
-    }
+from api.deps import (  # noqa: E402,F401
+    ALLOW_UNAUTHENTICATED,
+    RATE_LIMIT_MAX_REQUESTS,
+    RATE_LIMIT_WINDOW_SECONDS,
+    WEBHOOK_SECRET,
+    _check_rate_limit,
+    _check_webhook_secret,
+)
+from api.routers.monitoring import (  # noqa: E402,F401
+    UpdateMonitoringPayload,
+    UpdateMonitoringResponse,
+)
 
 
 @app.get("/health")
