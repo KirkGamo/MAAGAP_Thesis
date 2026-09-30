@@ -2,7 +2,7 @@
 tags: [decision, ml-pipeline, objective-4, coverage]
 status: active
 created: 2026-09-29
-updated: 2026-09-29
+updated: 2026-09-30
 ---
 
 # D21: Two-learner fallback — and the recovery of Objective 4
@@ -112,3 +112,34 @@ It also means Objective 4's finding should be reported with its condition attach
 - [[D17-Allocation-Efficiency-Measurement]] — the measurement this supersedes, and which identified the cause
 - [[D18-Geographic-Distance-Costing]] — the cost model the now-binding budget uses
 - [[../05-Known-Issues/Issue-LSTM-Low-Precision]] — narrowed, not closed: coverage is addressed, precision is not
+
+
+---
+
+## Addendum, 2026-09-30 — the solver was hitting its time limit
+
+Telemetry added for E4 (achieved gap and wall time logged every solve) showed
+that the figures above were measured with CBC **hitting its 25-second cap** and
+reporting `Optimal` for the best incumbent rather than a proven optimum. The
+larger candidate pool this decision created is what pushed it over.
+
+Measured on the same pool:
+
+| Cap | Scheduled | Objective |
+|---|---|---|
+| 25s | 51 | 109.78 |
+| 60s | **60** | **126.52** |
+| 180s | 60 | 126.52 |
+
+The cap was costing **nine visits a week**. Note what 180s does not buy: the
+solver reaches its best solution well before 60s and then spends the remaining
+budget failing to *prove* optimality, which is a different thing from failing to
+find the answer. `SOLVER_TIME_LIMIT_SECONDS` is now 60.
+
+**This makes the improvement figures above conservative, not wrong.** The
+baselines are greedy and instantaneous, so they were unaffected by the cap,
+while the optimizer was handicapped by it. A re-measurement would move the
++22.1%–+29.4% range up, not down.
+
+`hit_time_limit` is still True at 60s and is now reported in every run summary.
+It is the signal to watch as coverage keeps improving.

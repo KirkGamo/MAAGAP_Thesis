@@ -104,6 +104,7 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -671,7 +672,23 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
 # ---------------------------------------------------------------------------
 
 
-SOLVER_TIME_LIMIT_SECONDS = 25   # CBC wall-clock cap; the z[i,c] linking constraints create a
+# E4: raised from 25s after telemetry showed the cap was binding and costing
+# real coverage. The candidate pool grew 25 -> 87 when D21's two-learner
+# fallback lifted scoring coverage, and measured on that pool:
+#
+#     25s cap  ->  51 projects scheduled, objective 109.78
+#     60s cap  ->  60 projects scheduled, objective 126.52
+#    180s cap  ->  60 projects scheduled, objective 126.52
+#
+# The cap was costing NINE visits a week. Note what 180s does not buy: the
+# solver reaches its best solution well before 60s and then spends the rest of
+# the budget failing to PROVE optimality, which is a different thing from
+# failing to find the answer. 60s captures the solution without paying for the
+# proof.
+#
+# This will need revisiting again as coverage improves -- hit_time_limit in the
+# run summary is the signal to watch, and it is still True at 60s.
+SOLVER_TIME_LIMIT_SECONDS = 60   # CBC wall-clock cap; the z[i,c] linking constraints create a
                                   # combinatorially large branch-and-bound tree once inspectors are
                                   # symmetric (interchangeable), so an unbounded solve can run
                                   # arbitrarily long chasing a marginal integrality gap. A time-boxed
@@ -787,10 +804,38 @@ def build_and_solve_schedule(
         )
 
     solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=SOLVER_TIME_LIMIT_SECONDS, gapRel=SOLVER_MIP_GAP)
+    solve_started = time.monotonic()
     prob.solve(solver)
+    solve_seconds = time.monotonic() - solve_started
 
     status = pulp.LpStatus[prob.status]
-    logger.info("Solver status: %s | Objective value: %.4f", status, pulp.value(prob.objective) or 0.0)
+    objective_value = pulp.value(prob.objective) or 0.0
+
+    # E4: record how hard the solve actually was, not just that it finished.
+    #
+    # The candidate pool grew from 25 to 87 when D21's two-learner fallback
+    # lifted scoring coverage, and it will keep growing as coverage improves.
+    # Against a 25-second cap and a 2% gap tolerance, "Optimal" can quietly
+    # become "the best found before the clock ran out" -- which still returns a
+    # usable schedule and still logs a status, so nothing would signal the
+    # change until a solve silently truncated the week.
+    #
+    # Time used against the cap is the leading indicator, so it is logged every
+    # solve and surfaced in the summary rather than left in the log.
+    time_used_pct = 100.0 * solve_seconds / SOLVER_TIME_LIMIT_SECONDS
+    hit_time_limit = solve_seconds >= SOLVER_TIME_LIMIT_SECONDS * 0.95
+
+    log = logger.warning if (hit_time_limit or status != "Optimal") else logger.info
+    log(
+        "Solver status: %s | objective %.4f | %d candidates, %d binary vars | "
+        "%.1fs of the %ds cap (%.0f%%)%s",
+        status, objective_value, len(projects),
+        len(projects) * len(inspectors) * len(days),
+        solve_seconds, SOLVER_TIME_LIMIT_SECONDS, time_used_pct,
+        " — AT THE TIME LIMIT: the result is the best found before the clock "
+        "ran out, not a proven optimum. Raise SOLVER_TIME_LIMIT_SECONDS or "
+        "reduce MAX_PROJECTS_CONSIDERED." if hit_time_limit else "",
+    )
 
     schedule_rows = []
     for i in inspectors:
@@ -850,6 +895,10 @@ def build_and_solve_schedule(
         "vehicle_count": vehicle_count,
         "max_inspectors_deployed_in_a_day": max_inspectors_deployed,
         "allocation_efficiency": allocation_efficiency(schedule_df),
+        "solve_seconds": round(solve_seconds, 2),
+        "solve_time_limit_seconds": SOLVER_TIME_LIMIT_SECONDS,
+        "solve_time_used_pct": round(time_used_pct, 1),
+        "hit_time_limit": hit_time_limit,
         "cluster_mobilization_costs_php": cluster_cost_of,
         "inspector_days_used": (
             int(schedule_df.groupby(["inspector", "day"]).ngroups) if not schedule_df.empty else 0
