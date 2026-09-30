@@ -100,11 +100,8 @@ jobs:
         continue-on-error: true
 
       - name: Unit tests
-        # Added by R1. Skips cleanly until the first test exists, so this file
-        # does not need editing when they land.
-        run: |
-          if npm run | grep -qE "^\s+test"; then
-            npm test -- --run
-          else
-            echo "::warning::no frontend test script yet (R1)"
-          fi
+        # R1 landed: Vitest, 38 tests. vitest.setup.ts pins TZ to Asia/Manila so
+        # the date tests assert the deployment timezone's behaviour rather than
+        # the runner's -- without that pin they pass on a UTC runner even when
+        # the UTC+8 bug they guard against is present.
+        run: npm test -- --run
