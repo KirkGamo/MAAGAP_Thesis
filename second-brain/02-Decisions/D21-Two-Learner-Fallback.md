@@ -2,7 +2,7 @@
 tags: [decision, ml-pipeline, objective-4, coverage]
 status: active
 created: 2026-09-29
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # D21: Two-learner fallback — and the recovery of Objective 4
@@ -143,3 +143,51 @@ while the optimizer was handicapped by it. A re-measurement would move the
 
 `hit_time_limit` is still True at 60s and is now reported in every run summary.
 It is the signal to watch as coverage keeps improving.
+
+
+---
+
+## Addendum, 2026-10-01 — provenance is now persisted, and it says something
+
+`score_basis` was computed and logged from the start but never stored, so the
+claim above that fallback scores are "tagged ... so the provenance is explicit"
+was true only of a log file. `frontend/supabase/add_projects_score_basis.sql`
+adds the column; the seeder writes it; live data now carries it.
+
+Measured across all 2,393 live rows:
+
+| score_basis | rows | share |
+|---|---|---|
+| `two_learner` | 1,725 | **72.1%** |
+| `three_learner` | 668 | 27.9% |
+| NULL | 0 | — |
+
+**The part that matters for Chapter 4 is the breakdown by tier**, not the
+headline:
+
+| Tier | three_learner | two_learner | fallback share |
+|---|---|---|---|
+| Critical | 17 | 61 | **78%** |
+| High | 7 | 15 | **68%** |
+| **High + Critical** | 24 | 76 | **76%** |
+
+**Three quarters of the projects the optimizer actually schedules — and the
+only ones SHAP explains — are scored by the two-input model**, not the
+three-learner stack Objective 1 describes. The headline 72% understates it for
+exactly the population that matters, because the fallback population skews
+toward the ongoing, less-documented projects that are also the riskier ones.
+
+Two things follow:
+
+1. **Chapter 4 must state this explicitly.** Reporting the stack's metrics
+   without it would describe a three-learner architecture while the operational
+   output is predominantly two-learner.
+2. **The non-Low rate is nearly identical between them** — 6.6% for
+   three_learner against 6.1% for two_learner — so the fallback is not
+   systematically more alarmist. That is worth saying too: it is the evidence
+   that the substitution did not distort the risk distribution, and it is
+   checkable from the same column.
+
+Verified after the reseed: 0 degradation retries (the column was accepted),
+2,393 rows upserted, 0 orphans, and every stored tier still consistent with its
+own probability.
