@@ -10,6 +10,8 @@
  * without it (see page.tsx's fetchOptimizerSummary for the same stance).
  */
 
+import { mlServiceFetch } from "@/lib/ml-service";
+
 export interface OptimizerRunStatus {
   state: "idle" | "running" | "done" | "failed";
   started_at?: string | null;
@@ -72,8 +74,7 @@ export async function getOptimizerStatus(): Promise<OptimizerRunStatus | null> {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   if (!baseUrl) return null;
   try {
-    const res = await fetch(`${baseUrl}/api/v1/optimizer-status`, {
-      cache: "no-store",
+    const res = await mlServiceFetch("/api/v1/optimizer-status", {
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return null;

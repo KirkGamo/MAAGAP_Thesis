@@ -1,5 +1,6 @@
 import { Card } from "@/components/tremor/card";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
+import { mlServiceFetch } from "@/lib/ml-service";
 
 interface TreeModelMetrics {
   test_metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
@@ -102,7 +103,7 @@ export default async function ModelsPage() {
   let errorMessage: string | null = null;
 
   try {
-    const res = await fetch(`${baseUrl}/api/v1/model-metrics`, { cache: "no-store" });
+    const res = await mlServiceFetch("/api/v1/model-metrics");
     if (res.status === 404) {
       errorMessage =
         "No training artifacts found yet -- run train_trees.py, train_lstm.py, and train_meta_learner.py at least once.";

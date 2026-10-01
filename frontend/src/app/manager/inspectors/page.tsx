@@ -15,6 +15,7 @@ import {
   unrosteredProfiles,
   type InspectorProfile,
 } from "./lib/roster";
+import { mlServiceFetch } from "@/lib/ml-service";
 
 /**
  * The optimizer's roster slots, read from its latest solve rather than a
@@ -36,8 +37,7 @@ async function fetchSolverRoster(): Promise<SolverRoster | null> {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
   if (!baseUrl) return null;
   try {
-    const res = await fetch(`${baseUrl}/api/v1/latest-schedule`, {
-      cache: "no-store",
+    const res = await mlServiceFetch("/api/v1/latest-schedule", {
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return null;

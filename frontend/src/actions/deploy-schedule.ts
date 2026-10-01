@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { currentWeekMonday } from "@/lib/current-week";
+import { mlServiceFetch } from "@/lib/ml-service";
 
 interface ScheduleRow {
   inspector: string;
@@ -77,7 +78,7 @@ async function fetchAndMapLatestSchedule(
 
   let data: LatestScheduleResponse;
   try {
-    const res = await fetch(`${baseUrl}/api/v1/latest-schedule`, { cache: "no-store" });
+    const res = await mlServiceFetch("/api/v1/latest-schedule");
     if (res.status === 404) {
       return {
         ok: false,
