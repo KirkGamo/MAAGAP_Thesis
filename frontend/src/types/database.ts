@@ -114,6 +114,12 @@ export type Database = {
           latitude: number | null; // geocoded from `location` -- see scripts/geocode_projects.py
           longitude: number | null;
           shap_top_features: ShapFeature[] | null; // see ShapFeature's own doc comment
+          /** Which meta-learner produced risk_tier (D21). "three_learner" is
+           * RF + XGBoost + LSTM; "two_learner" is RF + XGBoost, used where no
+           * LSTM event sequence exists -- currently 72% of rows, and 76% of
+           * the High/Critical ones the optimizer schedules. NULL for rows
+           * scored before the column was added. */
+          score_basis: "three_learner" | "two_learner" | null;
         };
         Insert: Partial<Database["public"]["Tables"]["projects"]["Row"]> & {
           project_key: string;

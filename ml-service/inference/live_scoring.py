@@ -122,6 +122,10 @@ class LiveScoreResult:
     # inference/explain.py). None if SHAP computation itself failed; a live
     # rescore should never fail outright just because its explanation did.
     shap_top_features: Optional[list] = None
+    # D21 provenance: "three_learner" when a real LSTM sequence was available,
+    # "two_learner" when it was not. Mirrors projects.score_basis so a live
+    # re-score cannot leave a stale provenance tag behind it.
+    score_basis: Optional[str] = None
     message: str = ""
 
 
@@ -353,23 +357,54 @@ def score_project(
         lstm_model = keras.models.load_model(ARTIFACTS_DIR / "lstm_model.keras")
         lstm_prob = float(lstm_model.predict(scaled, verbose=0).ravel()[0])
     else:
+        lstm_prob = None
+
+    # Which meta-learner scores this project depends on whether a real LSTM
+    # sequence existed -- NOT on inventing one.
+    #
+    # This used to substitute `lstm_prob = (rf_prob + xgb_prob) / 2` and feed
+    # the three-learner model, with a comment explaining that tabular-only
+    # scoring "is not supported by the current 3-feature meta-learner". That
+    # was true and honest when written. D21 then built exactly that missing
+    # model -- a two-learner meta-model trained on the full 4,119-row OOF set
+    # -- and wired it into the batch path, but this live path was never
+    # updated.
+    #
+    # The consequence was worse than an approximation. 72% of projects have no
+    # LSTM sequence, so a field report on any of them fabricated a model input
+    # here while the batch seed scored the same project with a properly trained
+    # model. The two paths disagreed on the same project, for no reason a user
+    # could see. Fabricating the input is also precisely what D21 declined to
+    # do, on the grounds that it manufactures information rather than
+    # recovering it.
+    if lstm_prob is not None:
+        meta_learner = joblib.load(ARTIFACTS_DIR / "meta_learner.joblib")
+        X_meta = np.array([[rf_prob, xgb_prob, lstm_prob]])
+        score_basis = "three_learner"
+    else:
+        two_path = ARTIFACTS_DIR / "meta_learner_two.joblib"
+        if not two_path.exists():
+            raise FileNotFoundError(
+                f"{project_key} has no LSTM sequence and {two_path.name} is missing. "
+                "Run models/train_meta_learner.py to build the two-learner fallback; "
+                "this path will not fabricate an LSTM probability to work around it."
+            )
         logger.info(
-            "No LSTM sequence available for %s — scoring with tabular base learners only "
-            "is not supported by the current 3-feature meta-learner. Falling back to the "
-            "average of the two tabular probabilities as an approximation.",
+            "No LSTM sequence for %s — scoring with the two-learner model (D21), the "
+            "same model the batch path uses for these projects.",
             project_key,
         )
-        lstm_prob = (rf_prob + xgb_prob) / 2.0
+        meta_learner = joblib.load(two_path)
+        X_meta = np.array([[rf_prob, xgb_prob]])
+        score_basis = "two_learner"
 
-    meta_learner = joblib.load(ARTIFACTS_DIR / "meta_learner.joblib")
-    X_meta = np.array([[rf_prob, xgb_prob, lstm_prob]])
     meta_prob = float(meta_learner.predict_proba(X_meta)[:, 1][0])
     risk_tier = probability_to_risk_tier(meta_prob)
 
     _persist_live_score(
         project_key=project_key, risk_tier=risk_tier, meta_prob=meta_prob,
         rf_prob=rf_prob, xgb_prob=xgb_prob, lstm_prob=lstm_prob,
-        shap_top_features=shap_top_features,
+        shap_top_features=shap_top_features, score_basis=score_basis,
         status_observed=status_observed, percent_complete=percent_complete,
         amount_spent=amount_spent, observed_at=observed_at,
     )
@@ -377,7 +412,7 @@ def score_project(
     return LiveScoreResult(
         project_key=project_key, found=True, risk_tier=risk_tier, meta_prob=meta_prob,
         random_forest_prob=rf_prob, xgboost_prob=xgb_prob, lstm_prob=lstm_prob,
-        shap_top_features=shap_top_features,
+        shap_top_features=shap_top_features, score_basis=score_basis,
         message="Re-scored successfully.",
     )
 

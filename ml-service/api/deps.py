@@ -32,6 +32,27 @@ RATE_LIMIT_MAX_REQUESTS = settings.rate_limit_per_minute
 
 _rate_buckets: dict[str, list[float]] = defaultdict(list)
 
+# A bucket is only pruned when THAT client calls again, so a caller that
+# appears once and never returns keeps its entry forever. On a public service
+# that is an unbounded dict keyed by every IP that has ever touched it --
+# scanners included. Measured: 5,000 one-time clients leave 5,000 permanent
+# entries. Small individually, never reclaimed.
+#
+# A periodic sweep bounds it. Done on a call counter rather than a timer so it
+# needs no background task and costs nothing when the service is idle.
+_SWEEP_EVERY_N_REQUESTS = 500
+_requests_since_sweep = 0
+
+
+def _sweep_rate_buckets(now: float, window: float) -> None:
+    """Drop buckets whose every timestamp has aged out."""
+    cutoff = now - window
+    stale = [key for key, hits in _rate_buckets.items() if not hits or hits[-1] <= cutoff]
+    for key in stale:
+        del _rate_buckets[key]
+    if stale:
+        logger.debug("Rate limiter swept %d stale client bucket(s).", len(stale))
+
 
 def _client_key(request: Optional[Request]) -> str:
     if request is None:
@@ -46,8 +67,15 @@ def _check_rate_limit(request: Optional[Request]) -> None:
     """Sliding-window limit per client. Raises 429 when exceeded."""
     if RATE_LIMIT_MAX_REQUESTS <= 0:
         return
+    global _requests_since_sweep
+
     key = _client_key(request)
     now = time.monotonic()
+
+    _requests_since_sweep += 1
+    if _requests_since_sweep >= _SWEEP_EVERY_N_REQUESTS:
+        _requests_since_sweep = 0
+        _sweep_rate_buckets(now, RATE_LIMIT_WINDOW_SECONDS)
     bucket = _rate_buckets[key]
     cutoff = now - RATE_LIMIT_WINDOW_SECONDS
     bucket[:] = [t for t in bucket if t > cutoff]

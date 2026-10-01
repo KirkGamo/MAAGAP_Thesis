@@ -159,7 +159,11 @@ def _run_rescore(payload: UpdateMonitoringPayload) -> None:
         logger.info("Photo attached to %s's monitoring report: %s", payload.project_key, payload.photo_url)
 
     _maybe_patch_supabase(
-        payload.project_key, result.risk_tier, result.meta_prob, result.shap_top_features
+        payload.project_key,
+        result.risk_tier,
+        result.meta_prob,
+        result.shap_top_features,
+        score_basis=result.score_basis,
     )
     _mark_rescore_state(payload.report_id, "done")
 
@@ -169,6 +173,7 @@ def _maybe_patch_supabase(
     risk_tier: Optional[str],
     risk_probability: Optional[float],
     shap_top_features: Optional[list] = None,
+    score_basis: Optional[str] = None,
 ) -> None:
     """Best-effort push of the refreshed score back into Supabase's
     `projects` table, so the Manager Portal's backlog/map views reflect it
@@ -191,6 +196,13 @@ def _maybe_patch_supabase(
         from supabase import create_client
 
         update_payload = {"risk_tier": risk_tier, "risk_probability": risk_probability}
+        # Provenance travels with the score it describes. Without this a live
+        # re-score could leave projects.score_basis saying "two_learner" on a
+        # row the three-learner model had just produced, or the reverse -- a
+        # provenance field that silently stops matching its own value is worse
+        # than none.
+        if score_basis is not None:
+            update_payload["score_basis"] = score_basis
         if shap_top_features is not None:
             update_payload["shap_top_features"] = shap_top_features
 
