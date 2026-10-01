@@ -13,10 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
@@ -38,7 +35,6 @@ OPTIMIZER_RUN_STALE_SECONDS = 30 * 60
 
 
 def _read_optimizer_status() -> dict:
-    import json
 
     if not OPTIMIZER_STATUS_PATH.exists():
         return {"state": "idle"}
@@ -49,7 +45,6 @@ def _read_optimizer_status() -> dict:
 
 
 def _write_optimizer_status(state: str, started_at: str, error: Optional[str] = None) -> None:
-    import json
 
     payload = {
         "state": state,

@@ -75,7 +75,6 @@ import datetime as dt
 import json
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -244,7 +243,7 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
     try:
         scored = score_ongoing_projects()
         scored_lookup = scored.set_index("project_key")[
-            ["risk_tier", "meta_prob", "shap_top_features"]
+            ["risk_tier", "meta_prob", "shap_top_features", "score_basis"]
         ].to_dict("index")
     except Exception:
         logger.exception(
@@ -295,6 +294,9 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
             # for the same unscored population risk_tier/risk_probability
             # already leave NULL (no LSTM sequence coverage, etc.).
             "shap_top_features": score.get("shap_top_features") if score else None,
+            # D21 provenance: which meta-learner produced risk_tier. Dropped
+            # automatically below if the column has not been added yet.
+            "score_basis": score.get("score_basis") if score else None,
         })
 
     logger.info(
@@ -303,6 +305,29 @@ def build_project_rows(limit: Optional[int] = None) -> list[dict]:
         len(rows), scored_count, len(rows) - scored_count, unmapped_municipality_count,
     )
     return [{k: _clean_nan(v) for k, v in r.items()} for r in rows]
+
+
+# Columns that depend on a hand-applied migration. If the database does not
+# have one yet, the seed drops it and continues rather than failing outright.
+OPTIONAL_COLUMNS = ("score_basis",)
+
+
+def _is_missing_column_error(exc: Exception) -> bool:
+    """True when PostgREST rejected a column this database does not have.
+
+    42703 is Postgres's undefined_column; PGRST204 is PostgREST's own
+    "column not found in the schema cache" for writes. Mirrors
+    frontend/src/lib/postgrest-errors.ts, which makes the same distinction for
+    the same reason.
+    """
+    text = f"{getattr(exc, 'code', '')} {exc}".lower()
+    return (
+        "42703" in text
+        or "pgrst204" in text
+        or "does not exist" in text
+        or "could not find the" in text
+        and "column" in text
+    )
 
 
 def _fetch_all_live_rows(client, columns: str = "*") -> list[dict]:
@@ -413,7 +438,26 @@ def push_to_supabase(
 
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
-        result = client.table(STATUS_TABLE).upsert(batch, on_conflict="project_key").execute()
+        try:
+            result = client.table(STATUS_TABLE).upsert(batch, on_conflict="project_key").execute()
+        except Exception as exc:
+            # This repo applies add_*.sql migrations by hand in the Supabase SQL
+            # editor, so code and schema are routinely out of step for a while.
+            # A column the database does not have yet must degrade, not abort a
+            # 2,393-row seed -- but ONLY for that specific error, so a genuine
+            # write failure still surfaces.
+            if not _is_missing_column_error(exc):
+                raise
+            missing = [c for c in OPTIONAL_COLUMNS if c in batch[0]]
+            logger.warning(
+                "Upsert rejected an unknown column (%s). Retrying without %s — run the "
+                "matching frontend/supabase/add_*.sql migration to persist it.",
+                str(exc)[:120], missing or "the optional columns",
+            )
+            for row in batch:
+                for col in OPTIONAL_COLUMNS:
+                    row.pop(col, None)
+            result = client.table(STATUS_TABLE).upsert(batch, on_conflict="project_key").execute()
         logger.info(
             "Upserted batch %d-%d (%d rows). Supabase returned %d rows.",
             i, i + len(batch), len(batch), len(result.data or []),

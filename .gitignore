@@ -98,7 +98,12 @@ htmlcov/
 # Snapshot of the trained artifacts taken before the D16 retrain, kept for
 # rollback and for reproducing that decision's before/after comparison. Same
 # class as artifacts/ above: model binaries, local only.
-/ml-service/artifacts_pre_d16/
+# Every pre-retrain snapshot, not just D16's. These are taken before each
+# controlled retrain (D16, D19 weather, D20 contractor drop, D22 PSA) so a
+# before/after comparison stays reproducible, and they are the same class as
+# artifacts/ above: model binaries and prediction dumps, local only. The
+# glob covers future ones without needing another edit here.
+/ml-service/artifacts_pre_*/
 *.npy
 *.parquet
 *.pkl

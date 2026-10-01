@@ -45,7 +45,6 @@ async def get_model_metrics(
     its own reported accuracy (recomputing it against y_true confirms this:
     the resulting accuracy matches meta_learner_metrics.json's exactly)."""
     _check_webhook_secret(x_webhook_secret)
-    import json
 
     def _read_json(filename: str) -> Optional[dict]:
         path = ARTIFACTS_DIR / filename

@@ -129,7 +129,7 @@ sys.path.insert(0, str(ML_SERVICE_DIR / "models"))
 
 from data_pipeline.preprocess import canonicalize_municipality  # noqa: E402
 from train_trees import build_feature_matrix  # noqa: E402
-from train_lstm import PAD_VALUE, apply_sequence_scaler  # noqa: E402
+from train_lstm import apply_sequence_scaler  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Risk tier thresholds — imported from the single shared definition rather than
@@ -876,9 +876,6 @@ def build_and_solve_schedule(
 
     # Realized cost and how hard the two new constraints bound, so a reader can
     # see whether budget or vehicles actually shaped this particular solve.
-    realized_cluster_weeks = int(
-        sum(1 for i in inspectors for c in clusters if (pulp.value(z[i][c]) or 0) > 0.5)
-    )
     realized_cost = visit_cost_php * len(schedule_df) + sum(
         cluster_cost_of[c]
         for i in inspectors

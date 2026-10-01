@@ -17,7 +17,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from api.deps import _check_rate_limit, _check_webhook_secret, settings
-from inference.live_scoring import ARTIFACTS_DIR, LIVE_SCORES_PATH, score_project
+from inference.live_scoring import LIVE_SCORES_PATH, score_project
 
 logger = logging.getLogger("maagap.api.monitoring")
 
@@ -256,7 +256,6 @@ async def get_live_score(
     actually completed, since the POST routes above return before scoring
     finishes."""
     _check_webhook_secret(x_webhook_secret)
-    import json
 
     if not LIVE_SCORES_PATH.exists():
         raise HTTPException(status_code=404, detail="No live scores recorded yet.")

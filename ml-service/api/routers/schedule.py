@@ -38,8 +38,6 @@ async def get_latest_schedule(
     Read-only: this does NOT re-run optimization_engine.py. It serves
     whatever that script last wrote to disk."""
     _check_webhook_secret(x_webhook_secret)
-    import csv
-    import json
 
     schedule_path = ARTIFACTS_DIR / "inspector_schedule.csv"
     if not schedule_path.exists():
