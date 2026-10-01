@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RiskMarker } from "./risk-marker";
 
 export interface WeekMatrixCell {
   count: number;
@@ -72,17 +73,9 @@ export function WeekMatrix({ days, rows }: { days: readonly string[]; rows: Week
                       <span className="inline-flex items-center gap-1 tabular-nums text-slate-700">
                         {cell.count}
                         {cell.critical > 0 && (
-                          <span
-                            className="size-1.5 rounded-full bg-red-500"
-                            title={`${cell.critical} Critical`}
-                          />
+                          <RiskMarker tier="Critical" count={cell.critical} />
                         )}
-                        {cell.high > 0 && (
-                          <span
-                            className="size-1.5 rounded-full bg-orange-500"
-                            title={`${cell.high} High`}
-                          />
-                        )}
+                        {cell.high > 0 && <RiskMarker tier="High" count={cell.high} />}
                       </span>
                     ) : (
                       <span className="text-slate-300">·</span>

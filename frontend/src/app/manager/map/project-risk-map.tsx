@@ -29,21 +29,48 @@ function riskColor(tier: string | null): string {
   return tier ? RISK_COLORS[tier] ?? UNSCORED_COLOR : UNSCORED_COLOR;
 }
 
+/**
+ * F3: marker SIZE carries the tier as well as colour.
+ *
+ * The four tier colours run green -> amber -> orange -> red, which under
+ * deuteranopia and protanopia collapse toward similar yellow-browns. Clicking a
+ * marker has always revealed the tier as text in its popup, so the information
+ * was never unreachable — but at-a-glance scanning is what a risk map is FOR,
+ * and that was colour-only.
+ *
+ * Size is the right second channel here rather than shape, because the tiers
+ * are ORDERED. A bigger marker reading as more urgent preserves that ordering
+ * without anyone needing a legend; four arbitrary shapes would not.
+ */
+const RISK_SIZES: Record<string, number> = {
+  Low: 10,
+  Medium: 13,
+  High: 17,
+  Critical: 21,
+};
+const UNSCORED_SIZE = 10;
+
+function riskSize(tier: string | null): number {
+  return tier ? RISK_SIZES[tier] ?? UNSCORED_SIZE : UNSCORED_SIZE;
+}
+
 function riskDivIcon(tier: string | null) {
   const color = riskColor(tier);
+  const size = riskSize(tier);
+  const label = tier ? `${tier} risk` : "Unscored";
   return L.divIcon({
     className: "",
-    html: `<span style="
+    html: `<span role="img" aria-label="${label}" title="${label}" style="
       display:block;
-      width:16px;height:16px;
+      width:${size}px;height:${size}px;
       background:${color};
       border:2px solid white;
       border-radius:9999px;
       box-shadow:0 0 0 1px rgba(0,0,0,0.15);
     "></span>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
-    popupAnchor: [0, -8],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 }
 

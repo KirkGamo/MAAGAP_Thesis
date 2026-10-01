@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { RiskMarker } from "./risk-marker";
 
 export interface DayTabInfo {
   /** "All" or a workday ("Mon".."Fri"). */
@@ -54,18 +55,8 @@ export function DayStrip({ tabs, current }: { tabs: DayTabInfo[]; current: strin
           >
             {tab.count}
           </span>
-          {tab.critical > 0 && (
-            <span
-              className="size-1.5 rounded-full bg-red-500"
-              title={`${tab.critical} Critical-risk visit(s)`}
-            />
-          )}
-          {tab.high > 0 && (
-            <span
-              className="size-1.5 rounded-full bg-orange-500"
-              title={`${tab.high} High-risk visit(s)`}
-            />
-          )}
+          {tab.critical > 0 && <RiskMarker tier="Critical" count={tab.critical} />}
+          {tab.high > 0 && <RiskMarker tier="High" count={tab.high} />}
         </button>
       ))}
     </div>
