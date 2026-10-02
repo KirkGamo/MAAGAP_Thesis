@@ -83,10 +83,18 @@ services:
       replicas: 1
       resources:
         limits:
-          # TensorFlow plus a 4 MB random forest plus SHAP on a 4.2 MB
-          # background set. A CBC solve is the memory peak, not the steady
-          # state; 2 GB is comfortable and 1 GB risks the OOM killer landing
-          # mid-solve, which looks exactly like the process being recycled.
+          # MEASURED, not estimated. A full optimizer run -- import TensorFlow,
+          # load the forest and XGBoost, score all 2,393 ongoing projects, SHAP
+          # the High/Critical ones, then solve with CBC -- peaked at 485 MB
+          # resident. The breakdown: ~335 MB is just the imports (TensorFlow
+          # alone accounts for 187 MB of that), and the scoring plus solve adds
+          # ~105 MB on top.
+          #
+          # 2 GB is therefore roughly 4x headroom, kept deliberately rather than
+          # trimmed to fit: the figure above is Windows RSS and the container is
+          # Linux, MAX_PROJECTS_CONSIDERED could be raised, and an OOM kill
+          # landing mid-solve is indistinguishable from the process being
+          # recycled -- the exact failure this deployment is shaped to avoid.
           memory: 2G
 
     # Dokploy's Traefik reverse proxy terminates TLS and routes to this port.

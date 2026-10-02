@@ -117,6 +117,53 @@ Runtime assets: all 12 required and 7 optional file(s) present.
 If `supabase_writes=off`, the service will score correctly and silently write
 nothing back — reports sit at "Awaiting re-score" forever.
 
+### 4b. Sizing the VPS — and why CPU matters more than RAM here
+
+Measured on a full optimizer run (import TensorFlow, load the forest and
+XGBoost, score all 2,393 ongoing projects, SHAP the High/Critical ones, solve
+with CBC):
+
+| | |
+|---|---|
+| Peak resident memory | **485 MB** |
+| — of which imports alone | 335 MB (TensorFlow 187 MB of it) |
+| — scoring + solve adds | ~105 MB |
+| Wall clock, end to end | **73 s** (60 s of it the CBC cap) |
+| Image size, estimated | ~1.5–2 GB (`tensorflow-cpu` dominates) |
+
+So **memory is not the constraint** — the 2 GB container limit is ~4× headroom,
+kept for safety rather than need. A 2 vCPU / 4 GB / 40 GB VPS is comfortable:
+~0.5 GB for the service, the rest for the OS, Dokploy and Traefik, and disk
+headroom for Docker layers across rebuilds.
+
+**CPU is the constraint, and it is not only a performance question.**
+`SOLVER_TIME_LIMIT_SECONDS = 60` is a wall-clock cap, and on the development
+machine the solve used **60.2 s of it — 100%**. CBC returns the best solution
+found when the clock runs out, not a proven optimum; `optimization_engine.py`
+already logs a warning saying exactly that.
+
+The consequence for deployment is direct: a slower or burstable vCPU explores
+fewer nodes in the same 60 seconds and therefore **produces a worse schedule,
+silently**. Nothing errors. The schedule is simply less good, and no one looking
+at the output can tell. So:
+
+- **Buy dedicated vCPU, not shared or burstable.** A credit-based instance that
+  throttles mid-solve is the worst case, because throttling is invisible in the
+  output.
+- **Check the solver log line on the deployed host after the first real run.**
+  It reports seconds used against the cap and whether the limit was hit. If the
+  deployed host is slower, either raise `SOLVER_TIME_LIMIT_SECONDS` or lower
+  `MAX_PROJECTS_CONSIDERED` (currently 150, with 89 candidates in the measured
+  run) so the solve finishes inside its budget.
+
+**This also has a thesis implication, not just an operational one.** Chapter 4's
+allocation-efficiency figures were measured with this 60 s budget on this
+hardware. Because the cap is wall-clock, the solver's output is
+host-dependent — the same inputs on different hardware can yield different
+schedules. If the deployed instance is the one demonstrated at defence, confirm
+the solve is not time-starved there, or the system shown will be quietly
+underperforming the numbers reported for it.
+
 ### 4a. Dokploy on a VPS
 
 The chosen host. Steps:

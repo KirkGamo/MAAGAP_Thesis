@@ -231,6 +231,22 @@ non-obvious enough to lose an afternoon to:
 - Tag every image (`maagap-ml:<git-sha>`) or there is nothing to roll back to.
   Because the models live in the image, an image rollback *is* a model rollback.
 
+- **The CBC solve is time-capped and currently saturates its cap, which makes
+  the schedule host-dependent.** `SOLVER_TIME_LIMIT_SECONDS = 60` is wall-clock,
+  and a measured full run on the development machine used 60.2s of it (100%, 89
+  candidates, 2,670 binary vars). CBC returns the best solution found at the
+  buzzer, not a proven optimum. A slower or burstable vCPU therefore produces a
+  *worse schedule with no error* — nothing fails, the allocation is just less
+  good and the output does not say so. Two consequences: provision dedicated
+  vCPU rather than shared/burstable, and note that Chapter 4's efficiency
+  figures were measured under this budget on this hardware, so the same inputs
+  on different hardware can yield a different schedule. Check the solver's
+  "Ns of the 60s cap" log line on the deployed host before trusting its output,
+  and raise the cap or lower `MAX_PROJECTS_CONSIDERED` (150) if it is starved.
+- Measured resource profile of a full optimizer run, for sizing: peak 485 MB
+  resident (335 MB of that is imports alone, TensorFlow 187 MB of those), 73s
+  wall clock end to end, image ~1.5-2 GB. Memory is not the constraint; CPU is.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.
