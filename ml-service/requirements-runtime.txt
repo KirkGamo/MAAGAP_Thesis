@@ -1,0 +1,63 @@
+# MAAGAP ML microservice — RUNTIME dependencies, exactly pinned.
+#
+# This is not requirements.txt. That file describes what the whole pipeline
+# needs to run -- ingest, entity resolution, feature engineering, training,
+# evaluation -- with floor constraints suitable for a development environment.
+# This file describes what the deployed container needs to answer a request,
+# and nothing else.
+#
+# WHY THE PINS ARE EXACT, NOT FLOORS
+# ---------------------------------------------------------------------------
+# The image ships pickled models. random_forest.joblib and meta_learner*.joblib
+# were written by scikit-learn 1.9.0; xgboost.joblib by xgboost 3.3.0;
+# lstm_model.keras by Keras 3.15 / TensorFlow 2.21. Unpickling a scikit-learn
+# estimator under a different minor version is explicitly unsupported -- it
+# ranges from an InconsistentVersionWarning through silently-altered attribute
+# defaults to an outright exception, and the dangerous case is the middle one,
+# where the model loads and scores differently than it did in evaluation.
+#
+# A floor constraint here would mean the image's models are scored by whatever
+# versions happened to be current on build day, which makes a rebuild a
+# silent, untested model change. Exact pins make the artifacts and the code
+# that loads them a matched set. Bump them together with a retrain, never on
+# their own.
+#
+# WHY tensorflow-cpu
+# ---------------------------------------------------------------------------
+# `tensorflow` on Linux pulls the full CUDA/cuDNN stack -- several hundred MB
+# of wheels for hardware the target host does not have. (On Windows, where
+# this was developed, plain `tensorflow` has been CPU-only since 2.11, which
+# is why the local requirements.txt does not distinguish them.) TensorFlow is
+# here for exactly one thing: LSTM inference on the ~28% of projects that have
+# a sequence long enough to feed it.
+#
+# NOT INCLUDED, deliberately -- build-time only, verified by import analysis:
+#   openpyxl    reading the PPDO Excel workbooks (ingest)
+#   rapidfuzz   contractor/municipality entity resolution (ingest)
+#   pdfplumber  PAGASA weather PDF extraction (reference data)
+# Each is a pipeline dependency. None is imported by main.py, api/, inference/,
+# common/, optimization_engine.py, or models/train_trees.py (which the scoring
+# path imports for build_feature_matrix).
+
+# -- model loading and scoring; must match the artifacts ---------------------
+numpy==2.4.6
+pandas==2.3.3
+scikit-learn==1.9.0
+xgboost==3.3.0
+joblib==1.5.3
+tensorflow-cpu==2.21.0
+keras==3.15.0
+
+# -- interpretability -------------------------------------------------------
+shap==0.52.0
+
+# -- optimization (CBC ships with the PuLP wheel) ---------------------------
+pulp==3.3.2
+
+# -- HTTP service -----------------------------------------------------------
+fastapi==0.140.7
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+
+# -- writing results back ---------------------------------------------------
+supabase==2.31.0

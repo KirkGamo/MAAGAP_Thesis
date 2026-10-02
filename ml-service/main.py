@@ -55,6 +55,19 @@ except ImportError:  # imported from inside ml-service/ without the package root
 settings = get_settings()
 settings.log_startup_summary()
 
+# ---------------------------------------------------------------------------
+# D1: the models and prepared data are verified here, before the port opens.
+#
+# artifacts/ and data/ready/ are gitignored, so a container built from a clone
+# has neither -- and without this check it would import cleanly, answer
+# /health with {"status": "ok"}, pass its readiness probe, and only fail on the
+# first real request from inside joblib.load(). Same rule as the webhook
+# secret: a missing required input is a refusal to start, not a surprise later.
+# ---------------------------------------------------------------------------
+from common.runtime_assets import verify_runtime_assets  # noqa: E402
+
+verify_runtime_assets()
+
 app = FastAPI(
     title="MAAGAP ML Service",
     description=(

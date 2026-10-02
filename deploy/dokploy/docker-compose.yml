@@ -1,0 +1,123 @@
+# MAAGAP ML service — Dokploy deployment
+# =============================================================================
+# This is the deployed topology, as distinct from the repository-root
+# docker-compose.yml, which exists only to build and drive the image locally.
+#
+# In Dokploy: create a Compose application, point it at this repository, set
+# "Compose Path" to deploy/dokploy/docker-compose.yml, and set the environment
+# variables listed below in the application's Environment tab — not here. This
+# file is committed; the service-role key bypasses every RLS policy in the
+# database and must never be in it.
+#
+# BUILD CONTEXT IS THE REPOSITORY ROOT. `context: ../..` resolves to the repo
+# root from this file's directory, because the service resolves
+# DATA_READY_DIR = REPO_ROOT/data/ready — data/ready/ sits above ml-service/
+# and is outside any context rooted there. See ml-service/Dockerfile's header.
+
+services:
+  ml-service:
+    build:
+      context: ../..
+      dockerfile: ml-service/Dockerfile
+
+    restart: unless-stopped
+
+    environment:
+      # --- required ---------------------------------------------------------
+      # The service refuses to start without a secret, and rejects placeholder
+      # values like "changeme" by name. Must be byte-identical to the frontend's
+      # ML_SERVICE_WEBHOOK_SECRET; the frontend sends it as X-Webhook-Secret on
+      # every server-side call.
+      ML_SERVICE_WEBHOOK_SECRET: ${ML_SERVICE_WEBHOOK_SECRET:?generate one and set it in Dokploy}
+
+      # Without both of these the service scores correctly and silently writes
+      # nothing back — monitoring reports sit at "Awaiting re-score" forever.
+      # Note the name: the frontend calls this NEXT_PUBLIC_SUPABASE_URL.
+      SUPABASE_URL: ${SUPABASE_URL:?set it in Dokploy}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?set it in Dokploy}
+
+      # --- deliberately empty ----------------------------------------------
+      # The Next.js server runtime is the only caller, and CORS does not apply
+      # server-side. If a CORS error appears, find out why a browser is calling
+      # this service rather than adding an origin here.
+      ML_SERVICE_ALLOWED_ORIGINS: ""
+
+      # --- tuning -----------------------------------------------------------
+      ML_SERVICE_RATE_LIMIT_PER_MINUTE: ${ML_SERVICE_RATE_LIMIT_PER_MINUTE:-10}
+
+      # ALLOW_UNAUTHENTICATED is intentionally absent. Setting it on a
+      # host reachable from the internet opens /api/v1/update-monitoring, which
+      # mutates risk tiers, and /api/v1/run-optimizer, which spends minutes of
+      # CPU per call, to anyone who finds the port.
+
+    # -------------------------------------------------------------------------
+    # The results volume, mounted at the output directory the image sets via
+    # ML_SERVICE_OUTPUT_DIR — NOT over artifacts/.
+    #
+    # A solve costs minutes of CBC time and inspector_schedule.csv is how
+    # /api/v1/latest-schedule answers, so a restart between solving and
+    # deploying a schedule would otherwise throw the solve away.
+    #
+    # Mounting this over /app/ml-service/artifacts instead would appear to work
+    # and would be a serious bug: Docker fills an empty named volume from the
+    # image on first run and never refreshes it, so the volume would shadow the
+    # models permanently and a rebuild with a retrained model would keep
+    # scoring with the old weights. common/paths.py has the full reasoning.
+    # -------------------------------------------------------------------------
+    volumes:
+      - maagap-outputs:/app/ml-service/outputs
+
+    # -------------------------------------------------------------------------
+    # ONE REPLICA, and it is load-bearing (R3).
+    #
+    # optimizer_run_status.json is read and written with no locking, so the
+    # optimizer's 409 "already running" guard holds only within one process.
+    # Two replicas would each have their own view: both see "idle", both start a
+    # multi-minute CBC solve over the same models, and the second to finish
+    # overwrites the first's schedule. The rate limiter is in-process and
+    # divides the same way. The image pins --workers 1 for the same reason.
+    #
+    # Raising this requires moving run state into Supabase first.
+    # -------------------------------------------------------------------------
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          # TensorFlow plus a 4 MB random forest plus SHAP on a 4.2 MB
+          # background set. A CBC solve is the memory peak, not the steady
+          # state; 2 GB is comfortable and 1 GB risks the OOM killer landing
+          # mid-solve, which looks exactly like the process being recycled.
+          memory: 2G
+
+    # Dokploy's Traefik reverse proxy terminates TLS and routes to this port.
+    # Set the domain in Dokploy's Domains tab rather than with labels here, so
+    # certificate issuance is managed for you.
+    #
+    # DO NOT publish this port to the host. Traefik reaches the container over
+    # Dokploy's internal network; a `ports:` mapping would additionally expose
+    # :8000 on the VPS's public interface, bypassing TLS entirely — and the
+    # shared secret travels in a request header, so plain HTTP would put it on
+    # the wire in cleartext on every call.
+    expose:
+      - "8000"
+
+    healthcheck:
+      # /health is deliberately the one unauthenticated route, so the probe
+      # needs no secret. start_period covers the TensorFlow import and the
+      # first model load, which take tens of seconds on a small VPS.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+
+    logging:
+      # Bounded, or an optimizer run's per-iteration output fills the VPS disk
+      # over a few weeks and takes Postgres or the Docker daemon down with it.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  maagap-outputs:

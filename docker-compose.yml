@@ -1,0 +1,65 @@
+# MAAGAP — local verification of the production ML-service image
+# =============================================================================
+# This is NOT the deployment topology. The frontend deploys to Vercel and the
+# database is hosted Supabase; neither belongs in a compose file. What this
+# does is let the image that will be deployed be built and driven locally with
+# one command, so the thing that gets verified is the artifact that ships
+# rather than a `uvicorn --reload` process that happens to share its source.
+#
+#   docker compose up --build
+#   curl -s localhost:8000/health
+#   curl -s -H "X-Webhook-Secret: $ML_SERVICE_WEBHOOK_SECRET" \
+#        localhost:8000/api/v1/model-metrics | head
+#
+# The build context is the repository root for the reason spelled out in
+# ml-service/Dockerfile: data/ready/ sits above ml-service/, and the service
+# resolves it as REPO_ROOT/data/ready.
+
+services:
+  ml-service:
+    build:
+      context: .
+      dockerfile: ml-service/Dockerfile
+    image: maagap-ml:local
+    ports:
+      - "8000:8000"
+    environment:
+      # Read from the host environment or ml-service/.env — never hardcoded
+      # here, because this file is committed. The `:?` form fails the `up`
+      # with a named error instead of starting a container that cannot work.
+      ML_SERVICE_WEBHOOK_SECRET: ${ML_SERVICE_WEBHOOK_SECRET:?set it in ml-service/.env or export it}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      ML_SERVICE_RATE_LIMIT_PER_MINUTE: ${ML_SERVICE_RATE_LIMIT_PER_MINUTE:-10}
+      # Left empty on purpose. The frontend calls this service from the Next.js
+      # server runtime, where CORS does not apply.
+      ML_SERVICE_ALLOWED_ORIGINS: ""
+    env_file:
+      - path: ./ml-service/.env
+        required: false
+    # One replica, matching the Dockerfile's single worker. The optimizer's
+    # 409 concurrency guard is a file in artifacts/ with no locking, so a
+    # second container would not see the first one's run (R3).
+    deploy:
+      replicas: 1
+    restart: unless-stopped
+
+# No volume here, on purpose — but not for the reason this comment used to give.
+#
+# The service's four outputs (inspector_schedule.csv, its summary,
+# optimizer_run_status.json, live_scores.json) now live in their own directory,
+# /app/ml-service/outputs, set by the image via ML_SERVICE_OUTPUT_DIR. So there
+# IS a safe mount point, and the deployed config uses it —
+# deploy/dokploy/docker-compose.yml mounts a named volume there.
+#
+# For a local verification run, letting the results die with the container is
+# the right behaviour: each `up` starts from the image's state, which is what is
+# being verified, and nothing leaks into the working tree the image was built
+# from. Add `- ./tmp-outputs:/app/ml-service/outputs` if you want to inspect what
+# a solve produced.
+#
+# What must never be mounted is a volume over /app/ml-service/artifacts. Docker
+# fills an empty named volume from the image on first run and never refreshes
+# it, so it would shadow the models permanently: rebuild with a retrained model
+# and the container keeps loading the OLD one while reporting the new image's
+# version. That separation is the whole reason common/paths.py exists.

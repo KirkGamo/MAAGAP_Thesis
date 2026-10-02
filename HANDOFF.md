@@ -167,6 +167,70 @@ Why it matters: without them the service still starts and still scores, but **ev
 - **The roster is the binding constraint on the whole prescriptive pipeline.** Exactly one inspector profile exists (Test Inspector → `Inspector_1`) against the solver's six slots, so 21 of the latest solve's 25 visits cannot be deployed to anyone. Not a defect — there are simply no people for slots 2-6 — but nothing downstream can improve until real inspectors are invited and given slots. As of the 2026-09-08 rebuild the Inspectors tab states this on landing and shows which empty slot costs the most, so it no longer has to be rediscovered at deploy time.
 - Climate data coverage gap: the PAGASA weather data request is capped at 31 Dec 2024 (PAGASA's own form limit); 189 of 5,159 labeled rows (3.66%, split-balanced train/test) fall in 2025 and will keep the coarse `is_wet_season_release` proxy instead of real rainfall/wind data once PAGASA data lands. Footnote-scale, not a design concern.
 
+## 7b. Deployment
+
+Full runbook: `docs/DEPLOYMENT.md`. The essentials, because two of them are
+non-obvious enough to lose an afternoon to:
+
+- **Build the image from the repository root, never from `ml-service/`:**
+  `docker build -f ml-service/Dockerfile -t maagap-ml:latest .` The service
+  resolves `DATA_READY_DIR = REPO_ROOT / "data" / "ready"`, so `data/ready/`
+  sits *above* `ml-service/` and is outside a context rooted there. The image
+  mirrors the repo layout (`/app/ml-service` + `/app/data/ready`) rather than
+  flattening it, so paths are identical locally and deployed.
+- **The models are baked into the image.** `artifacts/` and `data/ready/` are
+  gitignored, so a container built from a clone has no models at all. The
+  Dockerfile enumerates the ~15 MB the service actually loads — not
+  `artifacts/` wholesale, since the two `*_regressor.joblib` files are 39.8 MB
+  of training output that nothing at runtime opens.
+- **`ml-service/common/runtime_assets.py` verifies this at startup and refuses
+  to start** when a required file is missing, naming the file and the script
+  that produces it. Without it a model-less container imports cleanly, answers
+  `/health` with `{"status": "ok"}`, passes its readiness probe, and fails on
+  the first real request from inside `joblib.load()`.
+- **One uvicorn worker, and it is load-bearing** (R3).
+  `artifacts/optimizer_run_status.json` is read and written with no locking, so
+  the optimizer's 409 "already running" guard only holds within one process;
+  with two workers both see `idle`, both start a multi-minute CBC solve, and the
+  second to finish overwrites the first's schedule. The in-process rate limiter
+  divides the same way. Do not raise `--workers` without first moving run state
+  into Supabase.
+- **The ML service cannot be serverless.** An optimizer run returns 202 and
+  keeps working in-process for minutes; a platform that freezes or recycles the
+  process after the response kills it halfway and leaves a `running` status
+  nothing will clear.
+- **`requirements-runtime.txt` is pinned exactly, deliberately** — the image
+  ships models pickled by scikit-learn 1.9.0 / xgboost 3.3.0 / Keras 3.15.
+  Floor constraints would make a rebuild a silent, untested model change, and
+  the bad outcome is not an exception but a model that loads and scores
+  *differently* than it did in evaluation. Bump the pins with a retrain, not on
+  their own. It also drops `openpyxl`, `rapidfuzz` and `pdfplumber`, which are
+  ingest-time only (verified by import analysis of the runtime modules).
+- **Results are written to `ML_SERVICE_OUTPUT_DIR`, not `artifacts/`** — new in
+  `ml-service/common/paths.py`. The four mutable files (`inspector_schedule.csv`,
+  its summary, `optimizer_run_status.json`, `live_scores.json`) moved out so a
+  persistent volume can hold them without shadowing the models. Mounting a volume
+  over `artifacts/` would appear to work and be a serious bug: Docker fills an
+  empty named volume from the image once and never refreshes it, so a rebuild
+  with a retrained model would keep scoring with the OLD weights while reporting
+  the new image's version. The variable defaults to `artifacts/`, so local
+  development and the test suite are unchanged; only a deployment sets it. The
+  image also leaves `artifacts/` root-owned, making the models read-only to the
+  service.
+- **Host is a VPS running Dokploy**, config at
+  `deploy/dokploy/docker-compose.yml`. TLS is mandatory, not optional: the shared
+  secret travels in the `X-Webhook-Secret` header, so plain HTTP puts it on the
+  wire in cleartext. Terminate at Dokploy's Traefik and never add a `ports:`
+  mapping, which would publish `:8000` past the proxy. Note that Vercel calls
+  the VPS over the public internet and static egress IPs are not available on
+  its lower plans, so HTTPS + the secret + the rate limiter are the whole of the
+  access control — adequate here, but worth stating rather than assuming.
+- **Reseeding is not a rollback.** `scripts/seed_supabase.py` prunes rows no
+  longer in the population it is given, so running it against a different
+  population deletes rather than restores. Recover from a Supabase backup.
+- Tag every image (`maagap-ml:<git-sha>`) or there is nothing to roll back to.
+  Because the models live in the image, an image rollback *is* a model rollback.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.

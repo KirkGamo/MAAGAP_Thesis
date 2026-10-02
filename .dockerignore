@@ -1,0 +1,92 @@
+# MAAGAP — Docker build context exclusions
+#
+# The ML service image is built from the REPOSITORY ROOT, because data/ready/
+# sits one level above ml-service/ and the service's path constants resolve it
+# as REPO_ROOT/data/ready (see ml-service/Dockerfile's header). That makes the
+# whole repository the build context, so everything the image does not need has
+# to be excluded here or the daemon transfers gigabytes before the first
+# instruction runs.
+#
+# The numbers are the argument: the working tree is ~4.9 GB, of which frontend/
+# alone is 4.6 GB (node_modules and .next), ml-service/ is 177 MB and data/ is
+# 58 MB. The image needs roughly 15 MB of that. Without this file every build
+# would hand the daemon — or push to a remote builder — about three hundred
+# times what it uses.
+#
+# ml-service/Dockerfile COPYs explicit paths rather than `COPY . .`, so nothing
+# listed below could reach the image regardless. This file is about the
+# context: build time, and not sending model snapshots and manuscript PDFs to a
+# remote builder.
+
+# -- VCS and tooling --------------------------------------------------------
+.git
+.gitignore
+.github
+.venv
+venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.claude
+
+# -- the frontend: deployed to Vercel, irrelevant to this image -------------
+frontend
+node_modules
+**/node_modules
+
+# -- data the service does not read -----------------------------------------
+# Only data/ready/ is used at runtime, and only seven files from it (the
+# Dockerfile names them). Everything else is pipeline input or intermediate:
+#   raw/        the PPDO Excel workbooks and PAGASA PDFs as received
+#   processed/  post-ingest, pre-feature-engineering intermediates
+#   external/   PAGASA weather and PSA CPI reference pulls
+#   synthetic/  generated fixtures
+#   backups/    exactly what it says
+data/raw
+data/processed
+data/external
+data/synthetic
+data/backups
+
+# -- superseded model snapshots ---------------------------------------------
+# Kept locally so a retrain's effect can be measured against what preceded it
+# (D16, D21 and the weather/PSA/contractor-drop comparisons all depend on
+# them). 132 MB across four snapshots that nothing at runtime opens, measured,
+# and comparable to artifacts/ itself at 44 MB. These were also once
+# committed by accident -- 32,630 lines in a single `git add -A` -- which is
+# why the pattern is spelled out rather than relying on .gitignore.
+ml-service/artifacts_pre_*
+
+# -- training-only artifacts ------------------------------------------------
+# The Dockerfile enumerates the artifacts it wants, so these are belt-and-braces
+# for context size. The two regressors are 39.8 MB between them and are never
+# loaded by the service -- they produce the MAE figure reported in Chapter 4.
+ml-service/artifacts/*_regressor.joblib
+ml-service/artifacts/oof_predictions_*.csv
+ml-service/artifacts/*.png
+
+# -- documentation and manuscript -------------------------------------------
+second-brain
+docs
+*.md
+*.docx
+*.pdf
+
+# -- tests ------------------------------------------------------------------
+# Not run inside the production image; CI runs them against the source tree.
+tests
+ml-service/tests
+scripts
+
+# -- local configuration ----------------------------------------------------
+# Never bake secrets into an image. Configuration arrives as environment
+# variables from the host's secret store, and common/settings.py's loader is
+# written so that an already-set variable always wins over a .env file.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+**/*.log
