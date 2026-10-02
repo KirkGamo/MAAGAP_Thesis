@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 
 from api.deps import _check_webhook_secret
-from inference.live_scoring import ARTIFACTS_DIR
+from common.paths import SCHEDULE_CSV_PATH, SCHEDULE_SUMMARY_PATH
 
 logger = logging.getLogger("maagap.api.schedule")
 
@@ -39,7 +39,7 @@ async def get_latest_schedule(
     whatever that script last wrote to disk."""
     _check_webhook_secret(x_webhook_secret)
 
-    schedule_path = ARTIFACTS_DIR / "inspector_schedule.csv"
+    schedule_path = SCHEDULE_CSV_PATH
     if not schedule_path.exists():
         raise HTTPException(
             status_code=404,
@@ -49,7 +49,7 @@ async def get_latest_schedule(
     with open(schedule_path, newline="") as f:
         rows = list(csv.DictReader(f))
 
-    summary_path = ARTIFACTS_DIR / "inspector_schedule_summary.json"
+    summary_path = SCHEDULE_SUMMARY_PATH
     summary = json.loads(summary_path.read_text()) if summary_path.exists() else None
 
     generated_at = datetime.fromtimestamp(

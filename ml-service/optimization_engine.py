@@ -125,6 +125,9 @@ DATA_READY_DIR = REPO_ROOT / "data" / "ready"
 ARTIFACTS_DIR = THIS_DIR / "artifacts"
 
 sys.path.insert(0, str(ML_SERVICE_DIR))
+from common.paths import SCHEDULE_CSV_PATH  # noqa: E402
+
+sys.path.insert(0, str(ML_SERVICE_DIR))
 sys.path.insert(0, str(ML_SERVICE_DIR / "models"))
 
 from data_pipeline.preprocess import canonicalize_municipality  # noqa: E402
@@ -929,7 +932,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
-        default=str(ARTIFACTS_DIR / "inspector_schedule.csv"),
+        # Same path the API's background task writes, so a CLI run and a
+        # /api/v1/run-optimizer run cannot disagree about where the schedule is.
+        default=str(SCHEDULE_CSV_PATH),
         help="Output CSV path for the weekly inspector deployment schedule.",
     )
     args = parser.parse_args()

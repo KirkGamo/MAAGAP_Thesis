@@ -76,7 +76,12 @@ ML_SERVICE_DIR = THIS_DIR.parent
 REPO_ROOT = ML_SERVICE_DIR.parent
 DATA_READY_DIR = REPO_ROOT / "data" / "ready"
 ARTIFACTS_DIR = ML_SERVICE_DIR / "artifacts"
-LIVE_SCORES_PATH = ARTIFACTS_DIR / "live_scores.json"
+
+# Results are written to OUTPUT_DIR, which defaults to ARTIFACTS_DIR and is
+# pointed elsewhere by ML_SERVICE_OUTPUT_DIR when deployed -- the models are
+# immutable and come from the image, the results are mutable and belong on a
+# volume. common/paths.py explains why those cannot be the same directory.
+from common.paths import LIVE_SCORES_PATH  # noqa: E402
 
 MAX_LSTM_SEQUENCE_LENGTH = 5
 PAD_VALUE = -1.0

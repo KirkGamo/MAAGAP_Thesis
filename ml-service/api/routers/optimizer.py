@@ -19,14 +19,12 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 
 from api.deps import _check_rate_limit, _check_webhook_secret
-from inference.live_scoring import ARTIFACTS_DIR
+from common.paths import OPTIMIZER_STATUS_PATH, SCHEDULE_CSV_PATH
 
 logger = logging.getLogger("maagap.api.optimizer")
 
 router = APIRouter()
 
-OPTIMIZER_STATUS_PATH = ARTIFACTS_DIR / "optimizer_run_status.json"
-SCHEDULE_CSV_PATH = ARTIFACTS_DIR / "inspector_schedule.csv"
 
 # A "running" status older than this is treated as stale (service was
 # killed mid-run and never wrote a terminal state) rather than blocking
