@@ -297,19 +297,36 @@ non-obvious enough to lose an afternoon to:
   deployed High/Critical scores come from the two-learner model, whose
   `meta_learner_two_metrics.json` is never surfaced.
 
-- **The 60s solver cap introduces run-to-run variance larger than the effects
-  being measured.** Two solves of the same population differing by only two
-  candidate projects (89 vs 87, after the R1 cooldown excluded two) returned
-  objectives of 128.81 and 117.38. Removing two Critical candidates can cost at
-  most 2 x 2.5 = 5.0 of objective, so **at least 6.4 of the 11.44 drop is solver
-  suboptimality, not the input change** -- both runs reported
-  `hit_time_limit: true` at ~100% of the cap, so neither is a proven optimum.
-  Practical consequence: any experiment that compares schedules across small
-  input or parameter changes -- notably the planned R2 alpha-sweep ablation --
-  will be swamped by this noise unless it first raises
-  `SOLVER_TIME_LIMIT_SECONDS`, reduces `MAX_PROJECTS_CONSIDERED`, or averages
-  over repeated solves. Do not attribute a single-run objective difference to a
-  parameter without establishing the solver's own variance first.
+- **The CBC solve is deterministic, and the earlier claim that it was not was
+  wrong.** A controlled study (`scripts/solver_variance_study.py`, results in
+  `artifacts/solver_variance_study.json`) scored the population once and solved
+  the identical 89-candidate pool ten times -- five at the 60s cap, five at
+  180s. Every run returned objective **128.8142**, 60 projects scheduled, and
+  the **identical scheduled set** (mean pairwise Jaccard 1.0000). Objective
+  standard deviation: 0.0000.
+
+  Consequences, including for a claim recorded here earlier and now retracted:
+  - An alpha sweep or any other parameter ablation is **clean**: same input
+    gives the same output, so a difference between arms is a real response, not
+    noise. Averaging over repeated solves would accomplish nothing.
+  - Raising the time limit buys nothing at this pool size. 180s returns exactly
+    what 60s returns; the extra two minutes are spent failing to *prove*
+    optimality, not finding a better answer. `hit_time_limit` stays True at
+    180s for that reason.
+  - **RETRACTED:** the earlier entry claiming "at least 6.4 of the 11.44
+    objective drop is solver suboptimality" was unfounded. It assumed the
+    objective is the sum of risk weights, so that removing two Critical
+    candidates could cost at most 2 x 2.5 = 5.0. The objective also subtracts a
+    travel penalty per inspector-cluster and a cost term (see the `prob +=`
+    block in optimization_engine.py), and the schedule shrank by three visits
+    rather than two, so the drop needs no suboptimality to explain it.
+
+  What remains true: the solver stops on time rather than on a proven bound, so
+  a solution may sit below the true optimum by up to the accepted relative gap.
+  Each parameter value in a sweep is a different problem instance with its own
+  such gap, so very small differences between arms should not be
+  over-interpreted. CBC's actual gap at stop is not currently captured in the
+  run summary; capturing it would turn that caveat into an error bar.
 
 ## 8. Key File Map
 
