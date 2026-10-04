@@ -247,6 +247,28 @@ non-obvious enough to lose an afternoon to:
   resident (335 MB of that is imports alone, TensorFlow 187 MB of those), 73s
   wall clock end to end, image ~1.5-2 GB. Memory is not the constraint; CPU is.
 
+- **A live re-score responds to elapsed time as much as to what the inspector
+  observed, so an unchanged project ratchets toward Critical.** Observed on the
+  deployed system: PRJ_9601 (Common Quarantine Facility, San Rafael) was
+  re-scored after a monitoring report that left `status_observed` at `on_going`
+  and changed nothing but the visit timestamp. It moved **High -> Critical**,
+  risk_probability 0.9385, `score_basis=three_learner`. The only inputs that
+  moved were the elapsed-time features: `observed_at` advanced
+  `days_since_release`, the model saw a project still running and further past
+  its expected duration, and the probability rose accordingly.
+
+  This is the designed behaviour and is defensible -- a project overdue by more
+  is genuinely riskier -- but it has two consequences worth stating before a
+  panel finds them. First, for a report where only the date changed, the honest
+  answer to "did the system respond to the inspector or to the calendar?" is
+  the calendar. Second, elapsed time only ever increases, so any project that
+  stays `on_going` drifts monotonically upward in risk, and Critical carries the
+  highest optimizer weight -- meaning long-running projects accumulate at the
+  top of the inspection schedule over time. Note also that `percent_complete`
+  cannot counteract this: the inspector form deliberately does not collect it,
+  because the trained feature schema has no such column and asking for it would
+  imply an influence on the score that it does not have.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.
