@@ -142,6 +142,29 @@ grok.yml`
 3. In Vercel, set `FASTAPI_ML_SERVICE_URL` to `https://<your-domain>.ngrok-free.dev`
    and `ML_SERVICE_WEBHOOK_SECRET` to the same value as `ml-service/.env`.
 
+> **If ngrok was installed from the Microsoft Store (MSIX), the config file is
+> not where it says it is.** `ngrok config check` prints
+> `%LOCALAPPDATA%\ngrok\ngrok.yml`, but an MSIX package's writes to
+> `%LOCALAPPDATA%` are transparently redirected, so the file the agent actually
+> reads and writes is
+>
+> ```
+> %LOCALAPPDATA%\Packages\ngrok.ngrok_<id>\LocalCache\Local\ngrok\ngrok.yml
+> ```
+>
+> Both files then exist and disagree, and the symptom is misleading:
+> `ngrok config add-authtoken` appears to succeed, `ngrok config check` reports
+> "Valid configuration file", and the tunnel still fails with
+> `Tunnel 'maagap-ml' is not defined in the config files` — because the
+> hand-edited file and the agent-written one are not the same file.
+>
+> Find the one holding the authtoken and put the `tunnels:` block there,
+> appending rather than rewriting so the token survives:
+>
+> ```bash
+> find "$LOCALAPPDATA" -name ngrok.yml
+> ```
+
 **Every session**
 
 ```bash
