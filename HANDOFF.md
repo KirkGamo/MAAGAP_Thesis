@@ -269,6 +269,34 @@ non-obvious enough to lose an afternoon to:
   because the trained feature schema has no such column and asking for it would
   imply an influence on the score that it does not have.
 
+- **The optimizer can never schedule a High-tier project, and the schedule is
+  static.** `TARGET_TIERS` is `{High, Critical}` with `RISK_WEIGHTS` of 1.0 and
+  2.5, and `select_priority_projects()` consults no visit history of any kind --
+  the only exclusions are completed/refunded status and an unmappable cluster.
+  The live population holds 79 Critical against a weekly capacity of 60, so the
+  objective fills every slot with Critical and the 21 High projects are never
+  reached. Nothing changes week to week, so the same 60 projects are scheduled
+  indefinitely. Verified on the deployed system: 60/60 scheduled visits were
+  Critical, 89 candidates, budget 98.9% utilised, allocation_efficiency 7.5
+  (= 60 x 2.5 / 20 inspector-days). Compounding it, the elapsed-time ratchet
+  above only feeds the Critical pool. Medium (49) and Low (2,244) are
+  categorically ineligible. The smallest fix that breaks the loop is a revisit
+  cooldown; see the remediation plan.
+- **The LSTM's marginal contribution is not demonstrable.** The stored metrics
+  look like a large two-learner win (AUC 0.9762 vs 0.9581) but are confounded by
+  population: the three-learner is only evaluable on the 598 test rows that have
+  a sequence, the two-learner on all 1,765. Scored on the SAME 598 rows the gap
+  nearly vanishes -- accuracy +0.0117 and precision +0.0408 to the two-learner,
+  recall -0.0207 and AUC -0.0053 to the three-learner -- and McNemar on the
+  discordant pairs (7 vs 14) gives p = 0.189. The two models are statistically
+  indistinguishable where both can be evaluated. Reproduce with
+  `python scripts/compare_meta_learners_same_rows.py`; figures land in
+  `artifacts/meta_learner_paired_comparison.json`. Related reporting gap: the
+  Models page reads only `meta_learner_metrics.json`, so it presents the
+  three-learner's 598-row numbers as the ensemble's performance while 76% of
+  deployed High/Critical scores come from the two-learner model, whose
+  `meta_learner_two_metrics.json` is never surfaced.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.
