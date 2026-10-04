@@ -116,6 +116,42 @@ async function fetchOptimizerSummary(): Promise<OptimizerSummary | null> {
  * the five-column ScheduleBoard, the map-only DayFilter, and the
  * below-map legend row (now an overlay inside the map pane).
  */
+/**
+ * How many High/Critical projects have never been scheduled at all.
+ *
+ * Exists because the scheduler's starvation was invisible. The candidate pool
+ * is restricted to High and Critical, Critical outweighs High 2.5 to 1.0, and
+ * the live population holds more Critical projects than a week has capacity
+ * for — so High-tier projects were never reached, and nothing on screen said
+ * so. A schedule that silently ignores a whole tier looks exactly like a
+ * schedule that considered it and declined.
+ *
+ * Counts across ALL weeks ever deployed, not the current one: "never scheduled"
+ * is a claim about the project's whole history.
+ */
+async function countNeverScheduled(
+  supabase: Awaited<ReturnType<typeof createClient>>
+) {
+  try {
+    const [{ data: actionable }, { data: everScheduled }] = await Promise.all([
+      supabase.from("projects").select("id, risk_tier").in("risk_tier", ["High", "Critical"]),
+      supabase.from("inspector_schedules").select("project_id"),
+    ]);
+    if (!actionable) return null;
+
+    const scheduled = new Set((everScheduled ?? []).map((r) => r.project_id));
+    const never = actionable.filter((p) => !scheduled.has(p.id));
+    return {
+      never: never.length,
+      total: actionable.length,
+      neverHigh: never.filter((p) => p.risk_tier === "High").length,
+      neverCritical: never.filter((p) => p.risk_tier === "Critical").length,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default async function SchedulePage({ searchParams }: SchedulePageProps) {
   const { day: dayParam } = await searchParams;
 
@@ -154,6 +190,8 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
     fetchOptimizerSummary(),
     getOptimizerStatus(),
   ]);
+
+  const coverage = await countNeverScheduled(supabase);
 
   const weekRows = rows ?? [];
   const inspectorOptions: InspectorOption[] = (activeInspectors ?? []).map((i) => ({
@@ -348,6 +386,28 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       {/* Day tabs and the optimizer scorecard share one band: the tabs are
           the workspace's primary control, the scorecard the standing
           read-out of the solve behind it. */}
+      {coverage && coverage.never > 0 && (
+        <div className="shrink-0 rounded-md border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700">
+          <span className="font-medium text-brand-navy">
+            {coverage.never} of {coverage.total}
+          </span>{" "}
+          High/Critical projects have never been scheduled
+          {coverage.neverHigh > 0 && (
+            <>
+              {" "}
+              — including{" "}
+              <span className="font-medium text-brand-navy">
+                {coverage.neverHigh}
+              </span>{" "}
+              of the High tier
+            </>
+          )}
+          . The optimizer fills capacity from Critical first, so lower tiers are
+          only reached once enough Critical projects fall outside the revisit
+          cooldown.
+        </div>
+      )}
+
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <DayStrip tabs={tabs} current={selectedDay} />
         <Scorecard summary={summary} />

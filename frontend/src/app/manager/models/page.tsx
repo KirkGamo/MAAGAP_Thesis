@@ -1,4 +1,5 @@
 import { Card } from "@/components/tremor/card";
+import { createClient } from "@/lib/supabase/server";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { mlServiceFetch } from "@/lib/ml-service";
 
@@ -51,6 +52,21 @@ interface ModelMetricsResponse {
     auc_roc: number;
     risk_tier_distribution: Record<string, number>;
   } | null;
+  meta_learner_two: {
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1: number;
+    auc_roc: number;
+    n_test?: number;
+    n_train_rows?: number;
+  } | null;
+  evaluation_populations: {
+    three_learner: { n_test: number | null; description: string };
+    two_learner: { n_test: number | null; description: string };
+    comparable: boolean;
+    note: string;
+  } | null;
   confusion_matrix: {
     true_positive: number;
     false_positive: number;
@@ -81,6 +97,45 @@ const REGRESSOR_LABELS: Record<string, string> = {
  * with `cache: "no-store"` -- these numbers should always reflect the
  * most recent training run, not a stale cached response.
  */
+/**
+ * Which model actually produced the scores managers are looking at.
+ *
+ * The metrics above describe two models evaluated on different populations.
+ * This closes the loop by reporting, from `projects.score_basis`, which of them
+ * scored the live population — and in particular the High and Critical tiers,
+ * where the answer drives real inspection decisions. Without it the page shows
+ * two sets of numbers and leaves the reader to guess which one applies to them.
+ */
+async function loadScoreBasisSplit() {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("risk_tier, score_basis");
+    if (error || !data) return null;
+
+    const actionable = data.filter(
+      (r) => r.risk_tier === "High" || r.risk_tier === "Critical"
+    );
+    const countTwo = (rows: typeof data) =>
+      rows.filter((r) => r.score_basis === "two_learner").length;
+
+    const scored = data.filter((r) => r.score_basis);
+    if (scored.length === 0) return null;
+
+    return {
+      total: scored.length,
+      totalTwo: countTwo(scored),
+      actionable: actionable.length,
+      actionableTwo: countTwo(actionable),
+    };
+  } catch {
+    // A failed read must not take down the metrics page; the section is simply
+    // omitted rather than rendering a misleading zero.
+    return null;
+  }
+}
+
 export default async function ModelsPage() {
   const baseUrl = process.env.FASTAPI_ML_SERVICE_URL;
 
@@ -129,7 +184,17 @@ export default async function ModelsPage() {
     );
   }
 
-  const { tree_models, lstm, meta_learner, confusion_matrix, regression } = data;
+  const {
+    tree_models,
+    lstm,
+    meta_learner,
+    meta_learner_two,
+    evaluation_populations,
+    confusion_matrix,
+    regression,
+  } = data;
+  const pop = evaluation_populations;
+  const basis = await loadScoreBasisSplit();
 
   return (
     <div className="flex flex-col gap-6">
@@ -137,7 +202,18 @@ export default async function ModelsPage() {
 
       {meta_learner && (
         <Card>
-          <MetricLabel>Meta-learner (final ensemble) — test set</MetricLabel>
+          <MetricLabel>
+            Meta-learner, three-learner (RF + XGBoost + LSTM) — test set
+          </MetricLabel>
+          <p className="mt-1 text-sm text-slate-500">
+            Measured on{" "}
+            <span className="font-medium text-brand-navy">
+              {pop?.three_learner.n_test ?? "—"}
+            </span>{" "}
+            {pop?.three_learner.description ?? "test rows"}. This model can only
+            score a project that has an LSTM event sequence, so these figures do
+            not describe the majority of predictions the system makes.
+          </p>
           <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-5">
             <StatBlock label="Accuracy" value={pct(meta_learner.accuracy)} />
             <StatBlock label="Precision" value={pct(meta_learner.precision)} />
@@ -152,6 +228,67 @@ export default async function ModelsPage() {
               </span>
             ))}
           </div>
+        </Card>
+      )}
+
+      {meta_learner_two && (
+        <Card>
+          <MetricLabel>
+            Meta-learner, two-learner (RF + XGBoost) — test set
+          </MetricLabel>
+          <p className="mt-1 text-sm text-slate-500">
+            Measured on{" "}
+            <span className="font-medium text-brand-navy">
+              {pop?.two_learner.n_test ?? meta_learner_two.n_test ?? "—"}
+            </span>{" "}
+            {pop?.two_learner.description ?? "test rows"}. This is the model that
+            scores a project with no event sequence — which is{" "}
+            <span className="font-medium text-brand-navy">most of them</span>.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-5">
+            <StatBlock label="Accuracy" value={pct(meta_learner_two.accuracy)} />
+            <StatBlock label="Precision" value={pct(meta_learner_two.precision)} />
+            <StatBlock label="Recall" value={pct(meta_learner_two.recall)} />
+            <StatBlock label="F1" value={pct(meta_learner_two.f1)} />
+            <StatBlock label="AUC-ROC" value={pct(meta_learner_two.auc_roc)} />
+          </div>
+          {pop && !pop.comparable && (
+            <p className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700">
+              {pop.note}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {basis && (
+        <Card>
+          <MetricLabel>Which model scored the live population</MetricLabel>
+          <p className="mt-1 text-sm text-slate-500">
+            From <code>projects.score_basis</code>. The metrics above are
+            measured on different populations; this is which model actually
+            produced the tiers on the dashboard.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <StatBlock
+              label="All scored projects on two-learner"
+              value={`${Math.round((basis.totalTwo / basis.total) * 100)}% (${basis.totalTwo}/${basis.total})`}
+            />
+            <StatBlock
+              label="High + Critical on two-learner"
+              value={
+                basis.actionable > 0
+                  ? `${Math.round((basis.actionableTwo / basis.actionable) * 100)}% (${basis.actionableTwo}/${basis.actionable})`
+                  : "—"
+              }
+            />
+          </div>
+          <p className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700">
+            Most actionable predictions come from the two-learner model, not the
+            full three-learner stack. A paired comparison on the rows where both
+            models can score found no significant difference between them
+            (McNemar p = 0.189), so this is a statement about which model ran —
+            not a claim that those projects were scored less accurately.
+          </p>
         </Card>
       )}
 

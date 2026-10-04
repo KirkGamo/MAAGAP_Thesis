@@ -55,6 +55,18 @@ async def get_model_metrics(
     tree_models = _read_json("tree_models_metrics.json")
     lstm = _read_json("lstm_model_metrics.json")
     meta_learner = _read_json("meta_learner_metrics.json")
+    # D21's two-learner model, and the reason this endpoint returns both.
+    #
+    # meta_learner_metrics.json describes the THREE-learner model, which can
+    # only be evaluated where an LSTM sequence exists -- 598 of 1,765 test rows.
+    # But 76% of deployed High/Critical scores are produced by the two-learner
+    # model (projects.score_basis), whose metrics were computed and then never
+    # surfaced. The Models page was therefore presenting figures that do not
+    # describe most of the predictions the system makes.
+    #
+    # Returning both, each labelled with the population it was measured on, is
+    # what stops a reader generalising one to the other.
+    meta_learner_two = _read_json("meta_learner_two_metrics.json")
     # Objective 2's regression half: MAE in days from train_regressors.py.
     # Absent until that script has been run, and the endpoint stays available
     # without it -- the classification artifacts are the required ones.
@@ -70,6 +82,7 @@ async def get_model_metrics(
         )
 
     confusion_matrix = None
+    three_learner_n_test = None
     predictions_path = ARTIFACTS_DIR / "meta_learner_test_predictions.csv"
     if predictions_path.exists():
         import csv
@@ -93,11 +106,42 @@ async def get_model_metrics(
             "true_negative": true_negative,
             "false_negative": false_negative,
         }
+        # meta_learner_metrics.json carries no n_test of its own, so the size of
+        # its evaluation population is derived from the prediction file it was
+        # computed against. Without this the UI cannot honestly label which
+        # population the headline numbers describe.
+        three_learner_n_test = (
+            true_positive + false_positive + true_negative + false_negative
+        )
+
+    # Populations, stated rather than implied. Both models are logistic
+    # meta-learners over base-learner probabilities; what differs is which rows
+    # they can score at all, and that difference is the whole reason their
+    # metrics are not comparable at face value.
+    populations = {
+        "three_learner": {
+            "n_test": three_learner_n_test,
+            "description": "test rows with an LSTM event sequence",
+        },
+        "two_learner": {
+            "n_test": (meta_learner_two or {}).get("n_test"),
+            "description": "all test rows (no sequence required)",
+        },
+        "comparable": False,
+        "note": (
+            "These two models are evaluated on different populations, so their "
+            "metrics must not be compared directly. A paired comparison on the "
+            "same rows (scripts/compare_meta_learners_same_rows.py) found no "
+            "significant difference: McNemar p = 0.189."
+        ),
+    }
 
     return {
         "tree_models": tree_models,
         "lstm": lstm,
         "meta_learner": meta_learner,
+        "meta_learner_two": meta_learner_two,
+        "evaluation_populations": populations,
         "confusion_matrix": confusion_matrix,
         "regression": regression,
     }
