@@ -317,6 +317,21 @@ run, and uvicorn serves the reads concurrently within the single worker.
 
 ## 6. Deploy the frontend
 
+**Import settings.** The frontend is not at the repository root, so Vercel's
+defaults are wrong out of the box:
+
+| Setting | Value |
+|---|---|
+| Repository | `KirkGamo/MAAGAP_Thesis` |
+| **Root Directory** | **`frontend`** — without this the build fails, there being no `package.json` at the root |
+| Framework preset | Next.js (auto-detected) |
+| Build / output | defaults; no `vercel.json` is needed |
+| Project Name | becomes `<name>.vercel.app`, the only URL respondents ever see |
+
+**Push first.** Vercel builds from the Git remote, not the working tree, and
+`origin/main` is a long way behind local work. Deploying before pushing would
+ship stale code that looks like a deployment problem.
+
 Vercel environment variables:
 
 | Variable | Exposure |
