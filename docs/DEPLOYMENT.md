@@ -14,7 +14,7 @@ without them there is nothing to deploy.
 | Component | Where | Why there |
 |---|---|---|
 | Next.js frontend | Vercel | 17 routes, all server-rendered on demand except `/login` and the 404. Every ML-service call happens in the server runtime. |
-| FastAPI ML service | One persistent container, one worker | Multi-minute optimizer runs, run state in a file, TensorFlow cold starts. See §5. |
+| FastAPI ML service | **Option A (chosen):** this machine, published over HTTPS by an ngrok tunnel. **Alternative:** one persistent container, one worker, on a VPS. | Either way it must be a long-lived process with a single worker: multi-minute optimizer runs, run state in an unlocked file, TensorFlow cold starts. See §4a and §5. |
 | PostgreSQL + auth | Hosted Supabase | RLS policies are the authorization model; see `second-brain/04-Data-Model/`. |
 
 The frontend talks to the ML service **server-side only**. That is why
@@ -117,7 +117,112 @@ Runtime assets: all 12 required and 7 optional file(s) present.
 If `supabase_writes=off`, the service will score correctly and silently write
 nothing back — reports sit at "Awaiting re-score" forever.
 
-### 4b. Sizing the VPS — and why CPU matters more than RAM here
+### 4a. Option A (chosen): this machine, behind an ngrok tunnel
+
+No hosting bill, no hardware, and the best CPU available to this project. The ML
+service runs here; ngrok publishes it over HTTPS; the Vercel frontend calls that
+URL. Suited to a scheduled evaluation session, not to 24/7 availability.
+
+**One-time setup**
+
+1. `ngrok` is already installed (3.39.11). Claim your account's **free static
+   domain** at <https://dashboard.ngrok.com/domains> — every account gets one and
+   it survives agent restarts, which is what makes this practical: the Vercel
+   variable is set once, not re-pasted before every session.
+2. Copy `deploy/ngrok/ngrok.yml.example` over ngrok's config and fill in the
+   authtoken and that domain:
+   - Windows: `%LOCALAPPDATA%
+grok
+grok.yml`
+   - macOS: `~/Library/Application Support/ngrok/ngrok.yml`
+   - Linux: `~/.config/ngrok/ngrok.yml`
+
+   Replacing the existing file is safe — it holds only `region: us` and
+   `version: '2'`. Note the example is schema v3.
+3. In Vercel, set `FASTAPI_ML_SERVICE_URL` to `https://<your-domain>.ngrok-free.dev`
+   and `ML_SERVICE_WEBHOOK_SECRET` to the same value as `ml-service/.env`.
+
+**Every session**
+
+```bash
+python scripts/start_tunnel_session.py        # Ctrl+C stops both
+python scripts/start_tunnel_session.py --stop # if something is left running
+```
+
+It refuses to open the tunnel unless the secret is present and at least 24
+characters, the port is free (a stale listener would be what the tunnel
+published), the service answers `/health`, and a guarded route returns **401
+without the secret**. That last check runs at the only moment it still matters —
+before the port is public.
+
+**The rate limit is raised to 60/min for a session, deliberately.** The default
+of 10 is right when the limit is per end user, and this deployment is not that.
+`api/deps.py` keys buckets on `X-Forwarded-For`, which ngrok sets to its caller
+— and every call comes from the Next.js *server* runtime, never a respondent's
+browser. So the "client" is Vercel's handful of shared egress IPs and the cap is
+effectively global. During a session with several PPDO respondents submitting
+monitoring reports, 10/min between them is easy to exceed, and they would rate
+the resulting failures as defects of the system — contaminating the very
+measurement the session exists to take. Raising it is safe because the limiter
+is not what protects the expensive path: authentication runs first on every
+guarded route, and the optimizer's real protection is its 409 "already running"
+guard, which this value does not touch.
+
+**What you accept with Option A**
+
+- The system is reachable only while this machine is running the session. Fine
+  for scheduled administration; unusable for asynchronous evaluation.
+- The tunnel URL is public. HTTPS plus the shared secret plus the rate limiter
+  are the whole of the access control, same as any other host would be.
+- `frontend/src/lib/ml-service.ts` sends `ngrok-skip-browser-warning` on every
+  call. ngrok's free tier serves an HTML interstitial to requests it judges to
+  be from a browser; these are server-side so it should not fire, but without the
+  header the failure would be every endpoint returning 200 with HTML and a JSON
+  parse error far from the cause.
+
+**What you gain, beyond the money.** The solver's 60-second cap is wall-clock,
+and §4b shows it already saturates. This machine is where Chapter 4's efficiency
+figures were measured, so running the service here is the one configuration that
+cannot silently under-solve relative to the reported numbers. Every free cloud
+CPU is slower.
+
+### 4b. Alternative: Dokploy on a VPS
+
+The chosen host. Steps:
+
+1. In Dokploy, create a **Compose** application pointed at this repository, with
+   Compose Path `deploy/dokploy/docker-compose.yml`. The build context there is
+   `../..` (the repo root) for the reason in §3.
+2. Set the environment variables above in Dokploy's **Environment** tab, not in
+   the compose file — that file is committed.
+3. Assign a domain in Dokploy's **Domains** tab. Dokploy's Traefik issues the
+   certificate and routes to the container's port 8000 over its internal
+   network.
+4. Confirm the volume `maagap-outputs` is mounted at `/app/ml-service/outputs`
+   and **not** at `/app/ml-service/artifacts` (§8 explains why that distinction
+   is not cosmetic).
+
+**TLS is not optional here, and this is the one genuine security constraint of
+the VPS path.** The shared secret travels in the `X-Webhook-Secret` request
+header on every call. Over plain HTTP it is on the wire in cleartext, and that
+secret is sufficient to mutate risk tiers and start optimizer runs. Terminate
+TLS at Traefik and never add a `ports:` mapping to the compose file — that would
+publish `:8000` on the VPS's public interface, bypassing the proxy and its
+certificate entirely.
+
+**Be honest about what the secret is doing.** The earlier advice to prefer a
+private network or an IP allow-list does not apply to this topology: Vercel
+calls the VPS across the public internet, and static egress IPs for
+allow-listing are not available on Vercel's lower plans. So the endpoint is
+public, and HTTPS plus the shared secret plus the rate limiter are the whole of
+the access control. That is adequate for this system's threat model — the data
+is provincial project risk tiers and inspector schedules, not personal or
+financial records — but it should be stated rather than assumed. Putting
+Cloudflare in front of the domain is a cheap further layer if wanted.
+
+---
+
+### 4c. Sizing a VPS — and why CPU matters more than RAM
 
 Measured on a full optimizer run (import TensorFlow, load the forest and
 XGBoost, score all 2,393 ongoing projects, SHAP the High/Critical ones, solve
@@ -163,42 +268,6 @@ host-dependent — the same inputs on different hardware can yield different
 schedules. If the deployed instance is the one demonstrated at defence, confirm
 the solve is not time-starved there, or the system shown will be quietly
 underperforming the numbers reported for it.
-
-### 4a. Dokploy on a VPS
-
-The chosen host. Steps:
-
-1. In Dokploy, create a **Compose** application pointed at this repository, with
-   Compose Path `deploy/dokploy/docker-compose.yml`. The build context there is
-   `../..` (the repo root) for the reason in §3.
-2. Set the environment variables above in Dokploy's **Environment** tab, not in
-   the compose file — that file is committed.
-3. Assign a domain in Dokploy's **Domains** tab. Dokploy's Traefik issues the
-   certificate and routes to the container's port 8000 over its internal
-   network.
-4. Confirm the volume `maagap-outputs` is mounted at `/app/ml-service/outputs`
-   and **not** at `/app/ml-service/artifacts` (§8 explains why that distinction
-   is not cosmetic).
-
-**TLS is not optional here, and this is the one genuine security constraint of
-the VPS path.** The shared secret travels in the `X-Webhook-Secret` request
-header on every call. Over plain HTTP it is on the wire in cleartext, and that
-secret is sufficient to mutate risk tiers and start optimizer runs. Terminate
-TLS at Traefik and never add a `ports:` mapping to the compose file — that would
-publish `:8000` on the VPS's public interface, bypassing the proxy and its
-certificate entirely.
-
-**Be honest about what the secret is doing.** The earlier advice to prefer a
-private network or an IP allow-list does not apply to this topology: Vercel
-calls the VPS across the public internet, and static egress IPs for
-allow-listing are not available on Vercel's lower plans. So the endpoint is
-public, and HTTPS plus the shared secret plus the rate limiter are the whole of
-the access control. That is adequate for this system's threat model — the data
-is provincial project risk tiers and inspector schedules, not personal or
-financial records — but it should be stated rather than assumed. Putting
-Cloudflare in front of the domain is a cheap further layer if wanted.
-
----
 
 ## 5. Why one worker, and why not serverless
 

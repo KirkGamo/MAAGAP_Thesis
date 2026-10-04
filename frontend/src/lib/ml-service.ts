@@ -57,6 +57,19 @@ export async function mlServiceFetch(
   const headers = new Headers(init.headers);
   if (secret) headers.set("X-Webhook-Secret", secret);
 
+  // Cheap insurance for the ngrok-tunnelled deployment. ngrok's free tier
+  // serves an HTML interstitial ("you are about to visit...") to requests it
+  // judges to come from a browser, as anti-phishing. It checks only for the
+  // PRESENCE of this header, not its value, and skips the page when it is set.
+  //
+  // These calls are server-side, so the User-Agent should not look like a
+  // browser and the interstitial should not fire. The header is set anyway
+  // because the failure it prevents is a confusing one: every endpoint would
+  // return 200 with an HTML body, and the first visible symptom would be a JSON
+  // parse error somewhere far from the cause. Harmless on any other host, which
+  // simply ignores an unknown header.
+  headers.set("ngrok-skip-browser-warning", "true");
+
   return fetch(`${baseUrl}${path}`, {
     cache: "no-store",
     ...init,

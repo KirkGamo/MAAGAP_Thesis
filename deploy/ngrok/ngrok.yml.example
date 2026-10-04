@@ -1,0 +1,53 @@
+# MAAGAP — ngrok tunnel for the ML service (Option A deployment)
+# =============================================================================
+# Copy to the location ngrok expects and fill in the two values:
+#
+#   Windows : %LOCALAPPDATA%\ngrok\ngrok.yml
+#   macOS   : ~/Library/Application Support/ngrok/ngrok.yml
+#   Linux   : ~/.config/ngrok/ngrok.yml
+#
+# Then:
+#   ngrok start maagap-ml
+#
+# DO NOT commit the filled-in file. The authtoken is a credential: it is enough
+# to open tunnels on your account. This example exists so the configuration is
+# in version control without the secrets being.
+
+version: "3"
+
+# From https://dashboard.ngrok.com/get-started/your-authtoken
+authtoken: PASTE_YOUR_NGROK_AUTHTOKEN_HERE
+
+tunnels:
+  maagap-ml:
+    proto: http
+
+    # The local ML service. Must match the port uvicorn is bound to.
+    addr: 8000
+
+    # Your account's free static domain, from
+    # https://dashboard.ngrok.com/domains — every ngrok account gets one, and it
+    # survives agent restarts. That persistence is the whole reason this is
+    # practical: FASTAPI_ML_SERVICE_URL is set once in Vercel instead of being
+    # re-pasted and redeployed at the start of every evaluation session.
+    #
+    # Looks like: your-subdomain.ngrok-free.dev
+    domain: YOUR-STATIC-DOMAIN.ngrok-free.dev
+
+    # Rewrite the Host header to what the service expects locally. Without this
+    # the upstream receives Host: your-subdomain.ngrok-free.dev, which uvicorn
+    # serves fine but which makes any future host-based check behave
+    # differently through the tunnel than it does locally.
+    host_header: rewrite
+
+    # Compress responses. /api/v1/latest-schedule returns the full weekly
+    # schedule as JSON and /api/v1/model-metrics the metrics blob; both are
+    # repetitive text that gzips well, which matters on a provincial office
+    # connection.
+    compression: true
+
+    # Belt-and-braces inspection of what actually reaches the service. Visible
+    # at http://127.0.0.1:4040 while the tunnel runs, and genuinely useful: it
+    # is where you confirm the X-Webhook-Secret header arrived, which is the
+    # first thing to check if the frontend starts seeing 401s.
+    inspect: true
