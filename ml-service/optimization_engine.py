@@ -132,6 +132,7 @@ sys.path.insert(0, str(ML_SERVICE_DIR / "models"))
 
 from data_pipeline.preprocess import canonicalize_municipality  # noqa: E402
 from train_trees import build_feature_matrix  # noqa: E402
+from common.visit_history import recently_visited_keys  # noqa: E402
 from train_lstm import apply_sequence_scaler  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -592,7 +593,11 @@ MIN_PRIORITY_PROJECTS_FOR_SCHEDULING = 10
 FALLBACK_POOL_SIZE = 60  # size of the relative-risk fallback pool when tier thresholds yield too few/no projects
 
 
-def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PROJECTS_CONSIDERED) -> pd.DataFrame:
+def select_priority_projects(
+    scored_df: pd.DataFrame,
+    max_projects: int = MAX_PROJECTS_CONSIDERED,
+    recently_visited: Optional[set] = None,
+) -> pd.DataFrame:
     """
     Selects the scheduling candidate pool from the scored ongoing-project
     population.
@@ -608,6 +613,15 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
     field-inspector visit to a project that's already finished or whose
     funds were returned is not actionable, and this module's own docstring
     says so.
+
+    REVISIT COOLDOWN (R1): projects in `recently_visited` are dropped here,
+    before both the tier filter and the fallback pool, so neither path can
+    reintroduce a project that was just visited. This is what stops the solve
+    from being a pure function of the current scores -- without it, nothing in
+    the inputs changes between weeks, so the same projects are returned every
+    week and the tier below Critical is never reached. See
+    common/visit_history.py for what counts as a visit and why an assignment
+    does not.
 
     FALLBACK BEHAVIOR (documented, not silent): the meta-learner's current
     baseline — trained on only 3 positive OOF examples, per
@@ -635,6 +649,19 @@ def select_priority_projects(scored_df: pd.DataFrame, max_projects: int = MAX_PR
             n_excluded,
         )
     schedulable = scored_df[~scored_df.get("status_excludes_scheduling", pd.Series(False, index=scored_df.index))]
+
+    # R1: drop recently-visited projects before anything else looks at the pool.
+    # Applied to `schedulable` rather than to `priority` so that the relative-risk
+    # fallback below cannot hand back a project this filter just removed.
+    if recently_visited:
+        before = len(schedulable)
+        schedulable = schedulable[~schedulable["project_key"].isin(recently_visited)]
+        dropped = before - len(schedulable)
+        if dropped:
+            logger.info(
+                "Revisit cooldown excluded %d of %d schedulable project(s) visited "
+                "within the cooldown window.", dropped, before,
+            )
 
     priority = schedulable[schedulable["risk_tier"].isin(TARGET_TIERS)].copy()
     priority = priority[priority["cluster"] != UNKNOWN_CLUSTER]  # cannot geographically schedule an unmapped site
@@ -914,8 +941,17 @@ def build_and_solve_schedule(
 
 def run(output_path: str) -> None:
     scored_df = score_ongoing_projects()
-    priority_df = select_priority_projects(scored_df)
+
+    # R1: projects visited within the cooldown window leave this week's pool.
+    # The provenance dict travels into the run summary so a schedule records
+    # whether a cooldown was applied at all -- a solve run without one (no
+    # Supabase, or the cooldown disabled) must not be mistakable for a solve
+    # run with one.
+    visited, cooldown_provenance = recently_visited_keys()
+
+    priority_df = select_priority_projects(scored_df, recently_visited=visited)
     schedule_df, summary = build_and_solve_schedule(priority_df)
+    summary["revisit_cooldown"] = cooldown_provenance
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

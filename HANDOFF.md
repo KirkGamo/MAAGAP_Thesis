@@ -297,6 +297,20 @@ non-obvious enough to lose an afternoon to:
   deployed High/Critical scores come from the two-learner model, whose
   `meta_learner_two_metrics.json` is never surfaced.
 
+- **The 60s solver cap introduces run-to-run variance larger than the effects
+  being measured.** Two solves of the same population differing by only two
+  candidate projects (89 vs 87, after the R1 cooldown excluded two) returned
+  objectives of 128.81 and 117.38. Removing two Critical candidates can cost at
+  most 2 x 2.5 = 5.0 of objective, so **at least 6.4 of the 11.44 drop is solver
+  suboptimality, not the input change** -- both runs reported
+  `hit_time_limit: true` at ~100% of the cap, so neither is a proven optimum.
+  Practical consequence: any experiment that compares schedules across small
+  input or parameter changes -- notably the planned R2 alpha-sweep ablation --
+  will be swamped by this noise unless it first raises
+  `SOLVER_TIME_LIMIT_SECONDS`, reduces `MAX_PROJECTS_CONSIDERED`, or averages
+  over repeated solves. Do not attribute a single-run objective difference to a
+  parameter without establishing the solver's own variance first.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.
