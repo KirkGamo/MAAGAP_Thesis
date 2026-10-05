@@ -58,11 +58,31 @@ from common.settings import load_env_file
 
 logger = logging.getLogger("maagap.visit_history")
 
-#: Minimum days between site visits to the same project. A policy parameter,
-#: not a modelling one -- PPDO owns the real number. Four weeks is the working
-#: default: short enough that a Critical project is revisited within a month,
-#: long enough that one week's schedule differs from the next.
-DEFAULT_COOLDOWN_DAYS = 28
+#: Minimum days between site visits to the same project. DISABLED by default.
+#:
+#: This shipped at 28 days as the fix for the scheduler visiting the same 60
+#: projects every week. It worked, and it was then measured against the graded
+#: alternative (common/aging.py) and lost on every axis that matters. Over 8
+#: simulated weeks at the validated 60s solver cap:
+#:
+#:                           High reached   mean efficiency   fallback weeks
+#:     28d cooldown, a=0        20/22            5.68            4 of 8
+#:     no cooldown, alpha=2     20/22            7.19            0 of 8
+#:
+#: Same coverage, 27% more risk retired per inspector-day, and no weeks lost to
+#: the relative-risk fallback. A hard cooldown empties the actionable pool by
+#: week 3 and the scheduler then spends half its time visiting Low and Medium
+#: projects -- which is where its apparent breadth (260 distinct projects
+#: against 89) comes from, and why its efficiency collapses.
+#:
+#: The decisive objection is not the efficiency, though. A cooldown is a BAN: a
+#: project in genuine crisis cannot be revisited for 28 days at any level of
+#: urgency. Aging only lowers its priority, so it can still be scheduled if it
+#: outranks the alternatives. A scheduler should be able to be persuaded.
+#:
+#: Kept, tested and configurable because it remains the right tool if PPDO
+#: imposes a minimum revisit interval as policy rather than as optimisation.
+DEFAULT_COOLDOWN_DAYS = 0
 
 
 def cooldown_days() -> int:
@@ -117,10 +137,12 @@ def recently_visited_keys(
 
     if window == 0:
         provenance["reason"] = (
-            "cooldown disabled (ML_SERVICE_REVISIT_COOLDOWN_DAYS=0); every project "
-            "is eligible every week, so successive schedules may be identical"
+            "cooldown disabled (the default since the aging term replaced it); "
+            "every project stays eligible every week, and starvation is prevented "
+            "by common/aging.py lowering the priority of recently-visited "
+            "projects rather than by banning them"
         )
-        logger.warning("Revisit cooldown is DISABLED — %s.", provenance["reason"])
+        logger.info("Revisit cooldown is off — %s.", provenance["reason"])
         return set(), provenance
 
     # Load ml-service/.env if the caller has not already. main.py does this via

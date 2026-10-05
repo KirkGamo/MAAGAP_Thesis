@@ -69,8 +69,28 @@ logger = logging.getLogger("maagap.aging")
 #: fairness correction, not a round-robin with a risk tiebreak.
 DEFAULT_WINDOW_WEEKS = 12.0
 
-#: Aging strength. 0.0 is the pre-R2 behaviour and the ablation's control arm.
-DEFAULT_ALPHA = 0.0
+#: Aging strength, and the scheduler's primary anti-starvation mechanism.
+#:
+#: 2.0 is not a round number picked for comfort. Below alpha = 1.9 aging CANNOT
+#: reorder a never-visited High above a one-week-old Critical, because the tier
+#: weights dominate:
+#:
+#:     1.0 * (1 + alpha)  >  2.5 * (1 + alpha / 12)   =>   alpha > 1.9
+#:
+#: So any value under ~2 looks like a cautious setting and is in fact
+#: indistinguishable from switching aging off. The threshold was derived before
+#: the sweep rather than fitted after it.
+#:
+#: Measured over 8 simulated weeks at the validated 60s solver cap
+#: (scripts/aging_simulation.py, artifacts/aging_simulation_60s.json):
+#:
+#:     no cooldown, alpha=0     High  0/22   eff 7.50   <- the original defect
+#:     no cooldown, alpha=2     High 20/22   eff 7.19   <- this setting
+#:     28d cooldown, alpha=0    High 20/22   eff 5.68
+#:
+#: 0.0 disables aging and reproduces the pre-R2 objective exactly, which is what
+#: the ablation's control arm uses.
+DEFAULT_ALPHA = 2.0
 
 
 def weeks_since_visit(

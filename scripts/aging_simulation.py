@@ -148,6 +148,17 @@ def main() -> int:
                          "a sweep is weeks x alphas solves; the solver is "
                          "deterministic, so this trades solution quality for "
                          "runtime without adding noise.")
+    ap.add_argument(
+        "--score-cache", type=Path, default=None,
+        help="Cache the scored population here. Scoring costs ~60s and is "
+             "identical for every arm, so a split sweep pays it once.",
+    )
+    ap.add_argument(
+        "--append", action="store_true",
+        help="Merge these arms into an existing --out instead of overwriting. "
+             "A sweep too long for one process is run arm by arm and "
+             "accumulated.",
+    )
     ap.add_argument("--out", type=Path,
                     default=ML_DIR / "artifacts" / "aging_simulation.json")
     args = ap.parse_args()
@@ -157,10 +168,21 @@ def main() -> int:
 
     oe.SOLVER_TIME_LIMIT_SECONDS = args.time_limit
 
-    print("Scoring once; every arm sees the identical population.")
     t0 = time.time()
-    scored = oe.score_ongoing_projects()
-    print(f"  {len(scored)} projects scored ({time.time() - t0:.0f}s)\n")
+    if args.score_cache and args.score_cache.exists():
+        scored = pd.read_pickle(args.score_cache)
+        print(f"Loaded {len(scored)} scored projects from cache "
+              f"({time.time() - t0:.0f}s). Every arm must see the identical "
+              "population, which is what the cache guarantees across a split "
+              "sweep.")
+    else:
+        print("Scoring once; every arm sees the identical population.")
+        scored = oe.score_ongoing_projects()
+        if args.score_cache:
+            args.score_cache.parent.mkdir(parents=True, exist_ok=True)
+            scored.to_pickle(args.score_cache)
+            print(f"  cached to {args.score_cache}")
+        print(f"  {len(scored)} projects scored ({time.time() - t0:.0f}s)")
 
     solves = args.weeks * len(args.alphas) * len(args.cooldowns)
     print(f"{solves} solves at {args.time_limit}s each "
@@ -202,15 +224,24 @@ def main() -> int:
     print("  allocation efficiency. Which point on the curve PPDO wants is a")
     print("  policy choice, not a modelling one.")
 
-    args.out.write_text(json.dumps({
+    payload = {
         "weeks": args.weeks,
         "cooldown_days_swept": args.cooldowns,
         "window_weeks": args.window_weeks,
         "solver_time_limit_seconds": args.time_limit,
         "scores": "held fixed across weeks; see module docstring",
         "arms": results,
-    }, indent=2), encoding="utf-8")
-    print(f"\nwrote {args.out.relative_to(REPO_ROOT)}")
+    }
+    if args.append and args.out.exists():
+        prior = json.loads(args.out.read_text(encoding="utf-8"))
+        seen = {(a["cooldown_days"], a["alpha"]) for a in payload["arms"]}
+        kept = [a for a in prior.get("arms", [])
+                if (a.get("cooldown_days"), a.get("alpha")) not in seen]
+        payload["arms"] = kept + payload["arms"]
+        print(f"  merged with {len(kept)} previously recorded arm(s)")
+    args.out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print()
+    print(f"wrote {args.out}")
     return 0
 
 

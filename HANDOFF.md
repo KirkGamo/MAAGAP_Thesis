@@ -328,6 +328,41 @@ non-obvious enough to lose an afternoon to:
   over-interpreted. CBC's actual gap at stop is not currently captured in the
   run summary; capturing it would turn that caveat into an error bar.
 
+- **The scheduler's anti-starvation mechanism is an AGING TERM, not a revisit
+  cooldown.** The cooldown shipped first and worked; it was then measured
+  against the graded alternative and lost. Over 8 simulated weeks at the
+  validated 60s solver cap (`scripts/aging_simulation.py`, figures in
+  `artifacts/aging_simulation_60s.json`):
+
+  | arm | High reached | distinct | visits | mean eff | fallback weeks |
+  |---|---|---|---|---|---|
+  | no cooldown, alpha=0 | **0/22** | 60 | 480 | 7.50 | 0 of 8 |
+  | no cooldown, alpha=2 | 20/22 | 89 | 476 | **7.19** | 0 of 8 |
+  | 28d cooldown, alpha=0 | 20/22 | 260 | 406 | 5.68 | **4 of 8** |
+
+  The first row is the original defect, exactly: 60 distinct projects visited
+  all 8 weeks (60 x 8 = 480 visits), no High-tier project ever reached. The
+  other two reach identical High coverage, but the cooldown spends half its
+  weeks in the relative-risk fallback scheduling Low/Medium projects -- which is
+  where its apparent breadth (260 distinct) comes from and why its efficiency
+  collapses. Its 5.68 is averaged over only its 4 measurable weeks; aging is
+  measurable in all 8.
+
+  The decisive objection to the cooldown is not efficiency but that it is a
+  BAN: a project in crisis cannot be revisited for 28 days at any level of
+  urgency. Aging only lowers priority, so an urgent project can still win a
+  slot. A scheduler should be able to be persuaded.
+
+  Defaults are now `ML_SERVICE_AGING_ALPHA=2.0` and
+  `ML_SERVICE_REVISIT_COOLDOWN_DAYS=0`. The cooldown is kept, tested and
+  configurable for the case where PPDO imposes a minimum revisit interval as
+  policy rather than as optimisation.
+
+  **Alpha below ~1.9 is equivalent to zero.** A never-visited High outranks a
+  one-week-old Critical only when `1.0*(1+a) > 2.5*(1+a/12)`, i.e. `a > 1.9`.
+  A "cautious" 0.5 or 1.0 is indistinguishable from switching aging off, which
+  is why the first smoke test at alpha=1.0 showed nothing.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.

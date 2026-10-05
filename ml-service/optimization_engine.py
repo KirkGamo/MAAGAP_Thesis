@@ -133,7 +133,7 @@ sys.path.insert(0, str(ML_SERVICE_DIR / "models"))
 from data_pipeline.preprocess import canonicalize_municipality  # noqa: E402
 from train_trees import build_feature_matrix  # noqa: E402
 from common.visit_history import last_visit_dates, recently_visited_keys  # noqa: E402
-from common.aging import DEFAULT_WINDOW_WEEKS, apply_aging  # noqa: E402
+from common.aging import DEFAULT_ALPHA, DEFAULT_WINDOW_WEEKS, apply_aging  # noqa: E402
 from train_lstm import apply_sequence_scaler  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -966,11 +966,14 @@ def build_and_solve_schedule(
 
 
 def aging_alpha() -> float:
-    """Aging strength from ML_SERVICE_AGING_ALPHA. 0.0 (the default) reproduces
-    the pre-R2 objective exactly, so this ships inert until deliberately set."""
+    """Aging strength from ML_SERVICE_AGING_ALPHA, defaulting to DEFAULT_ALPHA.
+
+    Set 0.0 to reproduce the pre-R2 objective exactly. Note that any value below
+    ~1.9 is equivalent to 0 in effect: the tier weights dominate until then, so
+    a 'cautious' 0.5 is indistinguishable from off. See common/aging.py."""
     raw = (os.environ.get("ML_SERVICE_AGING_ALPHA") or "").strip()
     if not raw:
-        return 0.0
+        return DEFAULT_ALPHA
     try:
         value = float(raw)
     except ValueError:

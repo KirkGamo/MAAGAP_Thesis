@@ -173,8 +173,11 @@ def test_an_empty_cooldown_set_changes_nothing():
 
 
 def test_cooldown_days_defaults_when_unset(monkeypatch):
+    """The default is now 0 — the cooldown is off unless asked for, because the
+    aging term replaced it as the anti-starvation mechanism."""
     monkeypatch.delenv("ML_SERVICE_REVISIT_COOLDOWN_DAYS", raising=False)
     assert cooldown_days() == DEFAULT_COOLDOWN_DAYS
+    assert DEFAULT_COOLDOWN_DAYS == 0
 
 
 @pytest.mark.parametrize("raw,expected", [("7", 7), ("0", 0), ("90", 90)])
@@ -200,9 +203,12 @@ def test_without_supabase_the_cooldown_is_skipped_but_recorded(monkeypatch):
     that had the history available."""
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
-    monkeypatch.delenv("ML_SERVICE_REVISIT_COOLDOWN_DAYS", raising=False)
 
-    keys, provenance = recently_visited_keys()
+    # An explicit window: the default is now 0 (disabled, since aging replaced
+    # the cooldown), which short-circuits before the database is consulted. This
+    # test is about what happens when a cooldown IS requested and the history
+    # cannot be read.
+    keys, provenance = recently_visited_keys(days=28)
 
     assert keys == set()
     assert provenance["applied"] is False
@@ -237,7 +243,6 @@ def test_a_read_failure_does_not_raise_into_the_solve(monkeypatch):
     """A solve must not die because a history read failed."""
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "key")
-    monkeypatch.delenv("ML_SERVICE_REVISIT_COOLDOWN_DAYS", raising=False)
 
     import common.visit_history as vh
 
@@ -250,7 +255,7 @@ def test_a_read_failure_does_not_raise_into_the_solve(monkeypatch):
         type("m", (), {"create_client": staticmethod(explode)}),
     )
 
-    keys, provenance = recently_visited_keys()
+    keys, provenance = recently_visited_keys(days=28)
     assert keys == set()
     assert provenance["applied"] is False
     assert "unreachable" in provenance["reason"] or "ConnectionError" in provenance["reason"]
