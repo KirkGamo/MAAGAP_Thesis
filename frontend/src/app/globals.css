@@ -110,3 +110,124 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-brand-blue);
 }
+
+/* ===========================================================================
+ * PHASE 1 of WEBSITE_REDESIGN_PLAN.md — tokens the system was missing.
+ *
+ * Before this block the theme defined eight brand colours and nothing else:
+ * no elevation scale, no semantic scale, no surface roles. Every block was
+ * therefore a white card with the same border and radius, which is why no
+ * page had a visual hierarchy to read.
+ * ======================================================================== */
+:root {
+  /* --- Surface roles ------------------------------------------------------
+   * Border, radius and shadow are applied BY ROLE, so one element per view
+   * reads as primary. Applying the same treatment to every block is what
+   * flattened the hierarchy.
+   *
+   * `inverse` is navy, and it is the load-bearing one. Measured against
+   * white, Sky (#099ED7) is 3.05:1 and Cyan (#6AD9F7) is 1.63:1 — both fail
+   * WCAG AA for body text, so half the brand palette could only ever appear
+   * as hairline borders. On navy the same colours are 4.52:1 and 8.46:1.
+   * Introducing navy as a SURFACE is what makes the brand usable in the
+   * product rather than only in the logo file. */
+  --surface-base: #ffffff;
+  --surface-sunk: #f2f8fd;          /* wells, secondary panels, code */
+  --surface-raised: #ffffff;        /* the one primary card per view */
+  --surface-inverse: #242467;       /* navy — app shell, login, header bands */
+  --surface-inverse-ink: #ffffff;         /* 13.79:1 on navy */
+  --surface-inverse-muted: #a3e9fb;       /* cyan-light, 8.46:1 on navy */
+  --surface-inverse-accent: #6ad9f7;      /* cyan, for emphasis on navy only */
+
+  --border-subtle: #e2e8f0;
+  --border-default: #cbd5e1;
+  --border-strong: #94a3b8;
+
+  --shadow-raised: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
+  --shadow-overlay: 0 8px 28px rgb(15 23 42 / 0.14);
+
+  /* --- Risk ramp ----------------------------------------------------------
+   * Deliberately separate from the brand palette: risk tier is the most
+   * important encoding in this product and must not be confusable with
+   * branding or with navigation state.
+   *
+   * TWO ROLES, FOR TWO DIFFERENT JOBS.
+   *
+   * `--risk-*` (solid) is for marks, stripes and chart fills — places with no
+   * text, where colour is the only channel. These are tuned so RELATIVE
+   * LUMINANCE FALLS MONOTONICALLY from Low to Critical (0.288, 0.205, 0.135,
+   * 0.075, each step ~1.4x apart). Darker always means more severe, so the
+   * scale stays ordinal in greyscale, under any colour-vision deficiency, and
+   * on a projector that renders orange and red as the same muddy brown. All
+   * four clear 3:1 against white (3.10 to 8.38).
+   *
+   * The conventional green/amber/orange/red ramp does NOT have this property:
+   * measured, its Medium and High sit at 0.237 and 0.239 — visually identical
+   * once hue is removed.
+   *
+   * `--risk-*-soft` + `--risk-*-ink` is for badge pills, where the tier WORD
+   * carries the meaning and colour only reinforces it. Those inks are chosen
+   * as the lightest value that still clears 4.5:1 on their own background, so
+   * each tier keeps its hue identity instead of collapsing to near-black. */
+  --risk-low: #35a65e;
+  --risk-low-soft: #e9f9ef;
+  --risk-low-ink: #157f3c;
+
+  --risk-medium: #a3750a;
+  --risk-medium-soft: #f9f4e9;
+  --risk-medium-ink: #8c6917;
+
+  --risk-high: #aa4a13;
+  --risk-high-soft: #f9efe9;
+  --risk-high-ink: #ad511c;
+
+  --risk-critical: #971d19;
+  --risk-critical-soft: #f9eae9;
+  --risk-critical-ink: #cc2721;
+
+  /* --- Density ------------------------------------------------------------
+   * Two spacing systems, because two devices. The manager tabs must fit one
+   * viewport at 1366x768 (the September 2026 contract); the inspector pages
+   * are read at arm's length, outdoors, one-handed. `touch` keeps interactive
+   * targets at 44px, which is the floor for a thumb. */
+  --density-dense-gap: 0.5rem;
+  --density-dense-pad: 0.75rem;
+  --density-dense-row: 2rem;
+
+  --density-touch-gap: 1rem;
+  --density-touch-pad: 1rem;
+  --density-touch-target: 2.75rem;  /* 44px */
+}
+
+@theme inline {
+  --color-surface-base: var(--surface-base);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inverse: var(--surface-inverse);
+  --color-surface-inverse-ink: var(--surface-inverse-ink);
+  --color-surface-inverse-muted: var(--surface-inverse-muted);
+  --color-surface-inverse-accent: var(--surface-inverse-accent);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+
+  --color-risk-low: var(--risk-low);
+  --color-risk-low-soft: var(--risk-low-soft);
+  --color-risk-low-ink: var(--risk-low-ink);
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-medium-soft: var(--risk-medium-soft);
+  --color-risk-medium-ink: var(--risk-medium-ink);
+  --color-risk-high: var(--risk-high);
+  --color-risk-high-soft: var(--risk-high-soft);
+  --color-risk-high-ink: var(--risk-high-ink);
+  --color-risk-critical: var(--risk-critical);
+  --color-risk-critical-soft: var(--risk-critical-soft);
+  --color-risk-critical-ink: var(--risk-critical-ink);
+}
+
+/* Figures that sit in columns must line up. This app is mostly figures in
+ * columns, so it is set once here rather than remembered per table. */
+table, .tabular, [data-tabular] {
+  font-variant-numeric: tabular-nums;
+}

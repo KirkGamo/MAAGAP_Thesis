@@ -10,11 +10,24 @@ const badgeVariants = cva(
         default: "border-transparent bg-slate-900 text-slate-50",
         secondary: "border-transparent bg-slate-100 text-slate-900",
         outline: "text-slate-950",
-        // Risk-tier variants (Chapter 3 thresholds: Low/Medium/High/Critical)
-        low: "border-transparent bg-emerald-100 text-emerald-800",
-        medium: "border-transparent bg-amber-100 text-amber-800",
-        high: "border-transparent bg-orange-100 text-orange-800",
-        critical: "border-transparent bg-red-100 text-red-800",
+        // Risk-tier variants (Chapter 3 thresholds: Low/Medium/High/Critical).
+        //
+        // These use the dedicated risk ramp from globals.css rather than
+        // generic Tailwind palette steps, for two reasons. Risk tier is the
+        // most important encoding in this product and must not be confusable
+        // with branding or navigation state; and the ramp's inks are each the
+        // lightest value that still clears 4.5:1 on their own background, so
+        // every tier keeps its hue identity instead of collapsing toward
+        // near-black the way a naive "darken until it passes" choice does.
+        //
+        // The non-colour cue here is the tier WORD, which the badge always
+        // renders. Where a mark appears without text — the schedule's day
+        // strip — shape carries it instead (see schedule/risk-marker.tsx), and
+        // where a bare stripe does, the ramp's monotonic luminance does.
+        low: "border-transparent bg-risk-low-soft text-risk-low-ink",
+        medium: "border-transparent bg-risk-medium-soft text-risk-medium-ink",
+        high: "border-transparent bg-risk-high-soft text-risk-high-ink",
+        critical: "border-transparent bg-risk-critical-soft text-risk-critical-ink",
         // project_status variants (Phase 11, Task 3: soft-background/
         // dark-text badges for the Backlog table's Status column, matching
         // the same visual language as the risk-tier variants above rather
