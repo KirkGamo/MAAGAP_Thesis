@@ -175,3 +175,48 @@ def test_an_empty_pool_is_handled():
     empty = _pool().iloc[0:0]
     out = apply_aging(empty, {}, alpha=1.0, now=NOW)
     assert out.empty
+
+
+# ---------------------------------------------------------------------------
+# score_project's observed_at argument.
+#
+# Found while verifying R4 end to end: passing an ISO-8601 string raised
+# `AttributeError: 'str' object has no attribute 'tzinfo'` from inside the
+# function, naming neither the argument nor the expected type. The FastAPI path
+# always hands over a datetime (Pydantic coerces it), so production was never
+# affected -- but every other caller is a human writing a script, a test, or a
+# batch job, and a string is the obvious thing to write.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["2026-10-05T10:00:00Z", "2026-10-05T10:00:00+00:00", "2026-10-05T10:00:00"],
+)
+def test_score_project_accepts_an_iso_string(value, monkeypatch):
+    """The parse must happen before anything expensive: this asserts the string
+    is converted, without loading models."""
+    from datetime import datetime
+
+    import inference.live_scoring as ls
+
+    captured = {}
+
+    def fake_find(project_key):
+        captured["reached"] = True
+        return None, None, "not_found"
+
+    monkeypatch.setattr(ls, "_find_project_row", fake_find)
+    result = ls.score_project("PRJ_X", status_observed="on_going", observed_at=value)
+
+    assert captured.get("reached"), "the string was not parsed; the call never got past it"
+    assert result.found is False  # not_found, which is what the stub returns
+
+
+def test_score_project_rejects_an_unparseable_string_by_name():
+    """A bad value must say which argument and what shape, not fail later with
+    a type error from an unrelated line."""
+    import inference.live_scoring as ls
+
+    with pytest.raises(ValueError, match="observed_at"):
+        ls.score_project("PRJ_X", status_observed="on_going", observed_at="last Tuesday")

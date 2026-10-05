@@ -63,7 +63,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import joblib
 import numpy as np
@@ -287,7 +287,7 @@ def _rebuild_lstm_sequence(
 def score_project(
     project_key: str,
     status_observed: str,
-    observed_at: datetime,
+    observed_at: Union[datetime, str],
     percent_complete: Optional[float] = None,
     amount_spent: Optional[float] = None,
 ) -> LiveScoreResult:
@@ -297,6 +297,25 @@ def score_project(
     import sys
     sys.path.insert(0, str(ML_SERVICE_DIR / "models"))
     from train_trees import build_feature_matrix  # noqa: E402
+
+    # Accept an ISO-8601 string as well as a datetime. The FastAPI path always
+    # hands over a parsed datetime (Pydantic coerces it), so this never mattered
+    # in production -- but every other caller is a human writing a script, a
+    # test, or a batch job, and `observed_at="2026-10-05T10:00:00Z"` is the
+    # obvious thing to write. It used to fail with
+    # `AttributeError: 'str' object has no attribute 'tzinfo'` on the next line,
+    # which names neither the argument nor the expected type.
+    if isinstance(observed_at, str):
+        text = observed_at.strip()
+        try:
+            # fromisoformat handles "+00:00" but not the "Z" suffix before 3.11,
+            # and accepting "Z" is the whole point of being lenient here.
+            observed_at = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError(
+                f"observed_at={observed_at!r} is not an ISO-8601 timestamp. "
+                "Pass a datetime, or a string like '2026-10-05T10:00:00Z'."
+            ) from None
 
     # All date arithmetic in this module compares against tz-naive dates
     # parsed from the CSV pipeline (pandas defaults to tz-naive). main.py's
