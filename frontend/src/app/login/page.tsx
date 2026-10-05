@@ -53,7 +53,7 @@ export default function LoginPage() {
  */
 function IdentityPanel() {
   return (
-    <aside className="flex flex-col overflow-hidden bg-surface-inverse px-6 py-8 sm:px-10 lg:px-14 lg:py-12">
+    <aside className="relative isolate flex flex-col overflow-hidden bg-surface-inverse px-6 py-8 sm:px-10 lg:px-14 lg:py-12">
       {/* Text above, map below.
           
           Earlier passes put the two side by side and spent three rounds
@@ -135,26 +135,18 @@ function IdentityPanel() {
           to cost travel between clusters. North up, with a cos(latitude)
           correction (0.981 here) so the shape is not stretched east-west.
 
-          The band is flex-1 and always rendered, so it both carries the map
-          and pins the footer to the foot of the panel. An earlier attempt gave
-          the footer mt-auto for that job, which silently starved this: auto
-          margins are resolved before flex-grow, so the footer took the free
-          space and the band collapsed to 86px at 762px tall — small enough that
-          the map was gated off as unreadable, treating the symptom.
-
-          Sized to 145% of the band
-          so it fills that height rather than being fitted inside it — at
-          bg-contain a square map in a wide band is sized by the band's height
-          and leaves most of the width empty. The band clips the overspill, and
-          anchoring right balances the left-aligned text above it. */}
+          It covers the whole panel so the province is never cropped to fit a
+          band, and a diagonal mask fades it out across the top-left where the
+          type sits. Masking rather than lowering opacity everywhere: a uniform
+          fade weak enough to clear the headline leaves the map invisible in the
+          empty half, which is the compromise the previous three attempts kept
+          landing on from either direction. */}
       <div
         aria-hidden="true"
-        className="relative mt-6 hidden min-h-0 flex-1 overflow-hidden lg:block"
-      >
-        <div className="absolute inset-x-[-3.5rem] inset-y-0 bg-[url('/iloilo-points.svg')] bg-[length:115%_auto] bg-[position:center_42%] bg-no-repeat opacity-95" />
-      </div>
+        className="pointer-events-none absolute inset-0 -z-10 hidden bg-[url('/iloilo-points.svg')] bg-[length:auto_88%] bg-[position:72%_58%] bg-no-repeat opacity-95 [-webkit-mask-image:linear-gradient(130deg,transparent_26%,rgba(0,0,0,0.45)_44%,black_62%)] [mask-image:linear-gradient(130deg,transparent_26%,rgba(0,0,0,0.45)_44%,black_62%)] lg:block"
+      />
 
-      <p className="hidden shrink-0 pt-8 text-xs leading-relaxed text-surface-inverse-muted lg:block">
+      <p className="mt-auto hidden shrink-0 pt-10 text-xs leading-relaxed text-surface-inverse-muted lg:block">
         Provincial Planning and Development Office
         <br />
         Provincial Government of Iloilo
