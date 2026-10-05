@@ -196,6 +196,20 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
 
   if (!project) notFound();
 
+  // R4: the last few scores, newest first. The projects row is overwritten on
+  // every re-score, so without this the page can say what the risk IS and never
+  // what it WAS -- and those are different operational facts.
+  //
+  // Tolerates the table not existing: the migration
+  // (supabase/add_project_score_history.sql) may not be applied yet, and a page
+  // that cannot read history should omit the section rather than fail the route.
+  const { data: scoreHistory } = await supabase
+    .from("project_score_history")
+    .select("scored_at, risk_tier, risk_probability, score_basis, source, monitoring_report_id")
+    .eq("project_id", projectId)
+    .order("scored_at", { ascending: false })
+    .limit(10);
+
   const { data: reportsRaw } = await supabase
     .from("monitoring_reports")
     .select("id, visited_at, status_observed, percent_complete, remarks, photo_urls")
@@ -260,7 +274,9 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                 P(RedFlag) = {project.risk_probability.toFixed(3)}
               </span>
             )}
+            <RiskDelta history={scoreHistory} />
           </div>
+          <ScoreHistoryNote history={scoreHistory} />
           {/* Phase 22 follow-up: a project marked Completed (or, as of the
               "refunded" status addition, Refunded) in historical records can
               still carry a high risk_tier -- the model is scoring "was this
@@ -410,5 +426,91 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * R4: risk LEVEL versus risk CHANGE.
+ *
+ * `projects.risk_probability` is overwritten on every re-score, so a project
+ * that jumped from 0.30 to 0.94 this week and one that has sat at 0.94 for six
+ * months looked identical on this page. They are not the same situation and
+ * they do not warrant the same response.
+ *
+ * The delta also surfaces a property of the model that the manuscript has to
+ * disclose anyway: a live re-score responds to elapsed time as much as to what
+ * the inspector observed. PRJ_9601 moved High -> Critical on a report that left
+ * the status unchanged and advanced only the visit date. Showing the change
+ * next to the level is what lets a manager tell "newly escalated" from
+ * "chronically overdue" -- and `monitoring_report_id` records which of the two
+ * a given movement was.
+ * ------------------------------------------------------------------------ */
+
+type ScoreHistoryRow = {
+  scored_at: string;
+  risk_tier: string | null;
+  risk_probability: number | null;
+  score_basis: string | null;
+  source: string;
+  monitoring_report_id: string | null;
+};
+
+function RiskDelta({ history }: { history: ScoreHistoryRow[] | null }) {
+  // Two scored points are needed for a change to exist at all. One point is
+  // not "no change" -- it is "not yet known", and saying 0.000 would be a
+  // fabricated reassurance.
+  const scored = (history ?? []).filter((h) => h.risk_probability != null);
+  if (scored.length < 2) return null;
+
+  const delta = scored[0].risk_probability! - scored[1].risk_probability!;
+  if (Math.abs(delta) < 0.0005) {
+    return <span className="text-sm text-slate-500">unchanged since last score</span>;
+  }
+
+  const rose = delta > 0;
+  return (
+    <span
+      className={`text-sm font-medium ${rose ? "text-red-700" : "text-emerald-700"}`}
+      title={`Previous: ${scored[1].risk_probability!.toFixed(3)} on ${new Date(
+        scored[1].scored_at
+      ).toLocaleDateString()}`}
+    >
+      {rose ? "▲" : "▼"} {rose ? "+" : ""}
+      {delta.toFixed(3)} since last score
+    </span>
+  );
+}
+
+function ScoreHistoryNote({ history }: { history: ScoreHistoryRow[] | null }) {
+  const scored = (history ?? []).filter((h) => h.risk_probability != null);
+  if (scored.length < 2) return null;
+
+  const latest = scored[0];
+  const previous = scored[1];
+  const delta = latest.risk_probability! - previous.risk_probability!;
+  if (Math.abs(delta) < 0.0005) return null;
+
+  const tierChanged = latest.risk_tier !== previous.risk_tier;
+  // A re-score triggered by a report is attributable to an observation; one
+  // without is attributable to elapsed time, because the only inputs that moved
+  // were the time-since features. This is the honest answer to "did the system
+  // respond to the inspector, or to the calendar?"
+  const fromReport = latest.monitoring_report_id != null;
+
+  return (
+    <p className="border-l-2 border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+      {tierChanged && (
+        <>
+          Tier moved{" "}
+          <span className="font-medium text-brand-navy">
+            {previous.risk_tier} → {latest.risk_tier}
+          </span>
+          .{" "}
+        </>
+      )}
+      {fromReport
+        ? "This change followed a monitoring report. Where the reported status matched the previous status, the movement comes from elapsed-time features rather than from what was observed on site."
+        : "This change came from a scheduled re-score, not a site visit — so it reflects elapsed time rather than new field observation."}
+    </p>
   );
 }

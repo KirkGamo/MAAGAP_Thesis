@@ -164,6 +164,10 @@ def _run_rescore(payload: UpdateMonitoringPayload) -> None:
         result.meta_prob,
         result.shap_top_features,
         score_basis=result.score_basis,
+        # Links the history row to the report that caused it, which is what
+        # makes "did the score move because of the inspector or the calendar?"
+        # answerable from the data rather than by argument.
+        report_id=payload.report_id,
     )
     _mark_rescore_state(payload.report_id, "done")
 
@@ -174,6 +178,7 @@ def _maybe_patch_supabase(
     risk_probability: Optional[float],
     shap_top_features: Optional[list] = None,
     score_basis: Optional[str] = None,
+    report_id: Optional[str] = None,
 ) -> None:
     """Best-effort push of the refreshed score back into Supabase's
     `projects` table, so the Manager Portal's backlog/map views reflect it
@@ -209,8 +214,80 @@ def _maybe_patch_supabase(
         client = create_client(url, service_role_key)
         client.table("projects").update(update_payload).eq("project_key", project_key).execute()
         logger.info("Patched Supabase projects row for %s.", project_key)
+
+        _append_score_history(
+            client, project_key, risk_tier, risk_probability, score_basis, report_id
+        )
     except Exception:
         logger.exception("Best-effort Supabase patch failed for %s (non-fatal).", project_key)
+
+
+def _append_score_history(
+    client,
+    project_key: str,
+    risk_tier: Optional[str],
+    risk_probability: Optional[float],
+    score_basis: Optional[str],
+    report_id: Optional[str],
+) -> None:
+    """Append this score to project_score_history (R4).
+
+    The projects row is overwritten on every re-score, so without this the
+    system can say what a project's risk IS and never what it WAS. Those are
+    different operational facts: a project that jumped from 0.30 to 0.94 this
+    week needs attention, one that has sat at 0.94 for months is a known
+    problem, and the dashboard could not tell them apart.
+
+    `monitoring_report_id` is why this is worth storing rather than inferring.
+    It ties the score to the report that caused it, which is what makes the
+    awkward question answerable from data: a re-score whose report left the
+    status unchanged moved on elapsed time alone, and one whose report changed
+    the status moved on an observation.
+
+    Deliberately non-fatal and deliberately separate from the projects update.
+    A failed history write must not make a successful re-score look failed, and
+    it is a reasonable state before the migration has been applied -- which the
+    message says, rather than leaving a bare PostgREST error to be decoded.
+    """
+    try:
+        project = (
+            client.table("projects")
+            .select("id")
+            .eq("project_key", project_key)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if not project:
+            logger.warning(
+                "No projects row for %s — score history not recorded.", project_key
+            )
+            return
+
+        client.table("project_score_history").insert(
+            {
+                "project_id": project[0]["id"],
+                "risk_tier": risk_tier,
+                "risk_probability": risk_probability,
+                "score_basis": score_basis,
+                "source": "live_rescore",
+                "monitoring_report_id": report_id,
+            }
+        ).execute()
+        logger.info("Recorded score history for %s.", project_key)
+    except Exception as exc:  # noqa: BLE001
+        if "project_score_history" in str(exc):
+            logger.warning(
+                "Score history not recorded for %s: the project_score_history "
+                "table does not exist yet. Apply "
+                "frontend/supabase/add_project_score_history.sql. The re-score "
+                "itself succeeded.",
+                project_key,
+            )
+        else:
+            logger.exception(
+                "Could not record score history for %s (non-fatal).", project_key
+            )
 
 
 @router.post("/api/v1/update-monitoring", response_model=UpdateMonitoringResponse, status_code=202)
