@@ -206,3 +206,50 @@ def test_baselines_respect_the_budget():
     cluster_weeks = base.groupby(["inspector", "cluster"]).ngroups if not base.empty else 0
     cost = VISIT_COST_PHP * len(base) + CLUSTER_MOBILIZATION_COST_PHP * cluster_weeks
     assert cost <= budget + 1e-6
+
+
+# ---------------------------------------------------------------------------
+# allocation_efficiency on the relative-risk fallback pool.
+#
+# Found while building R2's simulation: weeks 3 onward reported an efficiency of
+# exactly 0.0 with 50+ visits scheduled. The cause was that
+# select_priority_projects() had fallen back to the relative-risk pool, which
+# tags every row "Relative-Risk (fallback)" -- a label deliberately not in
+# RISK_WEIGHTS, because those rows are NOT real Chapter 3 tiers. Mapping yielded
+# NaN for every row and .fillna(0.0) turned that into a reported 0.0.
+#
+# Objective 4's headline metric was therefore printing the most alarming value
+# in its range, as a number, whenever the fallback was active.
+# ---------------------------------------------------------------------------
+
+
+def _sched(tiers):
+    return pd.DataFrame(
+        {
+            "risk_tier": tiers,
+            "inspector": [f"I{i % 2 + 1}" for i in range(len(tiers))],
+            "day": ["Mon", "Tue", "Wed", "Thu", "Fri"][: len(tiers)] * 1,
+        }
+    )
+
+
+def test_efficiency_is_undefined_not_zero_for_a_fallback_only_schedule():
+    schedule = _sched(["Relative-Risk (fallback)"] * 4)
+    assert allocation_efficiency(schedule) is None, (
+        "a schedule of fallback rows has no computable 'risk retired per "
+        "inspector-day'; reporting 0.0 makes it look worthless instead of "
+        "unmeasured"
+    )
+
+
+def test_efficiency_still_computes_when_only_some_rows_are_unweighted():
+    """A mixed schedule is measurable: the weighted rows count, the fallback
+    rows contribute nothing, and the caller is warned rather than misled."""
+    schedule = _sched(["Critical", "Relative-Risk (fallback)"])
+    # One Critical (2.5) over two inspector-days.
+    assert allocation_efficiency(schedule) == pytest.approx(1.25)
+
+
+def test_efficiency_is_unchanged_for_real_tiers():
+    assert allocation_efficiency(_sched(["Critical"] * 4)) == pytest.approx(2.5)
+    assert allocation_efficiency(_sched(["High"] * 4)) == pytest.approx(1.0)

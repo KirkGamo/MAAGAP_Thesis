@@ -184,3 +184,67 @@ def recently_visited_keys(
         len(keys), cutoff.date(), window,
     )
     return keys, provenance
+
+
+def last_visit_dates(
+    *,
+    lookback_days: int = 365,
+    now: Optional[datetime] = None,
+) -> dict:
+    """Most recent visit per project_key, for the aging term (R2).
+
+    Distinct from recently_visited_keys(), which answers a yes/no eligibility
+    question over a short window. Aging needs the DATE, over a long one, because
+    a project unvisited for ten weeks should outrank one unvisited for two.
+
+    Returns `{project_key: datetime}`. Projects absent from the mapping have no
+    recorded visit, which common/aging.py treats as having waited the maximum —
+    never visited is the strongest claim on attention, not the weakest.
+
+    Returns an empty mapping rather than raising when the database is
+    unreachable: aging then has no history to work with and becomes a no-op,
+    which common/aging.py logs explicitly.
+    """
+    load_env_file()
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not (url and key):
+        logger.warning(
+            "No Supabase credentials — aging has no visit history and will have "
+            "no effect on the schedule."
+        )
+        return {}
+
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=lookback_days)
+    try:
+        from supabase import create_client
+
+        client = create_client(url, key)
+        rows = (
+            client.table("monitoring_reports")
+            .select("visited_at, projects(project_key)")
+            .gte("visited_at", cutoff.isoformat())
+            .order("visited_at", desc=True)
+            .execute()
+            .data
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Could not read visit dates — aging will have no effect on this solve."
+        )
+        return {}
+
+    latest: dict = {}
+    for row in rows:
+        project = row.get("projects") or {}
+        pk = project.get("project_key")
+        if not pk or row.get("visited_at") is None:
+            continue
+        stamp = datetime.fromisoformat(row["visited_at"].replace("Z", "+00:00"))
+        # Rows arrive newest-first, so the first sighting of a key is its latest
+        # visit; later ones are older and must not overwrite it.
+        if pk not in latest:
+            latest[pk] = stamp
+
+    logger.info("Loaded last-visit dates for %d project(s).", len(latest))
+    return latest

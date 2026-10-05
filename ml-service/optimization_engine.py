@@ -132,7 +132,8 @@ sys.path.insert(0, str(ML_SERVICE_DIR / "models"))
 
 from data_pipeline.preprocess import canonicalize_municipality  # noqa: E402
 from train_trees import build_feature_matrix  # noqa: E402
-from common.visit_history import recently_visited_keys  # noqa: E402
+from common.visit_history import last_visit_dates, recently_visited_keys  # noqa: E402
+from common.aging import DEFAULT_WINDOW_WEEKS, apply_aging  # noqa: E402
 from train_lstm import apply_sequence_scaler  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -298,9 +299,34 @@ def allocation_efficiency(schedule_df: pd.DataFrame) -> Optional[float]:
     """
     if schedule_df is None or schedule_df.empty:
         return None
-    risk_weight_total = float(
-        schedule_df["risk_tier"].map(RISK_WEIGHTS).fillna(0.0).sum()
-    )
+
+    mapped = schedule_df["risk_tier"].map(RISK_WEIGHTS)
+    # UNDEFINED, NOT ZERO. When select_priority_projects() falls back to the
+    # relative-risk pool it tags every row "Relative-Risk (fallback)", which is
+    # not in RISK_WEIGHTS. Mapping then yields NaN for every row, and the old
+    # .fillna(0.0) turned that into an efficiency of exactly 0.0 -- reported as
+    # a number, indistinguishable from a genuinely worthless schedule, on
+    # Objective 4's headline metric. A metric that cannot be computed must say
+    # so rather than return the most alarming value in its range.
+    if mapped.isna().all():
+        logger.warning(
+            "Allocation efficiency is undefined for this schedule: none of its "
+            "risk tiers (%s) carry a risk weight. This is the relative-risk "
+            "fallback pool, whose rows are deliberately not real Chapter 3 "
+            "tiers, so 'risk retired per inspector-day' has no meaning here.",
+            sorted(schedule_df["risk_tier"].unique()),
+        )
+        return None
+
+    if mapped.isna().any():
+        logger.warning(
+            "%d of %d scheduled row(s) carry a risk tier with no weight (%s); "
+            "they contribute nothing to allocation efficiency.",
+            int(mapped.isna().sum()), len(mapped),
+            sorted(set(schedule_df.loc[mapped.isna(), "risk_tier"])),
+        )
+
+    risk_weight_total = float(mapped.fillna(0.0).sum())
     inspector_days = int(schedule_df.groupby(["inspector", "day"]).ngroups)
     if inspector_days == 0:
         return None
@@ -939,6 +965,28 @@ def build_and_solve_schedule(
 # ---------------------------------------------------------------------------
 
 
+def aging_alpha() -> float:
+    """Aging strength from ML_SERVICE_AGING_ALPHA. 0.0 (the default) reproduces
+    the pre-R2 objective exactly, so this ships inert until deliberately set."""
+    raw = (os.environ.get("ML_SERVICE_AGING_ALPHA") or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "ML_SERVICE_AGING_ALPHA=%r is not a number — aging stays off.", raw
+        )
+        return 0.0
+    if value < 0:
+        logger.warning(
+            "ML_SERVICE_AGING_ALPHA=%s is negative, which would penalise waiting "
+            "rather than reward it — aging stays off.", value
+        )
+        return 0.0
+    return value
+
+
 def run(output_path: str) -> None:
     scored_df = score_ongoing_projects()
 
@@ -950,8 +998,24 @@ def run(output_path: str) -> None:
     visited, cooldown_provenance = recently_visited_keys()
 
     priority_df = select_priority_projects(scored_df, recently_visited=visited)
+
+    # R2: age the objective so waiting accumulates priority. alpha defaults to
+    # 0.0, which is exactly the pre-R2 pipeline -- this is opt-in, and the
+    # control arm of the Chapter 4 ablation.
+    alpha = aging_alpha()
+    if alpha:
+        priority_df = apply_aging(
+            priority_df, last_visit_dates(), alpha=alpha,
+            window_weeks=DEFAULT_WINDOW_WEEKS,
+        )
+
     schedule_df, summary = build_and_solve_schedule(priority_df)
     summary["revisit_cooldown"] = cooldown_provenance
+    summary["aging"] = {
+        "alpha": alpha,
+        "window_weeks": DEFAULT_WINDOW_WEEKS,
+        "applied": bool(alpha),
+    }
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
