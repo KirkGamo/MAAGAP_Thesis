@@ -135,25 +135,26 @@ function IdentityPanel() {
           to cost travel between clusters. North up, with a cos(latitude)
           correction (0.981 here) so the shape is not stretched east-west.
 
-          Shown only when the viewport is at least 860px tall. Stacked, the
-          band gets only the height the text leaves — about 266px at 950px, but
-          86px at 770px, where 1,342 points read as a scratch rather than a
-          province. Below that it is hidden and the footer pins to the foot via
-          mt-auto.
+          The band is flex-1 and always rendered, so it both carries the map
+          and pins the footer to the foot of the panel. An earlier attempt gave
+          the footer mt-auto for that job, which silently starved this: auto
+          margins are resolved before flex-grow, so the footer took the free
+          space and the band collapsed to 86px at 762px tall — small enough that
+          the map was gated off as unreadable, treating the symptom.
 
-          It takes whatever height the text leaves. Sized to 145% of the band
+          Sized to 145% of the band
           so it fills that height rather than being fitted inside it — at
           bg-contain a square map in a wide band is sized by the band's height
           and leaves most of the width empty. The band clips the overspill, and
           anchoring right balances the left-aligned text above it. */}
       <div
         aria-hidden="true"
-        className="relative mt-6 hidden min-h-0 flex-1 overflow-hidden [@media(min-width:1024px)_and_(min-height:860px)]:block"
+        className="relative mt-6 hidden min-h-0 flex-1 overflow-hidden lg:block"
       >
-        <div className="absolute inset-x-[-3.5rem] inset-y-0 bg-[url('/iloilo-points.svg')] bg-[length:auto_145%] bg-[position:72%_center] bg-no-repeat opacity-95" />
+        <div className="absolute inset-x-[-3.5rem] inset-y-0 bg-[url('/iloilo-points.svg')] bg-[length:115%_auto] bg-[position:center_42%] bg-no-repeat opacity-95" />
       </div>
 
-      <p className="mt-auto hidden shrink-0 pt-8 text-xs leading-relaxed text-surface-inverse-muted lg:block">
+      <p className="hidden shrink-0 pt-8 text-xs leading-relaxed text-surface-inverse-muted lg:block">
         Provincial Planning and Development Office
         <br />
         Provincial Government of Iloilo
