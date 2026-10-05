@@ -135,15 +135,26 @@ function IdentityPanel() {
           to cost travel between clusters. North up, with a cos(latitude)
           correction (0.981 here) so the shape is not stretched east-west.
 
-          It covers the whole panel so the province is never cropped to fit a
-          band, and a diagonal mask fades it out across the top-left where the
-          type sits. Masking rather than lowering opacity everywhere: a uniform
-          fade weak enough to clear the headline leaves the map invisible in the
-          empty half, which is the compromise the previous three attempts kept
-          landing on from either direction. */}
+          Pushed past the bottom-right corner in PIXELS, not percentages. With
+          percentage positioning the offset is (container - image) x percent, and
+          this map is 670px inside an 843px panel, so 112% moved it all of 21px
+          — visually nothing. calc(100% + 110px) anchors it to the corner and
+          then pushes it a real distance beyond, so the dense middle of the
+          province lands in the corner and its upper-left tail falls away from
+          the type.
+
+          Sized at 88% of the panel height rather than shrunk to clear the text:
+          the mask handles the overlap, and a map small enough to avoid the type
+          entirely was too small to read as a province.
+
+          The diagonal mask stays as insurance: it fades the map's upper-left
+          edge so that if a long headline or a short viewport brings the two
+          closer, they meet in a gradient rather than at a hard edge. Masking
+          rather than lowering opacity everywhere, because a uniform fade weak
+          enough to clear type leaves the map invisible where there is none. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 hidden bg-[url('/iloilo-points.svg')] bg-[length:auto_88%] bg-[position:72%_58%] bg-no-repeat opacity-95 [-webkit-mask-image:linear-gradient(130deg,transparent_26%,rgba(0,0,0,0.45)_44%,black_62%)] [mask-image:linear-gradient(130deg,transparent_26%,rgba(0,0,0,0.45)_44%,black_62%)] lg:block"
+        className="pointer-events-none absolute inset-0 -z-10 hidden bg-[url('/iloilo-points.svg')] bg-[length:auto_88%] bg-[position:calc(100%+110px)_calc(100%+100px)] bg-no-repeat opacity-95 [-webkit-mask-image:linear-gradient(135deg,transparent_34%,black_58%)] [mask-image:linear-gradient(135deg,transparent_34%,black_58%)] lg:block"
       />
 
       <p className="mt-auto hidden shrink-0 pt-10 text-xs leading-relaxed text-surface-inverse-muted lg:block">
