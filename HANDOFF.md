@@ -291,7 +291,7 @@ non-obvious enough to lose an afternoon to:
   discordant pairs (7 vs 14) gives p = 0.189. The two models are statistically
   indistinguishable where both can be evaluated. Reproduce with
   `python scripts/compare_meta_learners_same_rows.py`; figures land in
-  `artifacts/meta_learner_paired_comparison.json`. Related reporting gap: the
+  `artifacts/meta_learner_paired_comparison.json`. **Decision recorded in [[D23-Keep-The-LSTM]]: the LSTM is kept and the null reported as a data-coverage finding, because 21 discordant pairs cannot support removal and deleting the component would destroy the evidence for the claim. Chapter 5 should separately note that a production deployment could run two-learner-only at roughly a third of the image footprint.** Related reporting gap: the
   Models page reads only `meta_learner_metrics.json`, so it presents the
   three-learner's 598-row numbers as the ensemble's performance while 76% of
   deployed High/Critical scores come from the two-learner model, whose
