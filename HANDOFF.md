@@ -363,6 +363,17 @@ non-obvious enough to lose an afternoon to:
   A "cautious" 0.5 or 1.0 is indistinguishable from switching aging off, which
   is why the first smoke test at alpha=1.0 showed nothing.
 
+- **Half the brand palette fails contrast on white, which is why the UI reads as
+  plain.** Measured from the committed values in `frontend/src/app/globals.css`:
+  Sky `#099ED7` is 3.05:1 on white (fails AA body text at 4.5:1) and Cyan
+  `#6AD9F7` is 1.63:1 (fails everything). Navy and Blue pass. So the two colours
+  that make the logo recognisable survive only as hairline borders, and every
+  page defaults to navy-on-white because it is the one combination that works.
+  On navy both become usable -- Cyan 8.46:1, Sky 4.52:1 -- so the fix is to
+  introduce navy as a *surface* (app shell, login panel, header bands) rather
+  than only as a text colour. Plan in `WEBSITE_REDESIGN_PLAN.md`. Re-measure
+  rather than assume if the palette is ever resampled.
+
 ## 8. Key File Map
 
 - `ml-service/data_pipeline/preprocess.py` -- entity resolution / crosswalk, barangay veto lives here.
