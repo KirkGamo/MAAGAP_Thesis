@@ -30,9 +30,9 @@ import { Label } from "@/components/ui/label";
  */
 export default function LoginPage() {
   return (
-    <main className="grid min-h-screen grid-rows-[auto_1fr] lg:grid-cols-[1.05fr_1fr] lg:grid-rows-1">
+    <main className="grid min-h-screen grid-rows-[auto_1fr] lg:grid-cols-[1.3fr_1fr] lg:grid-rows-1">
       <IdentityPanel />
-      <section className="flex items-center justify-center bg-white px-6 py-10 sm:px-10">
+      <section className="flex items-center justify-center bg-white px-6 py-10 sm:px-12">
         {/* useSearchParams() (inside LoginForm) requires a Suspense boundary
             around it in the App Router, since this route has no dynamic
             segment of its own and could otherwise be statically prerendered
@@ -64,19 +64,26 @@ function IdentityPanel() {
           It is content rather than ornament: the same centroids the optimizer
           uses to cost travel between clusters.
 
-          Placed bottom-right, fully contained, in the panel's one genuinely
-          empty region. An earlier attempt bled it off the right edge behind the
-          headline, where a cropped point cloud reads as noise rather than as a
-          province and competes with type whose contrast was measured. */}
+          It holds the right side over the panel's full height while the type
+          keeps the left, so the space the words do not need is textured rather
+          than blank. An earlier pass centred the text instead, which put the
+          two in competition for the middle and left the pinned footer visibly
+          out of line with the content above it. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute right-[-3%] bottom-[-4%] -z-10 hidden h-[62%] w-[62%] bg-[url('/iloilo-points.svg')] bg-contain bg-right-bottom bg-no-repeat opacity-70 lg:block"
+        className="pointer-events-none absolute inset-0 -z-10 hidden bg-[url('/iloilo-points.svg')] bg-[length:auto_118%] bg-[position:78%_center] bg-no-repeat opacity-75 lg:block"
       />
 
       {/* Three parts using the full height — mark at the top, message in the
           middle, institution at the foot. Centring everything left large dead
           areas above and below on a tall viewport. */}
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-10 lg:justify-between">
+      {/* One centred block with fixed gaps, NOT justify-between across the
+          full height. With three children and flex-1, justify-between pushed
+          every spare pixel into the two gaps — on a 950px panel holding ~600px
+          of content that is ~350px of void, which is exactly what it looked
+          like. The institution line is pinned to the foot instead, so it costs
+          no gap. */}
+      <div className="flex w-full max-w-lg flex-1 flex-col justify-center gap-8">
         <div className="flex flex-col gap-3">
           {/* Three defects were measured in the committed logo on this panel:
               a pure-white field with no alpha (it rendered as a white box), a
@@ -96,7 +103,7 @@ function IdentityPanel() {
             width={552}
             height={114}
             priority
-            className="h-8 w-auto self-start lg:h-10"
+            className="h-8 w-auto self-start lg:h-12"
           />
           <p className="max-w-xs text-[11px] leading-relaxed font-medium tracking-[0.08em] text-surface-inverse-muted uppercase lg:text-xs">
             Machine Analytics for Allocation, Governance and Assessment of Projects
@@ -104,17 +111,17 @@ function IdentityPanel() {
         </div>
 
         <div className="hidden flex-col gap-6 lg:flex">
-          <h2 className="max-w-sm text-[1.75rem] leading-[1.15] font-semibold text-balance text-surface-inverse-ink">
+          <h2 className="max-w-sm text-[2.6rem] leading-[1.08] font-semibold tracking-[-0.015em] text-balance text-surface-inverse-ink">
             Risk assessment and inspection scheduling for provincial projects.
           </h2>
-          <p className="max-w-sm text-sm leading-relaxed text-surface-inverse-muted">
+          <p className="max-w-sm text-[15px] leading-relaxed text-surface-inverse-muted">
             Ongoing projects are ranked by delay risk, and each week&apos;s
             inspector assignments are planned against that ranking.
           </p>
 
           {/* Two roles sign in here and land in different places. Saying so
               costs two lines and saves the discovery. */}
-          <dl className="flex flex-col gap-4 border-t border-white/12 pt-5 text-sm">
+          <dl className="flex flex-col gap-4 border-t border-white/12 pt-6 text-[15px]">
             <div className="flex items-start gap-3">
               <LayoutDashboard
                 className="mt-0.5 size-[18px] shrink-0 text-surface-inverse-accent"
@@ -153,12 +160,13 @@ function IdentityPanel() {
             tiers being the least visible — while the soft tints sit within
             1.08x of each other and stop being an ordinal scale at all. The ramp
             was built for light surfaces and this is not one. */}
-        <p className="hidden text-xs leading-relaxed text-surface-inverse-muted lg:block">
-          Provincial Planning and Development Office
-          <br />
-          Provincial Government of Iloilo
-        </p>
       </div>
+
+      <p className="absolute bottom-10 left-14 hidden max-w-md text-xs leading-relaxed text-surface-inverse-muted lg:block">
+        Provincial Planning and Development Office
+        <br />
+        Provincial Government of Iloilo
+      </p>
     </aside>
   );
 }
@@ -197,12 +205,12 @@ function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-[22rem]">
+    <div className="w-full max-w-[26rem]">
       {/* The mark repeats here only below lg, where the navy panel has
           collapsed to a band and would otherwise be the only thing carrying
           the identity above a bare form. */}
-      <div className="mb-7 flex flex-col gap-2">
-        <h1 className="text-[1.75rem] leading-tight font-semibold tracking-tight text-brand-navy">
+      <div className="mb-6 flex flex-col gap-2">
+        <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-brand-navy">
           Sign in
         </h1>
         <p className="text-sm leading-relaxed text-slate-500">
@@ -218,9 +226,9 @@ function LoginForm() {
         </p>
       )}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">Work email</Label>
           <Input
             id="email"
             type="email"
@@ -253,7 +261,7 @@ function LoginForm() {
           </p>
         )}
 
-        <Button type="submit" disabled={isSubmitting} className="mt-1 h-11">
+        <Button type="submit" disabled={isSubmitting} className="mt-2 h-11 text-[15px]">
           {isSubmitting ? "Signing in…" : "Sign in"}
         </Button>
       </form>
@@ -262,7 +270,7 @@ function LoginForm() {
           edge, and answers the one question a failed sign-in actually raises.
           Matches the wording of the deactivated-account notice above, which
           already tells people to contact their Manager. */}
-      <p className="mt-7 border-t border-border-subtle pt-5 text-xs leading-relaxed text-slate-500">
+      <p className="mt-6 border-t border-border-subtle pt-4 text-xs leading-relaxed text-slate-500">
         Accounts are issued and deactivated by your Manager. If you cannot sign
         in, contact them rather than creating a second account.
       </p>
