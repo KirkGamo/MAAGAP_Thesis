@@ -64,14 +64,22 @@ function IdentityPanel() {
           It is content rather than ornament: the same centroids the optimizer
           uses to cost travel between clusters.
 
-          It holds the right side over the panel's full height while the type
-          keeps the left, so the space the words do not need is textured rather
-          than blank. An earlier pass centred the text instead, which put the
-          two in competition for the middle and left the pinned footer visibly
-          out of line with the content above it. */}
+          Confined to the gutter right of the text column. The offset is
+          deterministic rather than a percentage, because a percentage tracks
+          the panel width while a fixed-width text column does not, so the two
+          drift back into overlap at some sizes. An earlier pass spread it
+          across the whole panel and put points behind the headline, which is
+          what made the type harder to read.
+
+          29.5rem (472px) is measured, not guessed: the headline's right edge
+          sits at 440px, so this clears it by 32px while giving the map ~100px
+          more width than a naive padding + max-width + gutter sum would.
+
+          Shown from xl up: below that the panel is too narrow for a gutter
+          wide enough to read as a province rather than as speckle. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 hidden bg-[url('/iloilo-points.svg')] bg-[length:auto_118%] bg-[position:78%_center] bg-no-repeat opacity-75 lg:block"
+        className="pointer-events-none absolute inset-y-0 right-0 left-[29.5rem] -z-10 hidden bg-[url('/iloilo-points.svg')] bg-contain bg-center bg-no-repeat opacity-95 xl:block"
       />
 
       {/* Three parts using the full height — mark at the top, message in the
@@ -83,7 +91,7 @@ function IdentityPanel() {
           of content that is ~350px of void, which is exactly what it looked
           like. The institution line is pinned to the foot instead, so it costs
           no gap. */}
-      <div className="flex w-full max-w-lg flex-1 flex-col justify-center gap-8">
+      <div className="flex w-full max-w-md flex-1 flex-col justify-center gap-8">
         <div className="flex flex-col gap-3">
           {/* Three defects were measured in the committed logo on this panel:
               a pure-white field with no alpha (it rendered as a white box), a
