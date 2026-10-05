@@ -52,54 +52,80 @@ export default function LoginPage() {
  */
 function IdentityPanel() {
   return (
-    <aside className="flex flex-col justify-center gap-6 bg-surface-inverse px-6 py-8 sm:px-10 lg:gap-10 lg:px-14 lg:py-16">
-      <div className="flex flex-col gap-4 lg:gap-6">
-        <Image
-          src="/maagap-logo.png"
-          alt="MAAGAP"
-          width={597}
-          height={197}
-          priority
-          className="h-10 w-auto lg:h-16"
-        />
-        {/* Set in cyan-light rather than white on purpose: 10.25:1 on navy,
-            and it is a brand colour that cannot carry text anywhere on the
-            white half of this page (1.63:1 there). Measured, not assumed. */}
-        <p className="max-w-md text-sm leading-relaxed font-medium text-surface-inverse-muted lg:text-base">
-          Machine Analytics for Allocation, Governance and Assessment of Projects
-        </p>
-      </div>
+    <aside className="flex flex-col justify-center bg-surface-inverse px-6 py-8 sm:px-10 lg:px-14 lg:py-16">
+      {/* Capped and centred within the panel. Left-aligned against the panel
+          edge, the content stranded itself on the far side of a 950px column
+          on a wide monitor. */}
+      <div className="mx-auto flex w-full max-w-md flex-col gap-7 lg:gap-9">
+        <div className="flex flex-col gap-3">
+          {/* Two problems with the committed logo on a navy panel, both
+              measured rather than judged.
 
-      <div className="hidden max-w-md flex-col gap-5 lg:flex">
-        <p className="text-lg leading-snug font-semibold text-surface-inverse-ink">
-          Risk assessment and inspection scheduling for provincial projects.
-        </p>
-        <p className="text-sm leading-relaxed text-surface-inverse-muted">
-          Used by the Provincial Planning and Development Office, Iloilo Province,
-          to rank ongoing projects by delay risk and plan where inspectors go each
-          week.
-        </p>
+              It is RGB with no alpha and a pure-white field, so it rendered as
+              a white box. And its canvas is 3.03:1 while the artwork inside is
+              4.84:1 -- 42% of the height is padding -- so sizing by height
+              shrank the letterforms while the width stayed full, which is what
+              read as stretched.
 
-        {/* Two roles sign in here and land in different places. Saying so
-            costs two lines and saves the discovery. */}
-        <dl className="flex flex-col gap-3 border-t border-white/15 pt-5 text-sm">
-          <div className="flex gap-3">
-            <dt className="w-24 shrink-0 font-semibold text-surface-inverse-ink">
-              Managers
-            </dt>
-            <dd className="text-surface-inverse-muted">
-              Review risk, run the optimizer, deploy weekly schedules
-            </dd>
-          </div>
-          <div className="flex gap-3">
-            <dt className="w-24 shrink-0 font-semibold text-surface-inverse-ink">
-              Inspectors
-            </dt>
-            <dd className="text-surface-inverse-muted">
-              File monitoring reports from the field
-            </dd>
-          </div>
-        </dl>
+              Worse, the wordmark's darkest ink is #242367 against this panel's
+              #242467: a one-channel difference, so the leading "M" was
+              invisible. 49% of the logo's inked pixels fell below 3:1 here.
+
+              maagap-logo-reversed.png is the same artwork cropped to its
+              bounding box, with only the inks that failed 3:1 lifted to white.
+              The blue-to-cyan gradient is untouched, so it keeps its character
+              instead of flattening to a white silhouette. */}
+          <Image
+            src="/maagap-logo-reversed.png"
+            alt="MAAGAP"
+            width={552}
+            height={114}
+            priority
+            // self-start is load-bearing, not cosmetic. This image is a child of a
+            // flex column, where align-items: stretch makes it fill the container
+            // width while h-10 pins the height -- rendering the wordmark at
+            // 11.20:1 against its natural 4.84:1. w-auto cannot win against
+            // stretch; align-self can.
+            className="h-8 w-auto self-start lg:h-10"
+          />
+          {/* Set as a quiet subtitle to the logo rather than at body size,
+              where it competed with the headline below. 10.25:1 on navy. */}
+          <p className="text-[11px] leading-relaxed font-medium tracking-[0.08em] text-surface-inverse-muted uppercase lg:text-xs">
+            Machine Analytics for Allocation, Governance and Assessment of Projects
+          </p>
+        </div>
+
+        <div className="hidden flex-col gap-5 lg:flex">
+          <h2 className="text-2xl leading-tight font-semibold text-balance text-surface-inverse-ink">
+            Risk assessment and inspection scheduling for provincial projects.
+          </h2>
+          <p className="text-sm leading-relaxed text-surface-inverse-muted">
+            Used by the Provincial Planning and Development Office, Iloilo
+            Province, to rank ongoing projects by delay risk and plan where
+            inspectors go each week.
+          </p>
+
+          {/* Two roles sign in here and land in different places. Saying so
+              costs two lines and saves the discovery. */}
+          <dl className="mt-1 flex flex-col gap-3 border-t border-white/15 pt-5 text-sm">
+            <div className="flex gap-4">
+              <dt className="w-[5.5rem] shrink-0 font-semibold text-surface-inverse-ink">
+                Managers
+              </dt>
+              <dd className="text-surface-inverse-muted">
+                Review risk, run the optimizer, deploy weekly schedules
+              </dd>
+            </div>
+            <div className="flex gap-4">
+              <dt className="w-[5.5rem] shrink-0 font-semibold text-surface-inverse-ink">
+                Inspectors
+              </dt>
+              <dd className="text-surface-inverse-muted">
+                File monitoring reports from the field
+              </dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </aside>
   );

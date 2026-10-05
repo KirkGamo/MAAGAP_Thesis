@@ -1,15 +1,36 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/**
+ * IBM Plex, replacing the Next.js scaffold's Geist.
+ *
+ * Geist went thin and washed on the navy surfaces introduced in phase 2 of
+ * WEBSITE_REDESIGN_PLAN.md. Plex Sans was drawn for technical and data-dense
+ * interfaces and holds its weight on a dark ground, which is the condition
+ * this app now has to meet.
+ *
+ * The mono companion is the real reason for the pair. This app is mostly
+ * figures in columns -- risk probabilities, efficiency, costs, inspector-days,
+ * contrast ratios -- and Plex Mono gives them a face with true tabular figures
+ * instead of borrowing the UI sans.
+ *
+ * Weights are declared explicitly: next/font only ships what is asked for, and
+ * a missing weight falls back silently to the nearest available one rather
+ * than erroring.
+ */
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -38,7 +59,7 @@ export default function RootLayout({
     // surface normally.
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

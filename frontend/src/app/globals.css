@@ -42,13 +42,28 @@
   --color-brand-sky-light: #3fbde5;
   --color-brand-cyan-light: #a3e9fb;
   --color-brand-surface: #f2f8fd;
+
+  /* The brand's accent, dark enough to carry body text on a WHITE surface.
+   *
+   * This exists because the first version of the redesign argued that sky and
+   * cyan "could not be used" on white and therefore the app needed navy
+   * grounds. That was overstated. Sky is 3.05:1, which already passes for
+   * large text, icons, borders and chart fills; and darkened it clears body
+   * text comfortably. A bright accent that is not a body-text colour is
+   * ordinary, not a defect — so the brand reaches the working pages through
+   * this token rather than by making them dark.
+   *
+   * There is deliberately no cyan-dark. Darkening cyan far enough to pass on
+   * white moves it to 193deg, within four degrees of this; the two become the
+   * same colour. Cyan stays what it is: a fill and a dark-ground accent. */
+  --color-brand-sky-dark: #077ca9;   /* 4.70:1 on white */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
 
   --color-brand-navy: var(--color-brand-navy);
   --color-brand-blue: var(--color-brand-blue);
@@ -59,6 +74,7 @@
   --color-brand-sky-light: var(--color-brand-sky-light);
   --color-brand-cyan-light: var(--color-brand-cyan-light);
   --color-brand-surface: var(--color-brand-surface);
+  --color-brand-sky-dark: var(--color-brand-sky-dark);
 }
 
 /* Phase 20 fix: this leftover Next.js-scaffold dark-mode override was the
@@ -75,10 +91,11 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  /* Phase 15 fix: --font-sans (Geist, wired up above via @theme inline)
-     was defined but never applied here -- the app was silently rendering
-     in the browser's default Arial the whole time. */
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  /* Phase 15 fix: --font-sans was defined but never applied here -- the app
+     was silently rendering in the browser's default Arial the whole time.
+     The fallback stack is real rather than decorative: next/font swaps, so
+     these faces are what the page shows until Plex loads. */
+  font-family: var(--font-sans), "Segoe UI", system-ui, sans-serif;
 }
 
 /* Phase 21: branded scrollbars -- every scrollable surface in the app
@@ -134,8 +151,20 @@ body {
   --surface-base: #ffffff;
   --surface-sunk: #f2f8fd;          /* wells, secondary panels, code */
   --surface-raised: #ffffff;        /* the one primary card per view */
-  --surface-inverse: #242467;       /* navy — app shell, login, header bands */
-  --surface-inverse-ink: #ffffff;         /* 13.79:1 on navy */
+  /* Navy is for BRIEF, ceremonial surfaces only — the login screen, at most a
+   * slim header band. It is NOT the app shell.
+   *
+   * #242467 is 48% saturation at 27% lightness: a saturated dark field. On a
+   * login screen someone sees for ten seconds that is a fair trade for
+   * identity. Behind eight hours of risk tables it is a fatigue cost, and the
+   * working surfaces stay light for that reason. */
+  --surface-inverse: #242467;
+  /* Off-white, not pure white. WCAG sets a floor of 4.5:1, not a ceiling, and
+   * pure white on this navy is 13.79:1 — above the comfortable band, where
+   * light text on a saturated dark ground begins to halate (appear to bleed),
+   * noticeably so for readers with astigmatism. #E8ECF5 is 11.65:1: still far
+   * clear of AA, with less glare. */
+  --surface-inverse-ink: #e8ecf5;
   --surface-inverse-muted: #a3e9fb;       /* cyan-light, 8.46:1 on navy */
   --surface-inverse-accent: #6ad9f7;      /* cyan, for emphasis on navy only */
 

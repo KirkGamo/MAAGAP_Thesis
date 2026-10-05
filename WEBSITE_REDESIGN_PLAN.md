@@ -6,7 +6,7 @@ _Drafted 2026-10-05. Scope: the four surfaces the September 2026 series never co
 
 ## 1. Objectives
 
-1. **Make the brand palette usable.** Measured against white, two of MAAGAP's four brand colours fail WCAG AA: Sky `#099ED7` is 3.05:1 (fails body text) and Cyan `#6AD9F7` is 1.63:1 (fails everything). They survive today only as hairline borders and small accents, so the app defaults to navy-on-white — the only combination that passes. **This is the measurable cause of "the site looks plain", and it has a correct answer:** on navy, Cyan is 8.46:1 and Sky 4.52:1. Introduce navy as a *surface*, not only as a text colour.
+1. **Give the brand a way into the product.** Sky `#099ED7` is 3.05:1 on white and Cyan `#6AD9F7` is 1.63:1, so neither carries body text there. **Amended 2026-10-06 — the first version of this objective overstated that.** 3.05:1 already passes for large text, icons, borders and chart fills, and a darkened sky (`#077CA9`, 4.70:1) carries body text on white perfectly well. A bright accent that is not a body-text colour is ordinary, not a defect. The cause of "the site looks plain" is therefore **the absence of surface hierarchy** (objective 2), not the canvas being white. Navy is retained for brief, ceremonial surfaces only and is explicitly **not** the app shell — see §3.
 2. **Give the design system the means to express hierarchy.** It currently has eight brand colours and nothing else — no elevation scale, no semantic scale, no surface roles — so every block is a white card with the same border and radius, and nothing reads as more important than anything else.
 3. **Make the project detail page show the model's reasoning instead of describing it.** It is the page that answers the question the thesis exists to answer, and it currently carries **10 prose blocks to 2 visual elements**. SHAP feature contributions — signed magnitudes, which *are* a chart — render as a text list.
 4. **Give the login page an identity.** A `max-w-sm` form card on `bg-slate-50` could belong to any product. `public/maagap-logo.png` is committed and referenced nowhere on it.
@@ -49,8 +49,21 @@ Everything else consumes this, so it ships first.
 |---|---|
 | `--surface-base` | page ground |
 | `--surface-raised` | the one card per view that is primary |
-| `--surface-inverse` | navy — app shell, login panel, header bands |
+| `--surface-inverse` | navy — login, at most a slim header band. **Not the app shell.** |
 | `--surface-sunk` | wells, code, secondary panels |
+
+### Where navy may and may not be used (amended 2026-10-06)
+
+`#242467` is **48% saturation at 27% lightness** — a saturated dark field — and pure white on it is **13.79:1**. WCAG sets a floor of 4.5:1, not a ceiling; contrast that high on a saturated dark ground causes **halation**, where light text appears to bleed, and it is worse for readers with astigmatism.
+
+The distinction that governs its use is **exposure time**. Login is a ten-second surface, where navy's identity value is high and its fatigue cost is near zero. The manager tabs are where planning officers spend hours, and the same treatment behind eight hours of risk tables is a real cost.
+
+- **Permitted**: login, slim header bands.
+- **Not permitted**: the ground of any working surface — PPAs list, project detail, the four manager tabs, the inspector pages.
+- **Text on navy is off-white** `#E8ECF5` (11.65:1), never pure white.
+- **The brand reaches light surfaces** through `--color-brand-sky-dark` `#077CA9` (4.70:1 on white), not by darkening the page.
+
+There is deliberately no `cyan-dark`: darkening cyan enough to pass on white moves it to 193°, within four degrees of darkened sky, so the two become the same colour. Cyan stays a fill and a dark-ground accent.
 
 **A risk ramp separate from the brand.** Risk tier is the most important encoding in this product and currently borrows generic badge colours. Four steps (Low/Medium/High/Critical) with their own hues, **always paired with a non-colour cue** — the shape-plus-colour encoding already proven on the schedule markers (F3). Tier must never be carried by hue alone, anywhere.
 
