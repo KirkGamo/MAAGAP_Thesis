@@ -89,7 +89,18 @@ def simulate(oe, aging, scored_df, alpha: float, weeks: int,
 
         schedule_df, summary = oe.build_and_solve_schedule(pool)
 
-        tiers = schedule_df["risk_tier"].value_counts().to_dict() if not schedule_df.empty else {}
+        # An empty schedule has no columns at all, so every later access by name
+        # raises KeyError rather than returning nothing. The solver can return
+        # one legitimately -- a pool that is non-empty but entirely unschedulable
+        # under the budget and capacity constraints -- so this is a real state,
+        # not a defensive guard.
+        if schedule_df.empty or "project_key" not in schedule_df.columns:
+            weekly.append({"week": week + 1, "scheduled": 0, "high": 0,
+                           "critical": 0, "efficiency": None, "objective": None,
+                           "on_cooldown": len(on_cooldown)})
+            continue
+
+        tiers = schedule_df["risk_tier"].value_counts().to_dict()
         weekly.append(
             {
                 "week": week + 1,
@@ -126,7 +137,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--weeks", type=int, default=8)
     ap.add_argument("--alphas", type=float, nargs="+", default=[0.0, 0.5, 1.0, 2.0])
-    ap.add_argument("--cooldown-days", type=int, default=28)
+    ap.add_argument(
+        "--cooldowns", type=int, nargs="+", default=[28],
+        help="Cooldown windows to cross with --alphas. 0 disables the "
+             "cooldown, which is how the aging-alone arm is expressed.",
+    )
     ap.add_argument("--window-weeks", type=float, default=12.0)
     ap.add_argument("--time-limit", type=int, default=20,
                     help="CBC cap per solve. Lower than production's 60s because "
@@ -147,37 +162,49 @@ def main() -> int:
     scored = oe.score_ongoing_projects()
     print(f"  {len(scored)} projects scored ({time.time() - t0:.0f}s)\n")
 
-    solves = args.weeks * len(args.alphas)
+    solves = args.weeks * len(args.alphas) * len(args.cooldowns)
     print(f"{solves} solves at {args.time_limit}s each "
           f"(~{solves * args.time_limit / 60:.0f} min)\n")
 
     results = []
-    for alpha in args.alphas:
-        print(f"=== alpha = {alpha} ===")
-        res = simulate(oe, aging, scored, alpha, args.weeks,
-                       args.cooldown_days, args.window_weeks)
-        results.append(res)
-        for w in res["weeks"]:
-            print(f"  week {w['week']:>2}: {w['scheduled']:>3} visits  "
-                  f"High {w['high']:>3}  Critical {w['critical']:>3}  "
-                  f"eff {w['efficiency']}")
-        print(f"  -> High-tier coverage {res['high_tier_reached']}/{res['high_tier_total']}"
-              f"  mean efficiency {res['mean_efficiency']}\n")
+    for cooldown in args.cooldowns:
+        for alpha in args.alphas:
+            print(f"=== cooldown={cooldown}d alpha={alpha} ===")
+            res = simulate(oe, aging, scored, alpha, args.weeks,
+                           cooldown, args.window_weeks)
+            res["cooldown_days"] = cooldown
+            results.append(res)
+            for w in res["weeks"]:
+                print(f"  week {w['week']:>2}: {w['scheduled']:>3} visits  "
+                      f"High {w['high']:>3}  Critical {w['critical']:>3}  "
+                      f"eff {w['efficiency']}")
+            print(f"  -> High reached {res['high_tier_reached']}/"
+                  f"{res['high_tier_total']}  mean eff {res['mean_efficiency']}")
+            print()
 
-    print("=" * 74)
-    print(f"  {'alpha':>6} {'visits':>7} {'distinct':>9} {'High reached':>13} {'mean eff':>9}")
-    print("=" * 74)
+    print("=" * 78)
+    print(f"  {'cooldown':>9} {'alpha':>6} {'visits':>7} {'distinct':>9} "
+          f"{'High reached':>13} {'mean eff':>9}")
+    print("=" * 78)
     for r in results:
-        print(f"  {r['alpha']:>6} {r['total_visits']:>7} {r['distinct_projects_visited']:>9} "
-              f"{r['high_tier_reached']:>6}/{r['high_tier_total']:<6} {r['mean_efficiency']:>9}")
-    print("=" * 74)
+        print(f"  {str(r['cooldown_days']) + 'd':>9} {r['alpha']:>6} "
+              f"{r['total_visits']:>7} {r['distinct_projects_visited']:>9} "
+              f"{r['high_tier_reached']:>6}/{r['high_tier_total']:<6} "
+              f"{r['mean_efficiency']:>9}")
+    print("=" * 78)
+    print()
+    print()
+    print("  cooldown=0 alpha=0 is the pre-R1 system.")
+    print("  cooldown=28 alpha=0 is what ships today.")
+    print("  The arm worth reading is cooldown=0 with a positive alpha:")
+    print("  aging alone, banning nothing.")
     print("\n  Read this as the trade-off: aging buys High-tier coverage with")
     print("  allocation efficiency. Which point on the curve PPDO wants is a")
     print("  policy choice, not a modelling one.")
 
     args.out.write_text(json.dumps({
         "weeks": args.weeks,
-        "cooldown_days": args.cooldown_days,
+        "cooldown_days_swept": args.cooldowns,
         "window_weeks": args.window_weeks,
         "solver_time_limit_seconds": args.time_limit,
         "scores": "held fixed across weeks; see module docstring",
