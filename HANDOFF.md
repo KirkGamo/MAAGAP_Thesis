@@ -370,9 +370,23 @@ non-obvious enough to lose an afternoon to:
   that make the logo recognisable survive only as hairline borders, and every
   page defaults to navy-on-white because it is the one combination that works.
   On navy both become usable -- Cyan 8.46:1, Sky 4.52:1 -- so the fix is to
-  introduce navy as a *surface* (app shell, login panel, header bands) rather
-  than only as a text colour. Plan in `WEBSITE_REDESIGN_PLAN.md`. Re-measure
-  rather than assume if the palette is ever resampled.
+  introduce navy as a *surface* -- but NOT as the app shell. See the plan's
+  scoping by exposure time: navy is for login and slim header bands only.
+  `#242467` is 48% saturation at 27% lightness, and pure white on it is 13.79:1
+  -- above the comfortable band, where light text on a saturated dark ground
+  halates. Text on navy is off-white `#E8ECF5` (11.65:1). Light surfaces get the
+  brand through `--color-brand-sky-dark` `#077CA9` (4.70:1 on white) instead.
+
+  **`WEBSITE_REDESIGN_PLAN.md` was rewritten on 2026-10-06 after an audit.** Its
+  first version was generated from file-level greps without opening the
+  components it described, and was wrong about three of five workstreams: the
+  SHAP diverging chart it called "the single highest-value change" already
+  existed (`shap-chart.tsx`, Phase 22); the PPAs list already had a 375-line
+  filter sidebar and a risk-ordered query; and the inspector pages it said were
+  "never covered" are scoped in the first line of
+  `REPORTING_LOOP_IMPROVEMENT_PLAN.md`. Remaining work went from 5-7 days to
+  ~1.5. What survived the audit were the parts derived from measurement rather
+  than grepping.
 
 ## 8. Key File Map
 
