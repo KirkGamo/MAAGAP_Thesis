@@ -263,19 +263,12 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           <CardTitle>Risk assessment</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="flex items-center gap-4">
-            {project.risk_tier ? (
-              <Badge variant={riskTierVariant(project.risk_tier)}>{project.risk_tier}</Badge>
-            ) : (
-              <span className="text-sm text-slate-400">Not yet scored</span>
-            )}
-            {project.risk_probability != null && (
-              <span className="text-sm text-slate-600">
-                P(RedFlag) = {project.risk_probability.toFixed(3)}
-              </span>
-            )}
-            <RiskDelta history={scoreHistory} />
-          </div>
+          <RiskBand
+            tier={project.risk_tier}
+            probability={project.risk_probability}
+            scoreBasis={project.score_basis}
+            history={scoreHistory}
+          />
           <ScoreHistoryNote history={scoreHistory} />
           {/* Phase 22 follow-up: a project marked Completed (or, as of the
               "refunded" status addition, Refunded) in historical records can
@@ -511,6 +504,139 @@ function ScoreHistoryNote({ history }: { history: ScoreHistoryRow[] | null }) {
       {fromReport
         ? "This change followed a monitoring report. Where the reported status matched the previous status, the movement comes from elapsed-time features rather than from what was observed on site."
         : "This change came from a scheduled re-score, not a site visit — so it reflects elapsed time rather than new field observation."}
+    </p>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * The risk band.
+ *
+ * Tier, probability, change and provenance were four sibling spans in a flex
+ * row — the page's headline fact rendered as a sentence fragment. They are one
+ * unit here, because they answer one question together: how bad is this, which
+ * way is it moving, and who says so.
+ *
+ * `score_basis` appears for the first time. It has been persisted since R4 and
+ * shown nowhere, which mattered more than it sounds: 76% of High and Critical
+ * classifications come from the two-learner configuration, so a manager reading
+ * a Critical tier could not tell which model produced it.
+ * ------------------------------------------------------------------------ */
+
+function RiskBand({
+  tier,
+  probability,
+  scoreBasis,
+  history,
+}: {
+  tier: string | null;
+  probability: number | null;
+  scoreBasis: string | null;
+  history: ScoreHistoryRow[] | null;
+}) {
+  const scored = (history ?? []).filter((h) => h.risk_probability != null);
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface-sunk px-4 py-3.5">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex items-center gap-3">
+          {tier ? (
+            <Badge variant={riskTierVariant(tier)} className="text-sm">
+              {tier}
+            </Badge>
+          ) : (
+            <span className="text-sm text-slate-400">Not yet scored</span>
+          )}
+          {probability != null && (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl leading-none font-semibold text-brand-navy tabular-nums">
+                {probability.toFixed(3)}
+              </span>
+              <span className="text-xs text-slate-500">P(RedFlag)</span>
+            </div>
+          )}
+        </div>
+
+        <RiskDelta history={history} />
+        <Sparkline history={history} />
+      </div>
+
+      <ScoreBasisLine basis={scoreBasis} count={scored.length} />
+    </div>
+  );
+}
+
+/**
+ * The score series, oldest to newest, with the current value marked.
+ *
+ * Renders only from two points. A single point is not a flat line — it is an
+ * unknown trajectory, and drawing it as flat would assert something the data
+ * does not say.
+ */
+function Sparkline({ history }: { history: ScoreHistoryRow[] | null }) {
+  const points = (history ?? [])
+    .filter((h) => h.risk_probability != null)
+    .slice()
+    .reverse(); // stored newest-first; a chart reads oldest-first
+
+  if (points.length < 2) return null;
+
+  const W = 112;
+  const H = 30;
+  const PAD = 3;
+  const values = points.map((p) => Number(p.risk_probability));
+
+  // Fixed 0..1 domain rather than min..max of the series. An autoscaled axis
+  // would render a drift from 0.93 to 0.94 as a dramatic climb, which is the
+  // classic way a sparkline lies about a probability.
+  const x = (i: number) => PAD + (i / (points.length - 1)) * (W - 2 * PAD);
+  const y = (v: number) => H - PAD - v * (H - 2 * PAD);
+
+  const path = values.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const last = values[values.length - 1];
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width={W}
+      height={H}
+      className="shrink-0 overflow-visible"
+      role="img"
+      aria-label={`Risk probability over the last ${points.length} scores, currently ${last.toFixed(3)} on a 0 to 1 scale`}
+    >
+      <line
+        x1={PAD} y1={y(0.5)} x2={W - PAD} y2={y(0.5)}
+        className="stroke-slate-300" strokeWidth="1" strokeDasharray="2 2"
+      />
+      <path d={path} fill="none" className="stroke-brand-sky-dark" strokeWidth="1.5"
+        strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={x(points.length - 1)} cy={y(last)} r="2.5" className="fill-brand-navy" />
+    </svg>
+  );
+}
+
+/**
+ * Which model produced the score on screen.
+ *
+ * Named in full rather than by the raw `score_basis` value: "two_learner" is a
+ * column value, not an explanation, and the distinction it carries — whether
+ * this project had an event sequence long enough for the LSTM — is the reason
+ * the Models page shows two sets of metrics.
+ */
+function ScoreBasisLine({ basis, count }: { basis: string | null; count: number }) {
+  if (!basis) return null;
+
+  const three = basis === "three_learner";
+  return (
+    <p className="border-t border-border-subtle pt-3 text-xs leading-relaxed text-slate-500">
+      Scored by the{" "}
+      <span className="font-medium text-slate-700">
+        {three ? "three-learner" : "two-learner"}
+      </span>{" "}
+      ensemble —{" "}
+      {three
+        ? "Random Forest, XGBoost and the LSTM, which this project has a long enough monitoring-event sequence to use."
+        : "Random Forest and XGBoost. This project has no monitoring-event sequence long enough for the LSTM, which is true of most of the portfolio."}
+      {count > 1 && ` ${count} scores on record.`}
     </p>
   );
 }
