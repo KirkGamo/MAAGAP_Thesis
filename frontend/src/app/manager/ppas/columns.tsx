@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { MapPin } from "lucide-react";
 import { Badge, riskTierVariant, statusVariant } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { MarqueeText } from "./marquee-text";
 
 /** One row of the PPAs table -- mirrors exactly the fields page.tsx selects
@@ -44,6 +45,13 @@ const STATUS_LABELS: Record<string, string> = {
  * risk_probability descending at the query level (see page.tsx), which is
  * the ordering that actually matters for this dashboard's purpose.
  */
+const RISK_STRIPE: Record<string, string> = {
+  Low: "bg-risk-low",
+  Medium: "bg-risk-medium",
+  High: "bg-risk-high",
+  Critical: "bg-risk-critical",
+};
+
 export const ppaColumns: ColumnDef<PpaRow>[] = [
   {
     accessorKey: "name_of_project",
@@ -157,7 +165,19 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
     header: "Risk Tier",
     cell: ({ row }) =>
       row.original.risk_tier ? (
-        <Badge variant={riskTierVariant(row.original.risk_tier)}>{row.original.risk_tier}</Badge>
+        <div className="flex items-center gap-2.5">
+          {/* A severity bar beside the badge, from the solid risk ramp. The
+              ramp's luminance falls monotonically from Low to Critical
+              (0.288, 0.205, 0.135, 0.075), so a column of these reads as an
+              ordinal scale even in greyscale or under a colour-vision
+              deficiency — which a row of pills, each legible only by reading
+              its word, does not. */}
+          <span
+            aria-hidden="true"
+            className={cn("h-5 w-1 shrink-0 rounded-full", RISK_STRIPE[row.original.risk_tier] ?? "bg-slate-300")}
+          />
+          <Badge variant={riskTierVariant(row.original.risk_tier)}>{row.original.risk_tier}</Badge>
+        </div>
       ) : (
         <span className="text-slate-400">Unscored</span>
       ),

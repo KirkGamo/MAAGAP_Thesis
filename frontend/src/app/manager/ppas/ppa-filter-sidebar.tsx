@@ -17,6 +17,15 @@ interface PpaFilterSidebarProps {
   statuses: readonly { value: string; label: string }[];
   projectTypes: readonly string[];
   municipalities: string[];
+  /** Per-value project counts, keyed by facet. Plain objects rather than
+   * Maps: a Map is not serialisable across the Server/Client Component
+   * boundary and arrives as an empty object with no error. */
+  counts?: {
+    status?: Record<string, number>;
+    risk_tier?: Record<string, number>;
+    project_type?: Record<string, number>;
+    municipality?: Record<string, number>;
+  };
   revenueBounds: Bounds;
 }
 
@@ -71,6 +80,7 @@ export function PpaFilterSidebar({
   statuses,
   projectTypes,
   municipalities,
+  counts,
   revenueBounds,
 }: PpaFilterSidebarProps) {
   const router = useRouter();
@@ -133,28 +143,28 @@ export function PpaFilterSidebar({
         <CheckboxFilterSection
           title="Status"
           paramKey="status"
-          options={statuses.map((s) => ({ value: s.value, label: s.label }))}
+          options={statuses.map((s) => ({ value: s.value, label: s.label, count: counts?.status?.[s.value] }))}
           selected={parseCsvParam(searchParams.get("status") ?? undefined)}
           onToggle={(v) => toggleCsvValue("status", v)}
         />
         <CheckboxFilterSection
           title="Risk Tier"
           paramKey="risk_tier"
-          options={riskTiers.map((t) => ({ value: t, label: t }))}
+          options={riskTiers.map((t) => ({ value: t, label: t, count: counts?.risk_tier?.[t] }))}
           selected={parseCsvParam(searchParams.get("risk_tier") ?? undefined)}
           onToggle={(v) => toggleCsvValue("risk_tier", v)}
         />
         <CheckboxFilterSection
           title="Project Type"
           paramKey="project_type"
-          options={projectTypes.map((t) => ({ value: t, label: t }))}
+          options={projectTypes.map((t) => ({ value: t, label: t, count: counts?.project_type?.[t] }))}
           selected={parseCsvParam(searchParams.get("project_type") ?? undefined)}
           onToggle={(v) => toggleCsvValue("project_type", v)}
         />
         <CheckboxFilterSection
           title="Municipality"
           paramKey="municipality"
-          options={municipalities.map((m) => ({ value: m, label: m }))}
+          options={municipalities.map((m) => ({ value: m, label: m, count: counts?.municipality?.[m] }))}
           selected={parseCsvParam(searchParams.get("municipality") ?? undefined)}
           onToggle={(v) => toggleCsvValue("municipality", v)}
           defaultOpen={false}
@@ -221,7 +231,7 @@ function CheckboxFilterSection({
 }: {
   title: string;
   paramKey: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; count?: number }[];
   selected: string[];
   onToggle: (value: string) => void;
   defaultOpen?: boolean;
@@ -242,7 +252,17 @@ function CheckboxFilterSection({
               onChange={() => onToggle(opt.value)}
               className="size-3.5 rounded border-brand-navy/20 text-brand-blue focus:ring-2 focus:ring-brand-blue/40"
             />
-            {opt.label}
+            <span className="min-w-0 flex-1 truncate">{opt.label}</span>
+            {/* How many projects the option would match, so the choice can be
+                made before paying for a round trip. Counts are of the WHOLE
+                population, not of the current result set: a facet that recounts
+                against the active filters shows zero beside every option the
+                user has not already chosen, which is the opposite of useful. */}
+            {opt.count != null && (
+              <span className="shrink-0 text-xs text-slate-400 tabular-nums">
+                {opt.count.toLocaleString()}
+              </span>
+            )}
           </label>
         ))}
         {options.length === 0 && <p className="text-xs text-slate-400">No options available.</p>}

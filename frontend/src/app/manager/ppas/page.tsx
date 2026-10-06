@@ -89,13 +89,48 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
   // `municipality` column across every row (cheap: one short text column,
   // no joins, no pagination limit applied to this query specifically) and
   // dedupes/sorts in memory instead.
-  const { data: municipalityRows } = await supabase
-    .from("projects")
-    .select("municipality")
-    .not("municipality", "is", null);
+  // Paginated deliberately. PostgREST caps an unbounded select at 1,000 rows,
+  // so this query silently described only the first 1,000 of 2,393 projects --
+  // which the municipality list has been built from since it was written, so
+  // the Municipality filter has been missing every municipality that appears
+  // only later in the table. The counts added alongside it made the truncation
+  // visible: status and risk tier each summed to exactly 1,000.
+  const FACET_PAGE = 1000;
+  const facetRows: { municipality: string | null; status: string | null; risk_tier: string | null; project_type: string | null }[] = [];
+  for (let offset = 0; ; offset += FACET_PAGE) {
+    const { data } = await supabase
+      .from("projects")
+      .select("municipality, status, risk_tier, project_type")
+      .range(offset, offset + FACET_PAGE - 1);
+    if (!data?.length) break;
+    facetRows.push(...data);
+    if (data.length < FACET_PAGE) break;
+  }
+
   const municipalities = Array.from(
-    new Set((municipalityRows ?? []).map((r) => r.municipality).filter((m): m is string => Boolean(m)))
+    new Set(
+      facetRows.map((r) => r.municipality).filter((m): m is string => Boolean(m))
+    )
   ).sort();
+
+  // Counts per facet value, so each filter option can say how many projects it
+  // would match. Derived from the one query above rather than four COUNT round
+  // trips: these are four short columns over the whole table, which is what the
+  // municipality dedupe already cost.
+  const facetCount = (key: "status" | "risk_tier" | "project_type" | "municipality") => {
+    const counts = new Map<string, number>();
+    for (const row of facetRows) {
+      const value = row[key];
+      if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const facetCounts = {
+    status: facetCount("status"),
+    risk_tier: facetCount("risk_tier"),
+    project_type: facetCount("project_type"),
+    municipality: facetCount("municipality"),
+  };
 
   // Live MIN/MAX bounds for the Budget range slider. PostgREST has no
   // aggregate MIN/MAX in a single .select() the way SQL does, so this is
@@ -163,8 +198,13 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      {/* Stacks below sm. As a single non-wrapping flex row this put the
+          2-item action group (261px) beside the title at every width, pushing
+          the page 15px past a 390px viewport -- the one horizontal overflow
+          the four-viewport sweep found. min-w-0 lets the title column shrink
+          rather than hold its longest line. */}
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold text-brand-navy">
             Program, Projects, and Activities (PPAs)
           </h1>
@@ -186,6 +226,12 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
             statuses={STATUSES}
             projectTypes={PROJECT_TYPES}
             municipalities={municipalities}
+            counts={{
+              status: Object.fromEntries(facetCounts.status),
+              risk_tier: Object.fromEntries(facetCounts.risk_tier),
+              project_type: Object.fromEntries(facetCounts.project_type),
+              municipality: Object.fromEntries(facetCounts.municipality),
+            }}
             revenueBounds={revenueBounds}
           />
         )}
