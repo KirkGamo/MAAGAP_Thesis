@@ -348,7 +348,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
           capture="environment"
           multiple
           onChange={handlePhotoCapture}
-          className="text-sm file:mr-3 file:h-10 file:rounded-md file:border-0 file:bg-brand-navy file:px-3 file:text-sm file:font-medium file:text-white"
+          className="text-sm file:mr-3 file:h-11 file:rounded-md file:border-0 file:bg-brand-navy file:px-4 file:text-sm file:font-medium file:text-white"
         />
 
         {photos.length > 0 && (
@@ -369,7 +369,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
                 >
                   ×
                 </button>
-                <p className="mt-0.5 truncate text-center text-[10px] text-slate-500">
+                <p className="mt-0.5 truncate text-center text-[10px] text-field-ink-muted">
                   {p.status === "uploading" && "Uploading..."}
                   {p.status === "uploaded" && "Uploaded"}
                   {p.status === "pending" && "Queued"}

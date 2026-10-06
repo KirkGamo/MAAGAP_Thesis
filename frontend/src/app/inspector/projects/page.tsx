@@ -66,11 +66,11 @@ export default async function AssignedProjectsPage({ searchParams }: AssignedPro
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <Link href="/inspector" className="text-xs text-slate-500 hover:underline">
+        <Link href="/inspector" className="text-xs text-field-ink-muted hover:underline">
           ← Today&apos;s route
         </Link>
         <h1 className="mt-1 text-xl font-semibold text-brand-navy">Your projects</h1>
-        <p className="text-sm text-slate-500">{caption}</p>
+        <p className="text-sm text-field-ink-muted">{caption}</p>
       </div>
 
       {byId.size > 5 && <ProjectSearch />}
@@ -82,7 +82,7 @@ export default async function AssignedProjectsPage({ searchParams }: AssignedPro
               <CardContent className="flex items-center justify-between gap-3 py-4">
                 <div className="min-w-0">
                   <p className="truncate font-medium text-slate-900">{project.name_of_project}</p>
-                  <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-field-ink-muted">
                     <MapPin className="size-3.5 shrink-0" />
                     <span className="truncate">{project.location}</span>
                   </p>
@@ -100,7 +100,7 @@ export default async function AssignedProjectsPage({ searchParams }: AssignedPro
 
         {projects.length === 0 && (
           <Card>
-            <CardContent className="py-8 text-center text-sm text-slate-500">
+            <CardContent className="py-8 text-center text-sm text-field-ink-muted">
               {byId.size === 0
                 ? "You have no assigned projects yet."
                 : "No assigned project matches that search."}

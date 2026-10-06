@@ -22,11 +22,11 @@ export default async function SubmitReportPage({ params }: ReportPageProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <p className="text-xs font-medium uppercase tracking-wide text-field-ink-faint">
           {project.project_key}
         </p>
         <h1 className="text-xl font-semibold text-brand-navy">{project.name_of_project}</h1>
-        <p className="text-sm text-slate-500">{project.location}</p>
+        <p className="text-sm text-field-ink-muted">{project.location}</p>
       </div>
 
       <Card>

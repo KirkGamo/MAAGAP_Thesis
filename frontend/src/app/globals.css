@@ -168,6 +168,25 @@ body {
   --surface-inverse-muted: #a3e9fb;       /* cyan-light, 8.46:1 on navy */
   --surface-inverse-accent: #6ad9f7;      /* cyan, for emphasis on navy only */
 
+  /* FIELD-GRADE MUTED TEXT. Phase 5 of WEBSITE_REDESIGN_PLAN.md asked whether
+   * the muted greys survive Philippine sunlight; the audit could not settle it
+   * from the code, so it was measured in the browser. Two of the six text
+   * styles on the inspector report screen failed AA outright: the 12px eyebrow
+   * labels at `text-slate-400` were 2.46:1, and 14px secondary text at
+   * `text-slate-500` was 4.45:1 — below the floor even indoors.
+   *
+   * These replace both on the inspector screens, which are the only surfaces
+   * read outdoors. They sit well above 4.5:1 on purpose: ambient light raises a
+   * screen's rendered black level, so the ratio a glare-free measurement
+   * reports is an upper bound on what an inspector actually sees at a job site.
+   * For the dimmest text on the only sunlit screen, AA is the floor to clear
+   * with room to spare, not the number to hit.
+   *
+   * `faint` stays lighter than `muted` so the eyebrow labels still recede;
+   * uppercase and letter-spacing carry that separation, not a contrast cliff. */
+  --field-ink-muted: #566477;             /* 6.03:1 white, 5.63:1 sunk */
+  --field-ink-faint: #5b6b82;             /* 5.43:1 white, 5.07:1 sunk */
+
   --border-subtle: #e2e8f0;
   --border-default: #cbd5e1;
   --border-strong: #94a3b8;
@@ -236,6 +255,9 @@ body {
   --color-surface-inverse-ink: var(--surface-inverse-ink);
   --color-surface-inverse-muted: var(--surface-inverse-muted);
   --color-surface-inverse-accent: var(--surface-inverse-accent);
+
+  --color-field-ink-muted: var(--field-ink-muted);
+  --color-field-ink-faint: var(--field-ink-faint);
 
   --color-border-subtle: var(--border-subtle);
   --color-border-default: var(--border-default);
