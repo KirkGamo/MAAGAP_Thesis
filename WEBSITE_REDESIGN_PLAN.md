@@ -23,8 +23,8 @@ The parts that survived audit — the contrast measurements and the absence of s
 
 1. **Give the design system the means to express hierarchy.** It defined eight brand colours and nothing else — no elevation scale, no semantic scale, no surface roles — so every block was a white card with the same border and radius, and nothing read as more important than anything else. *This, not the canvas colour, is why the app looked plain.* **Shipped.**
 2. **Give the login page an identity.** It was a `max-w-sm` form on grey that never referenced the committed logo. **Shipped.**
-3. **Make the project detail page's risk story coherent** — the tier, its change, and which model produced it, as one designed unit rather than loose spans. *Remaining.*
-4. **Close two small gaps** on the PPAs list and the inspector form. *Remaining.*
+3. **Make the project detail page's risk story coherent** — the tier, its change, and which model produced it, as one designed unit rather than loose spans. **Shipped.**
+4. **Close two small gaps** on the PPAs list and the inspector form. **Shipped** — and both turned out to be covering a real defect: a truncated facet query and two text styles below AA.
 5. **Disturb nothing in the four September tabs** beyond the new tokens. Their one-screen contract at 1366×768 is a constraint on this work, not a target for it.
 
 ---
@@ -67,15 +67,61 @@ The SHAP chart and the indicator list already exist and stay as they are.
 - **Demote the caveats, do not delete them.** The notes explaining that a completed project can still carry a high tier, and that a score reflects elapsed time as well as observation, are correct and unusual in a student system. They move behind a *How to read this* disclosure, each keeping a visible affordance.
 - **Reports as a timeline** rather than a table — optional. Note `% complete` is a permanently empty column; the form deliberately does not collect it.
 
-### 3.2 PPAs list — ~2 hours
+### 3.2 PPAs list — **shipped**
 
-- **Counts on each filter option.** The sidebar maps `value`/`label` only.
-- **A leading severity stripe per row**, using the solid ramp, so Critical rows are found without reading a column.
+- **Counts on each filter option**, right-aligned and tabular.
+- **A leading severity stripe per row**, using the solid ramp.
 
-### 3.3 Inspector form — ~30 minutes
+Adding the counts exposed a **pre-existing data bug** that had been invisible
+while the sidebar showed labels only. The facet query was an unbounded
+`select()`, which PostgREST caps at **1,000 rows**, so it had been describing
+only the first 1,000 of 2,393 projects — and the *municipality list* was built
+from that same query, meaning the Municipality filter had been silently missing
+every municipality that appears only later in the table. The counts made it
+visible because status and risk tier each summed to exactly 1,000:
 
-- **The file-input button is `file:h-10`** (40px), below the touch floor the rest of the form already meets with `h-12`.
-- **Verify sunlight legibility** of the muted greys. This is the one claim from the original plan that the audit could not settle from the code.
+| | before (capped) | after (paginated) |
+|---|---|---|
+| risk tier counts sum | 1,000 | **2,393** = population |
+| Low | 959 | 2,244 |
+| municipality options | truncated set | **44**, summing to 2,345 |
+
+2,345 rather than 2,393 is correct: 48 projects have a null municipality, which
+the filter deliberately excludes. *A count is a test of the query behind it —
+labels alone concealed a wrong result for as long as they were only labels.*
+
+The four-viewport sweep also found **15px of horizontal overflow at 390px**,
+from the header's non-wrapping flex row holding a 261px action group beside the
+title. It now stacks below `sm`. Not caused by the stripe, which sits inside the
+table's own scroll container.
+
+### 3.3 Inspector form — **shipped**
+
+- **The file-input button** is now 44px, matching the rest of the form.
+- **Sunlight legibility: measured, and it failed.** This was the one claim the
+  audit could not settle from the code. Measured in-browser with every colour
+  normalised through a canvas — necessary because Tailwind v4 emits `oklch()`,
+  which naive string parsing silently mis-reads — **two of six text styles on
+  the report screen were below AA**:
+
+  | | before | after | 
+  |---|---|---|
+  | 12px eyebrow labels (`text-slate-400`) | **2.46:1** | 5.07:1 |
+  | 14px secondary text (`text-slate-500`) | **4.45:1** | 5.63:1 |
+
+  The failure was systemic across all of `src/app/inspector/` — 19 occurrences,
+  not one form — so the fix is two tokens rather than nineteen edits:
+  `--field-ink-muted` #566477 and `--field-ink-faint` #5b6b82. Both sit well
+  above 4.5:1 deliberately: ambient light raises a screen's rendered black
+  level, so a glare-free measurement is an *upper bound* on what an inspector
+  sees at a job site. For the dimmest text on the only outdoor screen, AA is a
+  floor to clear with room, not a number to hit. All **28** text styles across
+  the three inspector screens now pass.
+
+**Left undone, deliberately:** the nav's "Sign out" button is 36px, below the
+44px floor. It is outside the form, and growing it would grow the shared nav and
+put the four September tabs' one-screen contract at risk for a control used once
+per shift. Recorded rather than changed.
 
 ---
 
@@ -86,10 +132,10 @@ The SHAP chart and the indicator list already exist and stay as they are.
 | 1 | Design tokens | 1d | **shipped** |
 | 2 | Login | 1d | **shipped** |
 | 3 | Project detail — risk band, `score_basis`, sparkline, disclosure | 1d | remaining |
-| 4 | PPAs — filter counts, severity stripe | 2h | remaining |
-| 5 | Inspector — touch target, contrast check | 30m | remaining |
+| 4 | PPAs — filter counts, severity stripe, header wrap | 2h | **shipped** |
+| 5 | Inspector — touch target, field-grade text tokens | 30m | **shipped** |
 
-Roughly **1.5 days remaining**, against the 5–7 the first version assigned.
+**All five phases shipped.** The audit's revised estimate of ~1.5 days for phases 3–5 held.
 
 ---
 
@@ -110,4 +156,6 @@ Roughly **1.5 days remaining**, against the 5–7 the first version assigned.
 - **Light-only is deliberate.** `color-scheme: light` is forced for a recorded reason — native controls rendering white-on-white under a dark OS preference. Dark mode is a separate decision.
 - **Percentage `background-position` is `(container − image) × percent`.** A 670px image in an 843px panel moves 21px at `112%`. Use pixel offsets when you want a definite shift.
 - **Tailwind drops a utility silently when its token is missing.** A clean build does not prove a new token works; check the generated CSS.
+- **An unbounded Supabase `select()` returns at most 1,000 rows, with no error.** Any full-table read needs explicit pagination. This silently truncated the PPAs facet query for as long as it existed, and the only reason it surfaced was that someone rendered a number next to a label.
+- **Normalise colours through a canvas before computing contrast.** Tailwind v4 emits `oklch()`; parsing the first three numbers out of a computed `color` string yields a plausible, wrong ratio rather than an error.
 - **These screens are only honest against real data.** Every one is a different problem at 2,393 projects than at six placeholder rows, which is why this plan does not route through a mock-up tool.
