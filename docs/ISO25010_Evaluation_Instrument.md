@@ -157,3 +157,18 @@ Ratings collected without use are opinion about a screenshot, not evaluation of 
 Verbal informed consent, recorded by the facilitator: purpose, voluntary participation, right to stop at any point, anonymized reporting, and that the system rather than the respondent is being evaluated. Responses are identified by role and sequence number only (`A-01`, `B-03`); no names, positions, or identifying detail appear in stored responses or in the thesis.
 
 Raw responses are committed to `docs/iso25010_responses.csv` so that every figure in Chapter 4 can be recomputed from them.
+
+## 9. Scoring implementation
+
+Section 7 is implemented in `scripts/score_iso25010.py`, which reads the response CSV and emits the full result as markdown and JSON. Two properties of it matter methodologically:
+
+- **It was written and committed before any response was collected.** The rules in section 7 are declared in advance; a scorer that exists only after the data does leaves no way to show it was not tuned to that data. The order is the evidence.
+- **It validates rather than repairs.** A rating outside 1–5, a non-integer, a duplicate respondent id, or — most importantly — a rating on an item not tagged for that respondent's role causes the run to fail and score nothing. A coerced value would become a figure in Chapter 4 that no one could trace back to a respondent.
+
+Where section 7 step 1 is ambiguous, the script takes a sub-characteristic's score to be the mean of its **item** means, each item mean taken across the respondents who rated it — so that an item answered by more respondents does not dominate its own sub-characteristic, which is the distortion step 2 guards against one level up. The alternative reading (pooling every rating) is reported alongside it as `pooled_mean`, so the choice is visible rather than buried.
+
+The response CSV's header is generated from the same item map the scorer analyses (`--emit-template`), so the collection file and the analysis cannot drift apart.
+
+**The script verifies itself against this document before it scores anything.** Every figure it produces is arithmetic over its internal item map, so a role tag edited here but not there — or a typo in either — would yield numbers that are wrong and entirely plausible, with nothing downstream to reveal it: the totals would still sum, the bands would still resolve, the report would still render. On every run the script re-derives the item ids, role tags, ordering and sub-characteristic names from section 5's prose and the item total from section 1, and refuses to score if they disagree. `--selfcheck` runs that check alone. It is a gate rather than an option because a check someone has to remember to run is not a check.
+
+This is what makes section 1's reproducibility claim testable rather than asserted: a third party given this document and the repository can confirm the code still implements the instrument in front of them, instead of taking it on trust.
