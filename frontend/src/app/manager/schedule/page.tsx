@@ -16,6 +16,7 @@ import {
 } from "./agenda-pane";
 import type { ScheduleMapPoint } from "./schedule-map";
 import { mlServiceFetch } from "@/lib/ml-service";
+import { daysOverCapacity } from "./capacity";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 
@@ -226,8 +227,8 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
 
   // Day tabs: count + Critical/High presence for every day, plus "All".
   const tabs: DayTabInfo[] = [
-    { day: "All", count: weekRows.length, critical: 0, high: 0 },
-    ...DAY_ORDER.map((day) => ({ day, count: 0, critical: 0, high: 0 })),
+    { day: "All", count: weekRows.length, critical: 0, high: 0, overCapacity: false },
+    ...DAY_ORDER.map((day) => ({ day, count: 0, critical: 0, high: 0, overCapacity: false })),
   ];
   const tabByDay = new Map(tabs.map((tab) => [tab.day, tab]));
   for (const row of weekRows) {
@@ -243,6 +244,18 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       tabByDay.get("All")!.high += 1;
     }
   }
+
+  // Capacity pressure per day. The agenda already flags an over-capacity
+  // inspector, but only within the day on screen, so the week's problem days
+  // were invisible from the tabs -- you had to open each one to find them.
+  // The rule itself lives in capacity.ts so it can be unit-tested: no week in
+  // the live data is over capacity, so this cannot be exercised through the UI.
+  const overDays = daysOverCapacity(weekRows);
+  for (const day of overDays) {
+    const tab = tabByDay.get(day);
+    if (tab) tab.overCapacity = true;
+  }
+  if (overDays.size > 0) tabByDay.get("All")!.overCapacity = true;
 
   // Default day: today (a Manager opening this mid-week wants today, not
   // Monday), but only if today actually has visits -- landing on a blank

@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { RiskMarker } from "./risk-marker";
+import { DAILY_CAPACITY } from "./capacity";
 
 export interface DayTabInfo {
   /** "All" or a workday ("Mon".."Fri"). */
@@ -11,6 +12,11 @@ export interface DayTabInfo {
   count: number;
   critical: number;
   high: number;
+  /** An inspector exceeds the solver's daily capacity on this day (the whole
+   * week for "All"). Capacity warnings already exist per inspector inside the
+   * agenda, but only for the day being viewed -- so a day with an overloaded
+   * inspector was indistinguishable from a quiet one until you clicked it. */
+  overCapacity: boolean;
 }
 
 /**
@@ -57,6 +63,22 @@ export function DayStrip({ tabs, current }: { tabs: DayTabInfo[]; current: strin
           </span>
           {tab.critical > 0 && <RiskMarker tier="Critical" count={tab.critical} />}
           {tab.high > 0 && <RiskMarker tier="High" count={tab.high} />}
+          {tab.overCapacity && (
+            // Deliberately a glyph with a title and an accessible label, not a
+            // colour change: the tab's own selected/unselected state already
+            // owns its background, and capacity is not a risk tier, so it must
+            // not borrow the risk palette.
+            <span
+              title={`An inspector is over the optimizer's daily capacity of ${DAILY_CAPACITY} on this day`}
+              className={cn(
+                "text-xs leading-none",
+                current === tab.day ? "text-amber-200" : "text-amber-600"
+              )}
+            >
+              <span aria-hidden="true">&#9650;</span>
+              <span className="sr-only">over capacity</span>
+            </span>
+          )}
         </button>
       ))}
     </div>
