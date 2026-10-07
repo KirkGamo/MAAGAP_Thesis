@@ -32,9 +32,12 @@ export interface ReportListItem {
 export function ReportList({
   reports,
   selectedId,
+  filtered,
 }: {
   reports: ReportListItem[];
   selectedId: string | null;
+  /** Whether a search or inspector filter is currently narrowing the list. */
+  filtered: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -45,11 +48,30 @@ export function ReportList({
     router.push(`/manager/reports?${next.toString()}`, { scroll: false });
   }
 
+  // Two different situations were showing the same sentence, and only one of
+  // them is a dead end the reader can act on. "No reports match this filter"
+  // is wrong and faintly alarming on a system where nobody has filed anything
+  // yet -- it implies reports exist and are being hidden.
   if (reports.length === 0) {
-    return (
-      <p className="p-4 text-center text-sm text-slate-400">
-        No monitoring reports match this filter.
-      </p>
+    return filtered ? (
+      <div className="flex flex-col items-center gap-2 p-6 text-center">
+        <p className="text-sm text-field-ink-muted">No reports match these filters.</p>
+        <button
+          type="button"
+          onClick={() => router.push("/manager/reports")}
+          className="rounded-md border border-brand-navy/15 px-2.5 py-1 text-xs font-medium text-brand-navy transition-colors hover:bg-brand-surface focus-visible:ring-2 focus-visible:ring-brand-sky-dark focus-visible:ring-offset-1 focus-visible:outline-none"
+        >
+          Clear filters
+        </button>
+      </div>
+    ) : (
+      <div className="flex flex-col gap-1 p-6 text-center">
+        <p className="text-sm text-field-ink-muted">No monitoring reports yet.</p>
+        <p className="text-xs text-field-ink-faint">
+          Reports appear here once an inspector files one from the field. Assign visits on
+          the Schedule tab and deploy the week to put inspectors on site.
+        </p>
+      </div>
     );
   }
 

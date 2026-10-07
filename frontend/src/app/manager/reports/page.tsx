@@ -5,6 +5,7 @@ import type { RescoreState } from "@/types/database";
 import { STATUSES } from "../ppas/filters";
 import { ReportsFilters } from "./reports-filters";
 import { ReportList, type ReportListItem } from "./report-list";
+import { parseReportSort, sortReports } from "./lib/sort";
 import { ReportDetail, type ReportDetailData } from "./report-detail";
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
@@ -16,7 +17,7 @@ const STATUS_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 interface ReportsPageProps {
-  searchParams: Promise<{ q?: string; inspector?: string; report?: string }>;
+  searchParams: Promise<{ q?: string; inspector?: string; report?: string; sort?: string }>;
 }
 
 interface JoinedProject {
@@ -120,6 +121,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
   // Default to the newest report so the detail pane is never empty when
   // there is something to show.
+  // Sorted here rather than in the query: "awaiting re-score first" depends on
+  // rescore_state, which may not exist yet (the migration is applied by hand),
+  // and the fetch is already capped at MAX_ROWS so this stays a bounded sort.
+  // The rule itself lives in lib/sort.ts so it can be tested -- see there.
+  const sortedItems = sortReports(listItems, parseReportSort(params.sort));
+
   const selectedId =
     params.report && filtered.some((r) => r.id === params.report)
       ? params.report
@@ -209,7 +216,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_1.1fr]">
         <Card className="flex flex-col p-3 lg:min-h-0">
           <div className="min-h-80 flex-1 overflow-y-auto pr-1 lg:min-h-0">
-            <ReportList reports={listItems} selectedId={selectedId} />
+            <ReportList
+              reports={sortedItems}
+              selectedId={selectedId}
+              filtered={Boolean(params.q || params.inspector)}
+            />
           </div>
         </Card>
 
