@@ -117,13 +117,13 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
                   <Link href={`/manager/ppas/${project.id}`} className="font-medium hover:underline">
                     {project.name_of_project}
                   </Link>
-                  <span className="text-slate-500">{project.municipality}</span>
+                  <span className="text-ink-muted">{project.municipality}</span>
                   <span>
                     {project.risk_tier ?? "Unscored"}
                     {project.risk_probability != null && ` · P=${project.risk_probability.toFixed(2)}`}
                   </span>
                   {project.latitude == null && (
-                    <span className="text-xs italic text-slate-400">
+                    <span className="text-xs italic text-ink-faint">
                       Approximate location — not yet geocoded
                     </span>
                   )}
@@ -135,7 +135,7 @@ export function ProjectRiskMap({ projects }: { projects: MapProject[] }) {
         </MapContainer>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-4 text-xs text-slate-500">
+      <div className="flex shrink-0 flex-wrap items-center gap-4 text-xs text-ink-muted">
         {(["Low", "Medium", "High", "Critical"] as const).map((tier) => (
           <span key={tier} className="flex items-center gap-1.5">
             <span

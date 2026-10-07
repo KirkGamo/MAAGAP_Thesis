@@ -76,9 +76,9 @@ export function RunOptimizerButton({
           {result.message}
         </p>
       ) : running ? (
-        <p className="text-[11px] text-slate-400">Scoring projects, then solving…</p>
+        <p className="text-[11px] text-ink-faint">Scoring projects, then solving…</p>
       ) : freshnessLabel ? (
-        <p className="text-[11px] text-slate-400">{freshnessLabel}</p>
+        <p className="text-[11px] text-ink-faint">{freshnessLabel}</p>
       ) : null}
     </div>
   );

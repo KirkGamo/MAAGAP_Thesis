@@ -60,7 +60,7 @@ function SheetContent({
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-slate-400 transition-colors hover:bg-brand-surface hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40">
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-ink-faint transition-colors hover:bg-brand-surface hover:text-brand-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue/40">
           <X className="size-4" aria-hidden="true" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>
@@ -91,7 +91,7 @@ function SheetDescription({
   className,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Description>) {
-  return <SheetPrimitive.Description className={cn("text-sm text-slate-500", className)} {...props} />;
+  return <SheetPrimitive.Description className={cn("text-sm text-ink-muted", className)} {...props} />;
 }
 
 function SheetBody({ className, ...props }: React.ComponentProps<"div">) {

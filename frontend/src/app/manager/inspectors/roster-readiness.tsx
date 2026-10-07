@@ -72,7 +72,7 @@ export function RosterReadiness({
               ? "border-orange-200 bg-orange-50 text-orange-700"
               : chip.tone === "ok"
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-dashed border-brand-navy/15 text-slate-400")
+                : "border-dashed border-brand-navy/15 text-ink-faint")
           }
         >
           {chip.label}

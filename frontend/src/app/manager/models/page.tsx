@@ -165,7 +165,7 @@ export default async function ModelsPage() {
         description="Validation performance from the most recent training run."
       />
         <Card>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             <code>FASTAPI_ML_SERVICE_URL</code> is not configured, so this page can&apos;t reach
             the ML service to read validation results. Set it (e.g.{" "}
             <code>http://localhost:8000</code> for local dev) in <code>frontend/.env.local</code>.
@@ -287,7 +287,7 @@ export default async function ModelsPage() {
           {lstm && (
             <div className="mt-4 border-t border-border-subtle pt-4">
               <LearnerBlock name="LSTM (sequence model)" metrics={lstm.test_metrics} />
-              <p className="mt-2 text-xs text-field-ink-faint">
+              <p className="mt-2 text-xs text-ink-faint">
                 Trained and evaluated on a smaller cohort ({lstm.n_train} train / {lstm.n_test}{" "}
                 test) than the tabular models — only projects with a long enough
                 monitoring-report history have a usable event sequence (see
@@ -339,7 +339,7 @@ function DeployedReality({
   return (
     <Card className="border-l-4 border-l-brand-sky-dark">
       <MetricLabel>Which model is actually running</MetricLabel>
-      <p className="mt-1 text-sm text-field-ink-muted">
+      <p className="mt-1 text-sm text-ink-muted">
         Read from <code>projects.score_basis</code>. Most predictions that drive an
         inspection decision come from the two-learner model, not the full three-learner
         stack — a statement about which model ran, not about accuracy (see below).
@@ -378,11 +378,11 @@ function MetaLearnerCard({
       {/* The population sits adjacent to the number, not beneath the card. An
           accuracy without the set it was measured on is the single most
           misreadable figure on this page. */}
-      <p className="text-xs text-field-ink-muted">
+      <p className="text-xs text-ink-muted">
         Accuracy on <span className="font-semibold text-brand-navy">{population ?? "—"}</span>{" "}
         {populationNote} — {caveat}
       </p>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-field-ink-muted">
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink-muted">
         <span>Precision: {pct(metrics.precision)}</span>
         <span>Recall: {pct(metrics.recall)}</span>
         <span>F1: {pct(metrics.f1)}</span>
@@ -423,13 +423,13 @@ function Disclosure({
         <span className="flex items-center gap-2">
           <span
             aria-hidden="true"
-            className="text-field-ink-faint transition-transform group-open:rotate-90"
+            className="text-ink-faint transition-transform group-open:rotate-90"
           >
             &rsaquo;
           </span>
           {summary}
         </span>
-        {hint && <span className="text-xs font-normal text-field-ink-faint">{hint}</span>}
+        {hint && <span className="text-xs font-normal text-ink-faint">{hint}</span>}
       </summary>
       <div className="border-t border-border-subtle px-4 py-4">{children}</div>
     </details>
@@ -469,7 +469,7 @@ function Glossary() {
         {terms.map(([term, meaning]) => (
           <div key={term}>
             <dt className="text-sm font-semibold text-brand-navy">{term}</dt>
-            <dd className="text-sm text-field-ink-muted">{meaning}</dd>
+            <dd className="text-sm text-ink-muted">{meaning}</dd>
           </div>
         ))}
       </dl>
@@ -552,7 +552,7 @@ function RegressionCard({ regression }: { regression: RegressionMetrics }) {
   return (
     <div>
       <Metric>{days(best.test_metrics.mae_days)}</Metric>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-muted">
         Mean Absolute Error of the best regressor ({REGRESSOR_LABELS[bestName] ?? bestName}),
         predicting days past the standard duration. Baseline{" "}
         {days(best.test_metrics.baseline_mae_days)} — skill{" "}
@@ -591,7 +591,7 @@ function RegressionCard({ regression }: { regression: RegressionMetrics }) {
         </p>
       </div>
 
-      <p className="mt-3 text-xs text-slate-400">
+      <p className="mt-3 text-xs text-ink-faint">
         {regression.n_train} train / {regression.n_test} test rows over {regression.n_features}{" "}
         features. Excludes {regression.clamped_rows_excluded.train} train and{" "}
         {regression.clamped_rows_excluded.test} test rows whose actual duration is pinned by the
@@ -605,7 +605,7 @@ function RegressionCard({ regression }: { regression: RegressionMetrics }) {
 function StatBlock({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-xs text-slate-500">{label}</p>
+      <p className="text-xs text-ink-muted">{label}</p>
       <p className="text-lg font-semibold text-brand-navy">{value}</p>
     </div>
   );
@@ -613,7 +613,7 @@ function StatBlock({ label, value }: { label: string; value: string }) {
 
 function MetricsRow({ metrics }: { metrics: TreeModelMetrics["test_metrics"] }) {
   return (
-    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink-muted">
       <span>Precision: {pct(metrics.precision)}</span>
       <span>Recall: {pct(metrics.recall)}</span>
       <span>F1: {pct(metrics.f1)}</span>

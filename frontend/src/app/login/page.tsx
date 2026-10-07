@@ -208,7 +208,7 @@ function LoginForm() {
         <h1 className="text-[2rem] leading-tight font-semibold tracking-tight text-brand-navy">
           Sign in
         </h1>
-        <p className="text-sm leading-relaxed text-slate-500">
+        <p className="text-sm leading-relaxed text-ink-muted">
           Use the account issued to you by the Provincial Planning and Development
           Office.
         </p>
@@ -265,7 +265,7 @@ function LoginForm() {
           edge, and answers the one question a failed sign-in actually raises.
           Matches the wording of the deactivated-account notice above, which
           already tells people to contact their Manager. */}
-      <p className="mt-6 border-t border-border-subtle pt-4 text-xs leading-relaxed text-slate-500">
+      <p className="mt-6 border-t border-border-subtle pt-4 text-xs leading-relaxed text-ink-muted">
         Accounts are issued and deactivated by your Manager. If you cannot sign
         in, contact them rather than creating a second account.
       </p>

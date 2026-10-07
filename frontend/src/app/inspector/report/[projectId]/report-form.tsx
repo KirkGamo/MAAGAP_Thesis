@@ -369,7 +369,7 @@ export function ReportForm({ projectId }: { projectId: string }) {
                 >
                   ×
                 </button>
-                <p className="mt-0.5 truncate text-center text-[10px] text-field-ink-muted">
+                <p className="mt-0.5 truncate text-center text-[10px] text-ink-muted">
                   {p.status === "uploading" && "Uploading..."}
                   {p.status === "uploaded" && "Uploaded"}
                   {p.status === "pending" && "Queued"}

@@ -99,11 +99,11 @@ export function ScheduleMap({ points }: { points: ScheduleMapPoint[] }) {
             <div className="flex flex-col gap-1 text-sm">
               <span className="font-medium">{point.inspectorName}</span>
               <span className="text-slate-600">{point.projectName}</span>
-              <span className="text-slate-500">
+              <span className="text-ink-muted">
                 {point.municipality ?? "Unmapped"} · {point.day}
               </span>
               {point.latitude == null && (
-                <span className="text-xs italic text-slate-400">
+                <span className="text-xs italic text-ink-faint">
                   Approximate location — not yet geocoded
                 </span>
               )}

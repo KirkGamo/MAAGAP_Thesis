@@ -102,7 +102,7 @@ export function AssignSlotMenu({
         >
           {mode === "fill-slot" ? (
             <>
-              <p className="mb-2 text-[11px] font-medium text-slate-500">
+              <p className="mb-2 text-[11px] font-medium text-ink-muted">
                 {`Assign someone to ${slot}`}
               </p>
               {candidates.length > 0 ? (
@@ -121,14 +121,14 @@ export function AssignSlotMenu({
                   ))}
                 </ul>
               ) : (
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-ink-faint">
                   Every inspector already holds a slot. Invite someone new to fill this one.
                 </p>
               )}
             </>
           ) : (
             <>
-              <p className="mb-2 text-[11px] font-medium text-slate-500">Assign an optimizer slot</p>
+              <p className="mb-2 text-[11px] font-medium text-ink-muted">Assign an optimizer slot</p>
               {slots.length > 0 && (
                 <ul className="mb-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
                   {slots.map((option) => (
@@ -141,7 +141,7 @@ export function AssignSlotMenu({
                       >
                         <span className="truncate">{option}</span>
                         {occupied.has(option) && (
-                          <span className="shrink-0 font-sans text-[10px] text-slate-400">taken</span>
+                          <span className="shrink-0 font-sans text-[10px] text-ink-faint">taken</span>
                         )}
                       </button>
                     </li>
@@ -187,7 +187,7 @@ export function ClearSlotButton({ profileId }: { profileId: string }) {
     <Button
       size="sm"
       variant="ghost"
-      className="h-6 px-2 text-[11px] text-slate-500"
+      className="h-6 px-2 text-[11px] text-ink-muted"
       disabled={isPending}
       onClick={() =>
         startTransition(async () => {

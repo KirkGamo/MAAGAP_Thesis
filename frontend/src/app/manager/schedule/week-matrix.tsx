@@ -28,7 +28,7 @@ export interface WeekMatrixRow {
 export function WeekMatrix({ days, rows }: { days: readonly string[]; rows: WeekMatrixRow[] }) {
   if (rows.length === 0) {
     return (
-      <p className="p-4 text-center text-sm text-slate-400">
+      <p className="p-4 text-center text-sm text-ink-faint">
         No assignments this week yet.
       </p>
     );
@@ -38,7 +38,7 @@ export function WeekMatrix({ days, rows }: { days: readonly string[]; rows: Week
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-brand-navy/10 text-left text-xs text-slate-500">
+          <tr className="border-b border-brand-navy/10 text-left text-xs text-ink-muted">
             <th className="py-2 pr-2 font-medium">Inspector</th>
             {days.map((day) => (
               <th key={day} className="px-2 py-2 text-center font-medium">
@@ -83,7 +83,7 @@ export function WeekMatrix({ days, rows }: { days: readonly string[]; rows: Week
                   </td>
                 );
               })}
-              <td className="py-2 pl-2 text-right tabular-nums text-slate-500">{row.weekTotal}</td>
+              <td className="py-2 pl-2 text-right tabular-nums text-ink-muted">{row.weekTotal}</td>
             </tr>
           ))}
         </tbody>

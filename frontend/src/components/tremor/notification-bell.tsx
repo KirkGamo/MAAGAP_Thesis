@@ -41,7 +41,7 @@ export function NotificationBell() {
           className="z-50 w-72 rounded-lg border border-brand-navy/10 bg-white p-4 shadow-lg"
         >
           <p className="text-sm font-semibold text-brand-navy">Notifications</p>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-ink-faint">
             No notifications system is wired up yet -- this panel is a
             placeholder for a future alerts feature (e.g. new Critical-tier
             projects, SLA-style deadlines on inspector schedules).

@@ -121,7 +121,7 @@ export function PpaFilterSidebar({
   return (
     <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-brand-navy/10 bg-white shadow-md lg:h-[700px] lg:w-64">
       <div className="flex shrink-0 items-center justify-between p-4 pb-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filters</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Filters</p>
         {hasActiveFilters && (
           <button
             type="button"
@@ -211,9 +211,9 @@ function FilterSection({
       >
         {title}
         {open ? (
-          <ChevronDown className="size-4 text-slate-400" aria-hidden="true" />
+          <ChevronDown className="size-4 text-ink-faint" aria-hidden="true" />
         ) : (
-          <ChevronRight className="size-4 text-slate-400" aria-hidden="true" />
+          <ChevronRight className="size-4 text-ink-faint" aria-hidden="true" />
         )}
       </button>
       {open && <div className="mt-3">{children}</div>}
@@ -259,13 +259,13 @@ function CheckboxFilterSection({
                 against the active filters shows zero beside every option the
                 user has not already chosen, which is the opposite of useful. */}
             {opt.count != null && (
-              <span className="shrink-0 text-xs text-slate-400 tabular-nums">
+              <span className="shrink-0 text-xs text-ink-faint tabular-nums">
                 {opt.count.toLocaleString()}
               </span>
             )}
           </label>
         ))}
-        {options.length === 0 && <p className="text-xs text-slate-400">No options available.</p>}
+        {options.length === 0 && <p className="text-xs text-ink-faint">No options available.</p>}
       </div>
     </FilterSection>
   );
@@ -377,9 +377,9 @@ function NumberField({
 }) {
   return (
     <div className="flex flex-1 flex-col gap-1">
-      <span className="text-xs text-slate-400">{label}</span>
+      <span className="text-xs text-ink-faint">{label}</span>
       <div className="flex items-center gap-1 rounded-md border border-brand-navy/10 bg-white px-2">
-        {prefix && <span className="text-xs text-slate-400">{prefix}</span>}
+        {prefix && <span className="text-xs text-ink-faint">{prefix}</span>}
         <input
           type="number"
           value={value}
@@ -388,7 +388,7 @@ function NumberField({
           onKeyDown={(e) => e.key === "Enter" && onCommit()}
           className="h-8 w-full min-w-0 bg-transparent text-sm text-slate-900 focus-visible:outline-none"
         />
-        {suffix && <span className="text-xs text-slate-400">{suffix}</span>}
+        {suffix && <span className="text-xs text-ink-faint">{suffix}</span>}
       </div>
     </div>
   );

@@ -242,7 +242,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold text-brand-navy">{project.name_of_project}</h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-muted">
           {project.project_key} · {project.location}
           {project.date_last_monitored && (
             <>
@@ -307,7 +307,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           <CardTitle>Why this classification? (plain-English signals)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             These are the same real signals the model consumes as inputs for this specific
             project -- release timing, elapsed time vs. status, field-verification history,
             budget, and its categorical inputs -- described in plain language rather than as
@@ -344,7 +344,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           <CardTitle>Feature contributions (SHAP)</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-ink-muted">
             Mean of Random Forest&apos;s and XGBoost&apos;s SHAP contributions to their own
             P(RedFlag) output, in percentage points (pp) -- red pushes toward higher risk,
             green pushes toward lower risk. Scoped to the two tree-based base learners; the
@@ -353,7 +353,7 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
           {project.shap_top_features && project.shap_top_features.length > 0 ? (
             <ShapChart features={project.shap_top_features} />
           ) : (
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-ink-faint">
               Feature contributions are precomputed for High and Critical projects, where the
               reasoning behind a score is most likely to be acted on. This project is below that
               threshold, so no SHAP breakdown is stored — the risk indicators above describe the
@@ -402,14 +402,14 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-ink-faint">—</span>
                     )}
                   </TableCell>
                 </TableRow>
               ))}
               {(reports ?? []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-slate-400">
+                  <TableCell colSpan={5} className="text-center text-ink-faint">
                     No field reports filed yet.
                   </TableCell>
                 </TableRow>
@@ -457,7 +457,7 @@ function RiskDelta({ history }: { history: ScoreHistoryRow[] | null }) {
 
   const delta = scored[0].risk_probability! - scored[1].risk_probability!;
   if (Math.abs(delta) < 0.0005) {
-    return <span className="text-sm text-slate-500">unchanged since last score</span>;
+    return <span className="text-sm text-ink-muted">unchanged since last score</span>;
   }
 
   const rose = delta > 0;
@@ -544,14 +544,14 @@ function RiskBand({
               {tier}
             </Badge>
           ) : (
-            <span className="text-sm text-slate-400">Not yet scored</span>
+            <span className="text-sm text-ink-faint">Not yet scored</span>
           )}
           {probability != null && (
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl leading-none font-semibold text-brand-navy tabular-nums">
                 {probability.toFixed(3)}
               </span>
-              <span className="text-xs text-slate-500">P(RedFlag)</span>
+              <span className="text-xs text-ink-muted">P(RedFlag)</span>
             </div>
           )}
         </div>
@@ -627,7 +627,7 @@ function ScoreBasisLine({ basis, count }: { basis: string | null; count: number 
 
   const three = basis === "three_learner";
   return (
-    <p className="border-t border-border-subtle pt-3 text-xs leading-relaxed text-slate-500">
+    <p className="border-t border-border-subtle pt-3 text-xs leading-relaxed text-ink-muted">
       Scored by the{" "}
       <span className="font-medium text-slate-700">
         {three ? "three-learner" : "two-learner"}

@@ -56,7 +56,7 @@ export function DayStrip({ tabs, current }: { tabs: DayTabInfo[]; current: strin
           <span
             className={cn(
               "text-xs tabular-nums",
-              current === tab.day ? "text-white/70" : "text-slate-400"
+              current === tab.day ? "text-white/70" : "text-ink-faint"
             )}
           >
             {tab.count}

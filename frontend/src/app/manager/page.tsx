@@ -155,6 +155,15 @@ export default async function ManagerOverviewPage() {
 
   return (
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
+      {/* Every other tab names itself in a visible PageHeader; this one is a
+          dashboard whose identity is carried by the active sidebar item, and it
+          is pinned to the viewport at exactly its budget -- a visible title
+          would push it past the fold. The heading still has to exist: without
+          it the page had no h1 at all, so assistive tech announced a document
+          with no name and the heading order started at h2. sr-only costs no
+          height and fixes both. */}
+      <h1 className="sr-only">Overview</h1>
+
       {/* ---- Top strip: portal KPIs + risk-tier counts ---- */}
       <div className="grid shrink-0 gap-3 lg:grid-cols-[1.2fr_1fr]">
         <Card className="p-4">
@@ -172,7 +181,7 @@ export default async function ManagerOverviewPage() {
               </div>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] leading-tight text-slate-400">{scoredCaption}</p>
+          <p className="mt-1.5 text-[11px] leading-tight text-ink-faint">{scoredCaption}</p>
         </Card>
       </div>
 
@@ -182,13 +191,13 @@ export default async function ManagerOverviewPage() {
           <div className="mb-2 flex shrink-0 items-baseline justify-between gap-2">
             <MetricLabel>PPAs per municipality</MetricLabel>
             {municipalityCaption && (
-              <p className="truncate text-[11px] text-slate-400">{municipalityCaption}</p>
+              <p className="truncate text-[11px] text-ink-faint">{municipalityCaption}</p>
             )}
           </div>
           {municipality.data.length > 0 ? (
             <MunicipalityPpaChart data={municipality.data} />
           ) : (
-            <p className="text-sm text-slate-400">No PPAs with a resolved municipality yet.</p>
+            <p className="text-sm text-ink-faint">No PPAs with a resolved municipality yet.</p>
           )}
         </Card>
 
@@ -206,12 +215,12 @@ export default async function ManagerOverviewPage() {
                   type="stacked"
                 />
               </div>
-              <p className="mt-1.5 shrink-0 text-[11px] leading-tight text-slate-400">
+              <p className="mt-1.5 shrink-0 text-[11px] leading-tight text-ink-faint">
                 {yearCaption}
               </p>
             </>
           ) : (
-            <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded release date yet.</p>
+            <p className="mt-3 text-sm text-ink-faint">No PPAs with a recorded release date yet.</p>
           )}
         </Card>
 
@@ -251,13 +260,13 @@ export default async function ManagerOverviewPage() {
                   />
                 </div>
                 {budgetCaption && (
-                  <p className="mt-1.5 shrink-0 text-[11px] leading-tight text-slate-400">
+                  <p className="mt-1.5 shrink-0 text-[11px] leading-tight text-ink-faint">
                     {budgetCaption}
                   </p>
                 )}
               </>
             ) : (
-              <p className="mt-3 text-sm text-slate-400">No PPAs with a recorded amount yet.</p>
+              <p className="mt-3 text-sm text-ink-faint">No PPAs with a recorded amount yet.</p>
             )}
           </Card>
         </div>

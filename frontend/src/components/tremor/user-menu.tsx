@@ -56,7 +56,7 @@ export function UserMenu({
             <p className="truncate text-sm font-medium text-brand-navy">
               {fullName ?? "Manager"}
             </p>
-            {email && <p className="truncate text-xs text-slate-400">{email}</p>}
+            {email && <p className="truncate text-xs text-ink-faint">{email}</p>}
           </div>
           <DropdownMenuPrimitive.Separator className="my-1 h-px bg-brand-navy/10" />
           <DropdownMenuPrimitive.Item

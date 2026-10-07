@@ -186,7 +186,7 @@ export default async function InspectorsPage() {
               ))}
             </div>
           ) : (
-            <p className="p-4 text-center text-sm text-slate-400">
+            <p className="p-4 text-center text-sm text-ink-faint">
               No optimizer slots yet — assign one to an inspector, or run the optimizer so its
               roster can be read.
             </p>
@@ -207,8 +207,8 @@ export default async function InspectorsPage() {
 
           <Card className="shrink-0 p-4">
             <p className="text-sm font-semibold text-brand-navy">How slots work</p>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{slotsExplainer}</p>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">{capacityNote}</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-muted">{slotsExplainer}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">{capacityNote}</p>
           </Card>
         </div>
       </div>

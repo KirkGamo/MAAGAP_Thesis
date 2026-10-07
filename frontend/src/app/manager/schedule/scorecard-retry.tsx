@@ -43,7 +43,7 @@ export function ScorecardRetry() {
       {attempted && !isPending && (
         // Announced, because the visible change after a failed retry is
         // otherwise nothing at all.
-        <span role="status" className="text-[11px] text-field-ink-faint">
+        <span role="status" className="text-[11px] text-ink-faint">
           Still unreachable — the ML service may need starting.
         </span>
       )}

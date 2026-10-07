@@ -55,7 +55,7 @@ export function ReportList({
   if (reports.length === 0) {
     return filtered ? (
       <div className="flex flex-col items-center gap-2 p-6 text-center">
-        <p className="text-sm text-field-ink-muted">No reports match these filters.</p>
+        <p className="text-sm text-ink-muted">No reports match these filters.</p>
         <button
           type="button"
           onClick={() => router.push("/manager/reports")}
@@ -66,8 +66,8 @@ export function ReportList({
       </div>
     ) : (
       <div className="flex flex-col gap-1 p-6 text-center">
-        <p className="text-sm text-field-ink-muted">No monitoring reports yet.</p>
-        <p className="text-xs text-field-ink-faint">
+        <p className="text-sm text-ink-muted">No monitoring reports yet.</p>
+        <p className="text-xs text-ink-faint">
           Reports appear here once an inspector files one from the field. Assign visits on
           the Schedule tab and deploy the week to put inspectors on site.
         </p>
@@ -93,12 +93,12 @@ export function ReportList({
               <span className="truncate text-sm font-medium text-slate-800">
                 {report.projectName}
               </span>
-              <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+              <span className="shrink-0 text-[11px] tabular-nums text-ink-faint">
                 {new Date(report.visitedAt).toLocaleDateString()}
               </span>
             </div>
             <div className="mt-1 flex items-center justify-between gap-2">
-              <span className="truncate text-[11px] text-slate-500">
+              <span className="truncate text-[11px] text-ink-muted">
                 {report.inspectorName}
                 {report.municipality ? ` · ${report.municipality}` : ""}
               </span>
@@ -107,7 +107,7 @@ export function ReportList({
                   <RescoreChip state={report.rescoreState} />
                 )}
                 {report.photoCount > 0 && (
-                  <span className="text-[10px] text-slate-400">{report.photoCount} photo</span>
+                  <span className="text-[10px] text-ink-faint">{report.photoCount} photo</span>
                 )}
                 <Badge
                   variant={statusVariant(report.statusObserved)}

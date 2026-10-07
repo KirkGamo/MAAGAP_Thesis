@@ -41,7 +41,7 @@ export function ErrorPanel({
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold text-brand-navy">{title}</h1>
-        <p className="text-sm text-slate-500">{whatFailed}</p>
+        <p className="text-sm text-ink-muted">{whatFailed}</p>
       </div>
 
       <Card>
@@ -55,13 +55,13 @@ export function ErrorPanel({
 
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={reset}>Try again</Button>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-ink-faint">
               Most of these clear on their own — the services restart independently.
             </span>
           </div>
 
           {error.digest ? (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-ink-faint">
               Reference <code className="font-mono">{error.digest}</code> — quote this if you
               report the problem, so the matching server log can be found.
             </p>

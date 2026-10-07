@@ -42,10 +42,10 @@ export function SlotCard({
       }
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-[11px] text-slate-500">{slot}</span>
+        <span className="truncate font-mono text-[11px] text-ink-muted">{slot}</span>
         {!inCurrentSolve && (
           <span
-            className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500"
+            className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-ink-muted"
             title="The optimizer's latest solve does not allocate work to this slot."
           >
             not in solve
@@ -81,7 +81,7 @@ export function SlotCard({
           </div>
           <p
             className={
-              "text-[11px] " + (overWeekly ? "font-medium text-orange-600" : "text-slate-400")
+              "text-[11px] " + (overWeekly ? "font-medium text-orange-600" : "text-ink-faint")
             }
           >
             {`${total} of ${WEEKLY_CAPACITY} deployed this week`}
@@ -98,8 +98,8 @@ export function SlotCard({
         </>
       ) : (
         <>
-          <p className="text-sm font-medium text-slate-400">Unassigned</p>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-sm font-medium text-ink-faint">Unassigned</p>
+          <p className="text-[11px] text-ink-muted">
             {!solveKnown
               ? "No one receives this slot's visits."
               : proposedVisits > 0

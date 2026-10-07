@@ -70,7 +70,7 @@ export default async function InspectorTodayPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-field-ink-faint">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">
           Today &middot; {today}
         </p>
         <h1 className="text-xl font-semibold text-brand-navy">Your route</h1>
@@ -78,7 +78,7 @@ export default async function InspectorTodayPage() {
 
       {(!assignments || assignments.length === 0) && (
         <Card>
-          <CardContent className="py-8 text-center text-sm text-field-ink-muted">
+          <CardContent className="py-8 text-center text-sm text-ink-muted">
             No site visits scheduled for today.
           </CardContent>
         </Card>
@@ -104,7 +104,7 @@ export default async function InspectorTodayPage() {
                     <p className="truncate font-medium text-slate-900">
                       {project.name_of_project}
                     </p>
-                    <p className="mt-0.5 flex items-center gap-1 text-xs text-field-ink-muted">
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-ink-muted">
                       <MapPin className="size-3.5 shrink-0" />
                       <span className="truncate">{project.location}</span>
                     </p>
@@ -114,7 +114,7 @@ export default async function InspectorTodayPage() {
                           {project.risk_tier}
                         </Badge>
                       )}
-                      <span className="text-xs text-field-ink-faint">{a.cluster}</span>
+                      <span className="text-xs text-ink-faint">{a.cluster}</span>
                     </div>
                   </div>
                   <ChevronRight className="size-5 shrink-0 text-slate-300" />
@@ -133,7 +133,7 @@ export default async function InspectorTodayPage() {
           <CardContent className="flex items-center justify-between gap-3 py-4">
             <div>
               <p className="font-medium text-slate-900">File for another project</p>
-              <p className="mt-0.5 text-xs text-field-ink-muted">
+              <p className="mt-0.5 text-xs text-ink-muted">
                 Any project assigned to you, not just today&apos;s route.
               </p>
             </div>
@@ -144,7 +144,7 @@ export default async function InspectorTodayPage() {
 
       {recentReports.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-field-ink-faint">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-faint">
             Your recent reports
           </p>
           <Card>
@@ -155,7 +155,7 @@ export default async function InspectorTodayPage() {
                     <p className="truncate text-sm font-medium text-slate-800">
                       {report.projectName}
                     </p>
-                    <p className="text-xs text-field-ink-faint">
+                    <p className="text-xs text-ink-faint">
                       {new Date(report.visitedAt).toLocaleString()}
                     </p>
                   </div>
@@ -169,7 +169,7 @@ export default async function InspectorTodayPage() {
               ))}
             </CardContent>
           </Card>
-          <p className="mt-1.5 text-[11px] text-field-ink-faint">
+          <p className="mt-1.5 text-[11px] text-ink-faint">
             Filed reports appear here — if a submission is missing, it never reached the office.
           </p>
         </div>

@@ -452,11 +452,11 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
         <Card className="flex flex-col p-4 lg:min-h-0">
           <div className="mb-2 flex shrink-0 items-baseline justify-between gap-2">
             <p className="text-sm font-semibold text-brand-navy">{paneTitle}</p>
-            <p className="text-[11px] text-slate-400">{paneCaption}</p>
+            <p className="text-[11px] text-ink-faint">{paneCaption}</p>
           </div>
           <div className="min-h-80 flex-1 overflow-y-auto pr-1 lg:min-h-0">
             {weekRows.length === 0 && selectedDay === "All" ? (
-              <p className="p-4 text-center text-sm text-slate-400">{emptyStateText}</p>
+              <p className="p-4 text-center text-sm text-ink-faint">{emptyStateText}</p>
             ) : selectedDay === "All" ? (
               <WeekMatrix days={DAY_ORDER} rows={matrixRows} />
             ) : (

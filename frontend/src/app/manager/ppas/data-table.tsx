@@ -174,7 +174,7 @@ export function PpasDataTable<TData extends { id: string }>({
           <PpaSearchBar />
         </div>
         <div className="flex items-center gap-3">
-          <span className="shrink-0 text-sm text-slate-500">{totalCount.toLocaleString()} project(s)</span>
+          <span className="shrink-0 text-sm text-ink-muted">{totalCount.toLocaleString()} project(s)</span>
 
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
@@ -266,7 +266,7 @@ export function PpasDataTable<TData extends { id: string }>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={visibleColumnCount} className="p-5 text-center text-slate-400">
+                <TableCell colSpan={visibleColumnCount} className="p-5 text-center text-ink-faint">
                   No projects match the current filters.
                 </TableCell>
               </TableRow>
@@ -276,7 +276,7 @@ export function PpasDataTable<TData extends { id: string }>({
       </div>
 
       {totalCount > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-brand-navy/10 px-5 py-3 text-sm text-slate-500">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-brand-navy/10 px-5 py-3 text-sm text-ink-muted">
           <span>
             Showing {from + 1}–{Math.min(from + pageSize, totalCount)} of {totalCount}
           </span>
@@ -293,7 +293,7 @@ export function PpasDataTable<TData extends { id: string }>({
             </Button>
             {getPageNumbers(page, totalPages).map((p, i) =>
               p === "ellipsis" ? (
-                <span key={`ellipsis-${i}`} className="px-1.5 text-slate-400">
+                <span key={`ellipsis-${i}`} className="px-1.5 text-ink-faint">
                   …
                 </span>
               ) : (

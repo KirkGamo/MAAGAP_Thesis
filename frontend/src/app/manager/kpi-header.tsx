@@ -70,7 +70,7 @@ export async function KpiHeader() {
         <div>
           <MetricLabel className="text-xs">Optimized Inspector Capacity</MetricLabel>
           <Metric className="text-2xl">{capacityPct}%</Metric>
-          <p className="mt-0.5 text-[11px] text-slate-400">
+          <p className="mt-0.5 text-[11px] text-ink-faint">
             {distinctScheduledProjects} of {totalActive} ongoing projects have a deployed inspector
           </p>
         </div>

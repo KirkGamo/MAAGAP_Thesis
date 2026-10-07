@@ -61,7 +61,7 @@ export function ImportCsvForm() {
         <span className="text-sm font-medium text-brand-navy">
           {fileName ? "Choose a different CSV file" : "Click to choose a CSV file"}
         </span>
-        <span className="text-xs text-slate-500">project_key, name_of_project, location, ...</span>
+        <span className="text-xs text-ink-muted">project_key, name_of_project, location, ...</span>
       </label>
       <input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} className="sr-only" />
 

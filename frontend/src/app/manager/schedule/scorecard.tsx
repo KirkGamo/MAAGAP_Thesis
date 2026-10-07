@@ -33,7 +33,7 @@ function Chip({ label, value }: { label: string; value: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5 rounded-md border border-brand-navy/10 bg-white px-2 py-1">
       <span className="text-xs font-semibold text-brand-navy">{value}</span>
-      <span className="text-[11px] text-slate-500">{label}</span>
+      <span className="text-[11px] text-ink-muted">{label}</span>
     </span>
   );
 }
@@ -42,7 +42,7 @@ export function Scorecard({ summary }: { summary: OptimizerSummary | null }) {
   if (!summary) {
     return (
       <span className="inline-flex flex-wrap items-center gap-2">
-        <span className="rounded-md border border-dashed border-brand-navy/15 px-2 py-1 text-[11px] text-field-ink-faint">
+        <span className="rounded-md border border-dashed border-brand-navy/15 px-2 py-1 text-[11px] text-ink-faint">
           Optimizer output unavailable — ML service not reachable
         </span>
         <ScorecardRetry />

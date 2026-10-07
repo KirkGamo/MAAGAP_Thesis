@@ -119,7 +119,7 @@ export function PpaActiveFilters() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-navy/10 bg-white px-4 py-2.5 shadow-md">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <span className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
         Active filters:
       </span>
       {chips.map((chip) => (
@@ -132,7 +132,7 @@ export function PpaActiveFilters() {
             type="button"
             onClick={chip.onRemove}
             aria-label={`Remove filter: ${chip.label}`}
-            className="text-slate-400 transition-colors hover:text-red-600"
+            className="text-ink-faint transition-colors hover:text-red-600"
           >
             <X className="size-3" aria-hidden="true" />
           </button>

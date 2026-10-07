@@ -20,7 +20,7 @@ export default async function InspectorLayout({
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-navy/10 bg-white px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-brand-navy">MAAGAP</p>
-          <p className="text-xs text-field-ink-muted">{profile.full_name ?? "Inspector"}</p>
+          <p className="text-xs text-ink-muted">{profile.full_name ?? "Inspector"}</p>
         </div>
         <SignOutButton />
       </header>

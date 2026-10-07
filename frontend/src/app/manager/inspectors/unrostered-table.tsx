@@ -23,7 +23,7 @@ export function UnrosteredTable({
 }) {
   if (profiles.length === 0) {
     return (
-      <p className="px-1 py-2 text-[11px] text-slate-400">
+      <p className="px-1 py-2 text-[11px] text-ink-faint">
         Every inspector account holds an optimizer slot.
       </p>
     );
@@ -32,7 +32,7 @@ export function UnrosteredTable({
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="border-b border-brand-navy/10 text-left text-[11px] text-slate-500">
+        <tr className="border-b border-brand-navy/10 text-left text-[11px] text-ink-muted">
           <th className="py-1.5 pr-2 font-medium">Name</th>
           <th className="px-2 py-1.5 font-medium">Joined</th>
           <th className="py-1.5 pl-2 text-right font-medium">Status</th>
@@ -55,7 +55,7 @@ export function UnrosteredTable({
                 />
               </span>
             </td>
-            <td className="px-2 py-1.5 align-top text-xs text-slate-500">
+            <td className="px-2 py-1.5 align-top text-xs text-ink-muted">
               {new Date(profile.created_at).toLocaleDateString()}
             </td>
             <td className="py-1.5 pl-2 text-right align-top">

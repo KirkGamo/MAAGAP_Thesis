@@ -29,7 +29,7 @@ const MetricLabel = React.forwardRef<HTMLParagraphElement, MetricLabelProps>(
   ({ className, ...props }, forwardedRef) => (
     <p
       ref={forwardedRef}
-      className={cx("text-sm text-slate-500", className)}
+      className={cx("text-sm text-ink-muted", className)}
       tremor-id="tremor-raw"
       {...props}
     />

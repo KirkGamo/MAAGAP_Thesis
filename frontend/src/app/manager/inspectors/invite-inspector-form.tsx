@@ -93,7 +93,7 @@ export function InviteInspectorForm() {
               />
             </div>
 
-            <p className="rounded-md border border-brand-navy/10 bg-brand-surface/60 p-2 text-[11px] leading-relaxed text-slate-500">
+            <p className="rounded-md border border-brand-navy/10 bg-brand-surface/60 p-2 text-[11px] leading-relaxed text-ink-muted">
               Once they accept, they appear under &quot;No optimizer slot&quot; — assign them a slot
               there, or from any empty slot card, so deployed schedules can reach them.
             </p>

@@ -10,7 +10,7 @@ const TONE: Record<RescoreState, string> = {
   done: "border-emerald-200 bg-emerald-50 text-emerald-700",
   pending: "border-amber-200 bg-amber-50 text-amber-700",
   failed: "border-red-200 bg-red-50 text-red-700",
-  skipped: "border-slate-200 bg-slate-50 text-slate-500",
+  skipped: "border-slate-200 bg-slate-50 text-ink-muted",
 };
 
 const LABEL: Record<RescoreState, string> = {
@@ -67,7 +67,7 @@ export function RescorePanel({
         <span className="flex items-center gap-1.5">
           <RescoreChip state={state} />
           {rescoredAt && (
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-ink-faint">
               {new Date(rescoredAt).toLocaleString()}
             </span>
           )}
@@ -84,7 +84,7 @@ export function RescorePanel({
           </Button>
         )}
       </div>
-      {error && <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{error}</p>}
+      {error && <p className="mt-1.5 text-[11px] leading-relaxed text-ink-muted">{error}</p>}
       {result && (
         <p
           className={`mt-1.5 text-[11px] leading-relaxed ${

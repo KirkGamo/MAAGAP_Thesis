@@ -26,7 +26,7 @@ export function PpaSearchBar({ className }: { className?: string }) {
   return (
     <div className={className ?? "relative w-full max-w-sm"}>
       <Search
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-faint"
         aria-hidden="true"
       />
       <input

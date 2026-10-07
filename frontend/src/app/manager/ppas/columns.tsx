@@ -76,7 +76,7 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
           <Link href={`/manager/ppas/${row.original.id}`} className="block hover:underline">
             <MarqueeText text={row.original.name_of_project} className="font-medium text-slate-900" />
           </Link>
-          <div className="truncate text-xs text-slate-400">{row.original.project_key}</div>
+          <div className="truncate text-xs text-ink-faint">{row.original.project_key}</div>
         </div>
       </div>
     ),
@@ -86,7 +86,7 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
     header: "Municipality",
     cell: ({ row }) => (
       <span className="flex items-center gap-1.5 text-slate-600">
-        <MapPin className="size-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+        <MapPin className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
         {row.original.municipality ?? "—"}
       </span>
     ),
@@ -117,7 +117,7 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
       row.original.project_type ? (
         <span className="text-slate-600">{row.original.project_type}</span>
       ) : (
-        <span className="text-slate-400">Unclassified</span>
+        <span className="text-ink-faint">Unclassified</span>
       ),
   },
   {
@@ -157,7 +157,7 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
           })}
         </span>
       ) : (
-        <span className="text-slate-400">—</span>
+        <span className="text-ink-faint">—</span>
       ),
   },
   {
@@ -179,7 +179,7 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
           <Badge variant={riskTierVariant(row.original.risk_tier)}>{row.original.risk_tier}</Badge>
         </div>
       ) : (
-        <span className="text-slate-400">Unscored</span>
+        <span className="text-ink-faint">Unscored</span>
       ),
   },
 ];

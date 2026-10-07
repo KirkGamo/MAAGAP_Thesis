@@ -41,7 +41,7 @@ export function ReportDetail({ report }: { report: ReportDetailData | null }) {
   if (!report) {
     return (
       <div className="flex h-full items-center justify-center p-6">
-        <p className="max-w-xs text-center text-sm text-slate-400">
+        <p className="max-w-xs text-center text-sm text-ink-faint">
           Select a report to see its remarks, photos, and what it changed on the project.
         </p>
       </div>
@@ -68,16 +68,16 @@ export function ReportDetail({ report }: { report: ReportDetailData | null }) {
             </Badge>
           )}
         </div>
-        <p className="mt-0.5 text-[11px] text-slate-500">{filedLine}</p>
+        <p className="mt-0.5 text-[11px] text-ink-muted">{filedLine}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] text-slate-500">Observed</span>
+        <span className="text-[11px] text-ink-muted">Observed</span>
         <Badge variant={statusVariant(report.statusObserved)}>{report.statusLabel}</Badge>
         {report.projectStatusLabel && (
           <>
-            <span className="text-[11px] text-slate-400">·</span>
-            <span className="text-[11px] text-slate-500">Project now</span>
+            <span className="text-[11px] text-ink-faint">·</span>
+            <span className="text-[11px] text-ink-muted">Project now</span>
             <Badge variant={statusVariant(report.projectStatus ?? "")}>
               {report.projectStatusLabel}
             </Badge>
@@ -102,21 +102,21 @@ export function ReportDetail({ report }: { report: ReportDetailData | null }) {
       )}
 
       {report.percentComplete != null && (
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-ink-muted">
           {`Reported ${report.percentComplete}% complete (recorded for audit only — not a model input).`}
         </p>
       )}
 
       {report.remarks && (
         <div>
-          <p className="text-[11px] font-medium text-slate-500">Remarks</p>
+          <p className="text-[11px] font-medium text-ink-muted">Remarks</p>
           <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{report.remarks}</p>
         </div>
       )}
 
       {report.signedPhotoUrls.length > 0 && (
         <div>
-          <p className="mb-1 text-[11px] font-medium text-slate-500">
+          <p className="mb-1 text-[11px] font-medium text-ink-muted">
             {`Site photos (${report.signedPhotoUrls.length})`}
           </p>
           <div className="grid grid-cols-3 gap-2">

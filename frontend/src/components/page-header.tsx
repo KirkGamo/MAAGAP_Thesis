@@ -56,7 +56,7 @@ export function PageHeader({
           {title}
         </h1>
         {description && (
-          <p className={compact ? "text-xs text-field-ink-muted" : "text-sm text-field-ink-muted"}>
+          <p className={compact ? "text-xs text-ink-muted" : "text-sm text-ink-muted"}>
             {description}
           </p>
         )}

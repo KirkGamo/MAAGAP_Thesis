@@ -69,7 +69,7 @@ export function AgendaPane({ groups, inspectors, selectedDay, loadByInspector }:
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-slate-400">Click a visit to reassign, move, or remove it.</p>
+        <p className="text-[11px] text-ink-faint">Click a visit to reassign, move, or remove it.</p>
         <AddVisitDialog
           inspectors={inspectors}
           defaultDay={selectedDay}
@@ -78,7 +78,7 @@ export function AgendaPane({ groups, inspectors, selectedDay, loadByInspector }:
       </div>
 
       {groups.length === 0 && (
-        <p className="p-4 text-center text-sm text-slate-400">
+        <p className="p-4 text-center text-sm text-ink-faint">
           No visits scheduled for this day.
         </p>
       )}
@@ -99,13 +99,13 @@ export function AgendaPane({ groups, inspectors, selectedDay, loadByInspector }:
               </span>
               <span className="flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums">
                 <span
-                  className={overDaily ? "font-semibold text-orange-600" : "text-slate-400"}
+                  className={overDaily ? "font-semibold text-orange-600" : "text-ink-faint"}
                   title={`Visits this day vs. the optimizer's daily capacity of ${DAILY_CAPACITY}`}
                 >
                   {dayCount}/{DAILY_CAPACITY} today
                 </span>
                 <span
-                  className={overWeekly ? "font-semibold text-orange-600" : "text-slate-400"}
+                  className={overWeekly ? "font-semibold text-orange-600" : "text-ink-faint"}
                   title={`Visits this week vs. the optimizer's weekly capacity of ${WEEKLY_CAPACITY}`}
                 >
                   {group.weekCount}/{WEEKLY_CAPACITY} week
@@ -236,7 +236,7 @@ function AssignmentRow({
           >
             <span className="min-w-0">
               <span className="block truncate font-medium text-slate-800">{item.projectName}</span>
-              <span className="block truncate text-[11px] text-slate-400">
+              <span className="block truncate text-[11px] text-ink-faint">
                 {item.municipality ?? "—"}
                 {item.cluster ? ` · ${item.cluster}` : ""}
               </span>
@@ -261,9 +261,9 @@ function AssignmentRow({
             className="z-1200 w-64 rounded-md border border-brand-navy/10 bg-white p-3 shadow-lg"
           >
             <p className="truncate text-xs font-semibold text-slate-700">{item.projectName}</p>
-            <p className="mb-2 text-[11px] text-slate-400">{item.projectKey}</p>
+            <p className="mb-2 text-[11px] text-ink-faint">{item.projectKey}</p>
 
-            <label className="mb-1 block text-[11px] font-medium text-slate-500">Inspector</label>
+            <label className="mb-1 block text-[11px] font-medium text-ink-muted">Inspector</label>
             <select
               className="mb-2 h-8 w-full rounded-md border border-brand-navy/10 px-2 text-sm"
               value={inspectorSel}
@@ -280,7 +280,7 @@ function AssignmentRow({
               ))}
             </select>
 
-            <label className="mb-1 block text-[11px] font-medium text-slate-500">Day</label>
+            <label className="mb-1 block text-[11px] font-medium text-ink-muted">Day</label>
             <select
               className="mb-2 h-8 w-full rounded-md border border-brand-navy/10 px-2 text-sm"
               value={daySel}

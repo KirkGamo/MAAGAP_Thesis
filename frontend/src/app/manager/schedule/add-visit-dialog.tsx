@@ -135,7 +135,7 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
             <div className="flex items-center justify-between gap-2 rounded-md border border-brand-navy/15 bg-brand-surface/60 p-2 text-sm">
               <span className="min-w-0">
                 <span className="block truncate font-medium text-slate-800">{selected.name}</span>
-                <span className="block truncate text-xs text-slate-400">
+                <span className="block truncate text-xs text-ink-faint">
                   {selected.projectKey}
                   {selected.municipality ? ` · ${selected.municipality}` : ""}
                 </span>
@@ -165,7 +165,7 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
                       <span className="block truncate font-medium text-slate-800">
                         {result.name}
                       </span>
-                      <span className="block truncate text-xs text-slate-400">
+                      <span className="block truncate text-xs text-ink-faint">
                         {result.projectKey}
                         {result.municipality ? ` · ${result.municipality}` : ""}
                       </span>
@@ -182,7 +182,7 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
                 </li>
               ))}
               {query.trim().length >= 2 && results.length === 0 && !searchError && (
-                <li className="p-2 text-center text-xs text-slate-400">No matches.</li>
+                <li className="p-2 text-center text-xs text-ink-faint">No matches.</li>
               )}
             </ul>
           )}
@@ -191,7 +191,7 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
             <>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-slate-500">
+                  <label className="mb-1 block text-[11px] font-medium text-ink-muted">
                     Inspector
                   </label>
                   <select
@@ -208,7 +208,7 @@ export function AddVisitDialog({ inspectors, defaultDay, loadByInspector }: AddV
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-slate-500">Day</label>
+                  <label className="mb-1 block text-[11px] font-medium text-ink-muted">Day</label>
                   <select
                     className="h-8 w-full rounded-md border border-brand-navy/10 px-2 text-sm"
                     value={day}
