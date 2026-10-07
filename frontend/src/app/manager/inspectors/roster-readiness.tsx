@@ -25,11 +25,20 @@ export function RosterReadiness({
       label: `${summary.activeInspectors} active inspector${summary.activeInspectors === 1 ? "" : "s"}`,
       tone: summary.activeInspectors > 0 ? "ok" : "warn",
     },
-    {
+  ];
+
+  // Only countable when the solver's roster is known. Offline, `slotRows`
+  // is built from the slots profiles already hold, so emptySlots is
+  // necessarily 0 -- a structural artefact, not an observation. Rendering
+  // it as "0 slots empty" in the ok tone turned missing data into an
+  // all-clear. A number that cannot be known is not shown; the offline
+  // chip below says why.
+  if (serviceReachable) {
+    chips.push({
       label: `${summary.emptySlots} slot${summary.emptySlots === 1 ? "" : "s"} empty`,
       tone: summary.emptySlots > 0 ? "warn" : "ok",
-    },
-  ];
+    });
+  }
   if (undeployable > 0) {
     chips.push({
       label: `${undeployable} optimized visit${undeployable === 1 ? "" : "s"} undeployable`,
@@ -87,6 +96,24 @@ export function readinessHeadline(
 ): string {
   if (!serviceReachable && summary.totalSlots === 0) {
     return "Assign each inspector an optimizer slot so deployed schedules can reach them.";
+  }
+  // The roster size lives in optimization_engine.py and reaches this page only
+  // through the solve. With the ML service unreachable, `slotRows` is built
+  // from the slots profiles already hold, so filledSlots always equals
+  // totalSlots and emptySlots is always 0 -- which previously fell through to
+  // "every slot can receive deployed work", the page's strongest all-clear,
+  // issued precisely when it had the least information. Observed live at
+  // "1 of 1 optimizer slot filled" against a true state of 1 of 6 with 21 of
+  // 25 visits undeployable.
+  //
+  // State what is known (slots held) and name what is not (how many exist).
+  // Nothing here is cached across requests, so the last known roster size is
+  // genuinely unavailable rather than merely unfetched -- see ux-audit.md.
+  if (!serviceReachable) {
+    const held = `${summary.filledSlots} inspector${summary.filledSlots === 1 ? "" : "s"} hold${
+      summary.filledSlots === 1 ? "s" : ""
+    } an optimizer slot`;
+    return `${held} — the roster size is unknown while the ML service is unreachable, so empty slots and undeployable visits cannot be counted.`;
   }
   const base = `${summary.filledSlots} of ${summary.totalSlots} optimizer slot${
     summary.totalSlots === 1 ? "" : "s"
