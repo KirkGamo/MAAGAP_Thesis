@@ -1,3 +1,5 @@
+import { ScorecardRetry } from "./scorecard-retry";
+
 /**
  * The optimizer scorecard: renders optimization_engine.py's summary JSON
  * (served through GET /api/v1/latest-schedule, fetched server-side by
@@ -10,6 +12,11 @@
  * Degrades honestly: when the ML service is unreachable (the normal state
  * for a deployed frontend without the FastAPI sidecar), page.tsx passes
  * null and a single muted chip explains why -- never an error state.
+ *
+ * That chip now carries a retry. The page's error boundary already offers one,
+ * but it cannot fire here: page.tsx catches the failed fetch and returns null
+ * by design, so the most common failure was also the only one with no way to
+ * recover from it short of navigating away and back.
  */
 
 export interface OptimizerSummary {
@@ -34,8 +41,11 @@ function Chip({ label, value }: { label: string; value: string }) {
 export function Scorecard({ summary }: { summary: OptimizerSummary | null }) {
   if (!summary) {
     return (
-      <span className="rounded-md border border-dashed border-brand-navy/15 px-2 py-1 text-[11px] text-slate-400">
-        Optimizer output unavailable — ML service not reachable
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <span className="rounded-md border border-dashed border-brand-navy/15 px-2 py-1 text-[11px] text-field-ink-faint">
+          Optimizer output unavailable — ML service not reachable
+        </span>
+        <ScorecardRetry />
       </span>
     );
   }
