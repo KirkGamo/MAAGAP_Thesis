@@ -214,156 +214,303 @@ export default async function ModelsPage() {
   const basis = await loadScoreBasisSplit();
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-3">
       <PageHeader />
 
-      {meta_learner && (
-        <Card>
-          <MetricLabel>
-            Meta-learner, three-learner (RF + XGBoost + LSTM) — test set
-          </MetricLabel>
-          <p className="mt-1 text-sm text-slate-500">
-            Measured on{" "}
-            <span className="font-medium text-brand-navy">
-              {pop?.three_learner.n_test ?? "—"}
-            </span>{" "}
-            {pop?.three_learner.description ?? "test rows"}. This model can only
-            score a project that has an LSTM event sequence, so these figures do
-            not describe the majority of predictions the system makes.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-5">
-            <StatBlock label="Accuracy" value={pct(meta_learner.accuracy)} />
-            <StatBlock label="Precision" value={pct(meta_learner.precision)} />
-            <StatBlock label="Recall" value={pct(meta_learner.recall)} />
-            <StatBlock label="F1" value={pct(meta_learner.f1)} />
-            <StatBlock label="AUC-ROC" value={pct(meta_learner.auc_roc)} />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-500">
-            {Object.entries(meta_learner.risk_tier_distribution).map(([tier, count]) => (
-              <span key={tier}>
-                {tier}: <span className="font-medium text-brand-navy">{count}</span>
-              </span>
-            ))}
-          </div>
-        </Card>
-      )}
+      {/* LEVEL 1 -- the question a reader actually arrives with.
+          Before this, the page opened with the three-learner's validation
+          metrics: the model that scores a minority of projects, measured on a
+          subset, presented as the headline. The deployed reality was the
+          seventh card down, below two sets of numbers neither of which
+          describes the live population. */}
+      {basis && <DeployedReality basis={basis} />}
 
-      {meta_learner_two && (
-        <Card>
-          <MetricLabel>
-            Meta-learner, two-learner (RF + XGBoost) — test set
-          </MetricLabel>
-          <p className="mt-1 text-sm text-slate-500">
-            Measured on{" "}
-            <span className="font-medium text-brand-navy">
-              {pop?.two_learner.n_test ?? meta_learner_two.n_test ?? "—"}
-            </span>{" "}
-            {pop?.two_learner.description ?? "test rows"}. This is the model that
-            scores a project with no event sequence — which is{" "}
-            <span className="font-medium text-brand-navy">most of them</span>.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-5">
-            <StatBlock label="Accuracy" value={pct(meta_learner_two.accuracy)} />
-            <StatBlock label="Precision" value={pct(meta_learner_two.precision)} />
-            <StatBlock label="Recall" value={pct(meta_learner_two.recall)} />
-            <StatBlock label="F1" value={pct(meta_learner_two.f1)} />
-            <StatBlock label="AUC-ROC" value={pct(meta_learner_two.auc_roc)} />
-          </div>
-          {pop && !pop.comparable && (
-            <p className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700">
-              {pop.note}
-            </p>
-          )}
-        </Card>
-      )}
-
-      {basis && (
-        <Card>
-          <MetricLabel>Which model scored the live population</MetricLabel>
-          <p className="mt-1 text-sm text-slate-500">
-            From <code>projects.score_basis</code>. The metrics above are
-            measured on different populations; this is which model actually
-            produced the tiers on the dashboard.
-          </p>
-          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <StatBlock
-              label="All scored projects on two-learner"
-              value={`${Math.round((basis.totalTwo / basis.total) * 100)}% (${basis.totalTwo}/${basis.total})`}
-            />
-            <StatBlock
-              label="High + Critical on two-learner"
-              value={
-                basis.actionable > 0
-                  ? `${Math.round((basis.actionableTwo / basis.actionable) * 100)}% (${basis.actionableTwo}/${basis.actionable})`
-                  : "—"
+      {(meta_learner || meta_learner_two) && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {meta_learner && (
+            <MetaLearnerCard
+              title="Three-learner (RF + XGBoost + LSTM)"
+              metrics={meta_learner}
+              population={pop?.three_learner.n_test ?? null}
+              populationNote={
+                pop?.three_learner.description ?? "test rows with an LSTM event sequence"
               }
+              caveat="a minority of the predictions this system makes."
             />
-          </div>
-          <p className="mt-4 border-l-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-slate-700">
-            Most actionable predictions come from the two-learner model, not the
-            full three-learner stack. A paired comparison on the rows where both
-            models can score found no significant difference between them
-            (McNemar p = 0.189), so this is a statement about which model ran —
-            not a claim that those projects were scored less accurately.
-          </p>
-        </Card>
-      )}
-
-      {confusion_matrix && (
-        <Card>
-          <MetricLabel>
-            Confusion matrix (test set, {"≥"}0.5 decision threshold on meta_prob)
-          </MetricLabel>
-          <div className="mt-3 grid max-w-md grid-cols-2 gap-2 text-center text-sm">
-            <div className="rounded-md bg-emerald-50 p-3">
-              <p className="font-semibold text-emerald-800">{confusion_matrix.true_positive}</p>
-              <p className="text-emerald-700">True Positive</p>
-            </div>
-            <div className="rounded-md bg-red-50 p-3">
-              <p className="font-semibold text-red-800">{confusion_matrix.false_positive}</p>
-              <p className="text-red-700">False Positive</p>
-            </div>
-            <div className="rounded-md bg-red-50 p-3">
-              <p className="font-semibold text-red-800">{confusion_matrix.false_negative}</p>
-              <p className="text-red-700">False Negative</p>
-            </div>
-            <div className="rounded-md bg-emerald-50 p-3">
-              <p className="font-semibold text-emerald-800">{confusion_matrix.true_negative}</p>
-              <p className="text-emerald-700">True Negative</p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {regression && <RegressionCard regression={regression} />}
-
-      {tree_models && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Card>
-            <MetricLabel>Random Forest (Level 0) — test set</MetricLabel>
-            <Metric>{pct(tree_models.random_forest.test_metrics.accuracy)}</Metric>
-            <MetricsRow metrics={tree_models.random_forest.test_metrics} />
-          </Card>
-          <Card>
-            <MetricLabel>XGBoost (Level 0) — test set</MetricLabel>
-            <Metric>{pct(tree_models.xgboost.test_metrics.accuracy)}</Metric>
-            <MetricsRow metrics={tree_models.xgboost.test_metrics} />
-          </Card>
+          )}
+          {meta_learner_two && (
+            <MetaLearnerCard
+              title="Two-learner (RF + XGBoost)"
+              metrics={meta_learner_two}
+              population={pop?.two_learner.n_test ?? meta_learner_two.n_test ?? null}
+              populationNote={pop?.two_learner.description ?? "test rows"}
+              caveat="most of what the system actually scores."
+            />
+          )}
         </div>
       )}
 
-      {lstm && (
-        <Card>
-          <MetricLabel>LSTM (Level 0, sequence model) — test set</MetricLabel>
-          <Metric>{pct(lstm.test_metrics.accuracy)}</Metric>
-          <MetricsRow metrics={lstm.test_metrics} />
-          <p className="mt-2 text-xs text-slate-400">
-            Trained/evaluated on a smaller cohort ({lstm.n_train} train / {lstm.n_test} test) than
-            the tabular models — only projects with a long enough monitoring-report history have a
-            usable event sequence (see MODEL_IMPROVEMENT_STRATEGY.md).
-          </p>
-        </Card>
+      {/* The comparison guard, given its own full-width strip rather than
+          living inside the second card. It governs how BOTH cards above must
+          be read, so it cannot be a footnote attached to one of them.
+
+          D23-Keep-The-LSTM.md records why: the two are evaluated on different
+          populations, the naive comparison is confounded, and the valid paired
+          test on identical rows returns no significant difference. The external
+          UX brief asked for a side-by-side compare control here; it was
+          declined for exactly this reason -- see docs/ux-audit.md section 5. */}
+      {pop && !pop.comparable && <ComparabilityGuard note={pop.note} />}
+
+      {/* LEVEL 2 -- supporting evidence, collapsed by default. None of it
+          answers the opening question, and all of it previously competed with
+          the answer at equal visual weight across 2.48 screens. */}
+
+      {tree_models && (
+        <Disclosure
+          summary="Level 0 learners"
+          hint={`${tree_models.n_train} train / ${tree_models.n_test} test rows, ${tree_models.n_features} features`}
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <LearnerBlock name="Random Forest" metrics={tree_models.random_forest.test_metrics} />
+            <LearnerBlock name="XGBoost" metrics={tree_models.xgboost.test_metrics} />
+          </div>
+          {lstm && (
+            <div className="mt-4 border-t border-border-subtle pt-4">
+              <LearnerBlock name="LSTM (sequence model)" metrics={lstm.test_metrics} />
+              <p className="mt-2 text-xs text-field-ink-faint">
+                Trained and evaluated on a smaller cohort ({lstm.n_train} train / {lstm.n_test}{" "}
+                test) than the tabular models — only projects with a long enough
+                monitoring-report history have a usable event sequence (see
+                MODEL_IMPROVEMENT_STRATEGY.md).
+              </p>
+            </div>
+          )}
+        </Disclosure>
       )}
+
+      {regression && (
+        <Disclosure
+          summary="Delay magnitude (regression)"
+          hint="Objective 2's second half — how late, not just whether late"
+        >
+          <RegressionCard regression={regression} />
+        </Disclosure>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <Glossary />
+        {confusion_matrix && (
+          <Disclosure summary="Confusion matrix" hint="≥0.5 threshold on meta_prob">
+            <ConfusionMatrix matrix={confusion_matrix} />
+          </Disclosure>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The page's opening answer: which model actually produced the tiers a manager
+ * is looking at, and how much of the actionable caseload it accounts for.
+ *
+ * This existed before but sat seventh of eight cards, below two sets of
+ * validation metrics measured on populations neither of which is the live one.
+ * A reader who stopped before reaching it would reasonably have concluded the
+ * headline 88.8% described the system's predictions. It does not.
+ */
+function DeployedReality({
+  basis,
+}: {
+  basis: { total: number; totalTwo: number; actionable: number; actionableTwo: number };
+}) {
+  const allPct = Math.round((basis.totalTwo / basis.total) * 100);
+  const actPct =
+    basis.actionable > 0 ? Math.round((basis.actionableTwo / basis.actionable) * 100) : null;
+  return (
+    <Card className="border-l-4 border-l-brand-sky-dark">
+      <MetricLabel>Which model is actually running</MetricLabel>
+      <p className="mt-1 text-sm text-field-ink-muted">
+        Read from <code>projects.score_basis</code>. Most predictions that drive an
+        inspection decision come from the two-learner model, not the full three-learner
+        stack — a statement about which model ran, not about accuracy (see below).
+      </p>
+      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatBlock
+          label="All scored projects on two-learner"
+          value={`${allPct}% (${basis.totalTwo}/${basis.total})`}
+        />
+        <StatBlock
+          label="High + Critical on two-learner"
+          value={actPct == null ? "—" : `${actPct}% (${basis.actionableTwo}/${basis.actionable})`}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function MetaLearnerCard({
+  title,
+  metrics,
+  population,
+  populationNote,
+  caveat,
+}: {
+  title: string;
+  metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
+  population: number | null;
+  populationNote: string;
+  caveat: string;
+}) {
+  return (
+    <Card>
+      <MetricLabel>{title}</MetricLabel>
+      <Metric>{pct(metrics.accuracy)}</Metric>
+      {/* The population sits adjacent to the number, not beneath the card. An
+          accuracy without the set it was measured on is the single most
+          misreadable figure on this page. */}
+      <p className="text-xs text-field-ink-muted">
+        Accuracy on <span className="font-semibold text-brand-navy">{population ?? "—"}</span>{" "}
+        {populationNote} — {caveat}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-field-ink-muted">
+        <span>Precision: {pct(metrics.precision)}</span>
+        <span>Recall: {pct(metrics.recall)}</span>
+        <span>F1: {pct(metrics.f1)}</span>
+        <span>AUC-ROC: {pct(metrics.auc_roc)}</span>
+      </div>
+    </Card>
+  );
+}
+
+function ComparabilityGuard({ note }: { note: string }) {
+  return (
+    <div className="border-l-2 border-amber-400 bg-amber-50 px-3 py-2.5 text-sm text-slate-700">
+      <span className="font-semibold">These two are not comparable. </span>
+      {note}
+    </div>
+  );
+}
+
+/**
+ * Native <details>. Chosen over a JS disclosure deliberately: this is a Server
+ * Component, so a client accordion would mean a "use client" boundary and a
+ * hydration cost for a control the platform already implements --
+ * keyboard-operable, screen-reader-announced, and findable by in-page browser
+ * search even while collapsed, which a div-with-state is not.
+ */
+function Disclosure({
+  summary,
+  hint,
+  children,
+}: {
+  summary: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group rounded-lg border border-brand-navy/10 bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm font-semibold text-brand-navy focus-visible:ring-2 focus-visible:ring-brand-sky-dark focus-visible:ring-offset-1 focus-visible:outline-none">
+        <span className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="text-field-ink-faint transition-transform group-open:rotate-90"
+          >
+            &rsaquo;
+          </span>
+          {summary}
+        </span>
+        {hint && <span className="text-xs font-normal text-field-ink-faint">{hint}</span>}
+      </summary>
+      <div className="border-t border-border-subtle px-4 py-4">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * Plain-language definitions. The audience for this page includes PPDO staff
+ * and non-ML panel members, for whom "AUC-ROC 95.8%" is an authoritative-looking
+ * number with no meaning attached -- which is worse than no number, because it
+ * invites agreement rather than understanding.
+ */
+function Glossary() {
+  const terms: [string, string][] = [
+    ["Accuracy", "How often the model's call was right, across every project it scored."],
+    [
+      "Precision",
+      "When it flags a project as at risk, how often it is correct. Low precision wastes inspection trips.",
+    ],
+    [
+      "Recall",
+      "Of the projects genuinely at risk, how many it caught. Low recall means at-risk projects go unvisited.",
+    ],
+    ["F1", "A single score balancing precision and recall, for when one number is needed."],
+    [
+      "AUC-ROC",
+      "How well the model separates at-risk from not-at-risk across every threshold. 50% is a coin toss, 100% is perfect.",
+    ],
+    [
+      "MAE (days)",
+      "Average error in days when predicting how late a project will run. Only meaningful against the baseline shown beside it.",
+    ],
+  ];
+  return (
+    <Disclosure summary="What these numbers mean" hint="Plain language">
+      <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
+        {terms.map(([term, meaning]) => (
+          <div key={term}>
+            <dt className="text-sm font-semibold text-brand-navy">{term}</dt>
+            <dd className="text-sm text-field-ink-muted">{meaning}</dd>
+          </div>
+        ))}
+      </dl>
+    </Disclosure>
+  );
+}
+
+function LearnerBlock({
+  name,
+  metrics,
+}: {
+  name: string;
+  metrics: TreeModelMetrics["test_metrics"];
+}) {
+  return (
+    <div>
+      <p className="text-sm font-semibold text-brand-navy">{name}</p>
+      <Metric>{pct(metrics.accuracy)}</Metric>
+      <MetricsRow metrics={metrics} />
+    </div>
+  );
+}
+
+function ConfusionMatrix({
+  matrix,
+}: {
+  matrix: {
+    true_positive: number;
+    false_positive: number;
+    true_negative: number;
+    false_negative: number;
+  };
+}) {
+  return (
+    <div className="grid max-w-md grid-cols-2 gap-2 text-center text-sm">
+      <div className="rounded-md bg-emerald-50 p-3">
+        <p className="font-semibold text-emerald-800">{matrix.true_positive}</p>
+        <p className="text-emerald-700">True Positive</p>
+      </div>
+      <div className="rounded-md bg-red-50 p-3">
+        <p className="font-semibold text-red-800">{matrix.false_positive}</p>
+        <p className="text-red-700">False Positive</p>
+      </div>
+      <div className="rounded-md bg-red-50 p-3">
+        <p className="font-semibold text-red-800">{matrix.false_negative}</p>
+        <p className="text-red-700">False Negative</p>
+      </div>
+      <div className="rounded-md bg-emerald-50 p-3">
+        <p className="font-semibold text-emerald-800">{matrix.true_negative}</p>
+        <p className="text-emerald-700">True Negative</p>
+      </div>
     </div>
   );
 }
@@ -372,9 +519,8 @@ function PageHeader() {
   return (
     <div>
       <h1 className="text-2xl font-semibold text-brand-navy">Models</h1>
-      <p className="text-sm text-slate-500">
-        Validation performance of the Level 0 (Random Forest, XGBoost, LSTM) and Level 1
-        (meta-learner) stack, from the most recent training run.
+      <p className="text-sm text-field-ink-muted">
+        Validation performance from the most recent training run.
       </p>
     </div>
   );
@@ -405,8 +551,7 @@ function RegressionCard({ regression }: { regression: RegressionMetrics }) {
   const direct = best.test_metrics_direct_dates_only;
 
   return (
-    <Card>
-      <MetricLabel>Delay magnitude (regression) — test set</MetricLabel>
+    <div>
       <Metric>{days(best.test_metrics.mae_days)}</Metric>
       <p className="text-xs text-slate-500">
         Mean Absolute Error of the best regressor ({REGRESSOR_LABELS[bestName] ?? bestName}),
@@ -454,7 +599,7 @@ function RegressionCard({ regression }: { regression: RegressionMetrics }) {
         Phase 8 clamp rather than observed — including them would deflate the target and flatter
         this number.
       </p>
-    </Card>
+    </div>
   );
 }
 
