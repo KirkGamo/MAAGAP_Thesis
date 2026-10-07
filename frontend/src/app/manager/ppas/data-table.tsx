@@ -23,7 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PpaSearchBar } from "./ppa-search-bar";
-import { PpaControlsToggle } from "./ppa-controls-toggle";
+import { PpaControlsToggle } from "./controls-visibility";
 
 export interface PpaTableParams {
   q?: string;

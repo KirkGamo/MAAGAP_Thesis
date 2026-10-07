@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
+import { useUrlState } from "@/lib/use-url-state";
+import { cn } from "@/lib/utils";
 
 interface ReportsFiltersProps {
   inspectors: { id: string; full_name: string | null }[];
@@ -11,21 +12,13 @@ interface ReportsFiltersProps {
  * pattern as PpaFilters/DayFilter -- shareable/bookmarkable, no
  * client-side data-fetching library needed. */
 export function ReportsFilters({ inspectors }: ReportsFiltersProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  function setParam(key: string, value: string) {
-    const next = new URLSearchParams(searchParams.toString());
-    if (value) next.set(key, value);
-    else next.delete(key);
-    router.push(`/manager/reports?${next.toString()}`);
-  }
+  const { isPending, setParam, searchParams } = useUrlState("/manager/reports");
 
   return (
     // shrink-0 + fixed widths: as a flex item in the page header this
     // block was being squeezed and wrapping onto a second line, which
     // costs vertical space the pinned layout doesn't have.
-    <div className="flex shrink-0 items-center gap-2">
+    <div className={cn("flex shrink-0 items-center gap-2 transition-opacity", isPending && "opacity-60")}>
       <Input
         placeholder="Search by project name..."
         defaultValue={searchParams.get("q") ?? ""}

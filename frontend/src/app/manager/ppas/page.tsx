@@ -3,7 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { PpaFilterSidebar } from "./ppa-filter-sidebar";
 import { PpaActiveFilters } from "./ppa-active-filters";
 import { PpaSearchBar } from "./ppa-search-bar";
-import { PpaControlsToggle } from "./ppa-controls-toggle";
+import {
+  ControlsVisibilityProvider,
+  ControlsRegion,
+  PpaControlsToggle,
+} from "./controls-visibility";
 import { PpaImportPanel } from "./ppa-import-panel";
 import { PageHeader } from "@/components/page-header";
 import { ViewToggle, type PpaView } from "./view-toggle";
@@ -198,6 +202,10 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
   ).toString()}`;
 
   return (
+    // The sidebar's visibility is client state, not a server round-trip. See
+    // controls-visibility.tsx: the param it used to push changed no data, but
+    // cost a full re-render and three queries.
+    <ControlsVisibilityProvider initiallyHidden={controlsHidden}>
     <div className="flex flex-col gap-6">
       {/* Stacks below sm. As a single non-wrapping flex row this put the
           2-item action group (261px) beside the title at every width, pushing
@@ -216,7 +224,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
       />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        {!controlsHidden && (
+        <ControlsRegion>
           <PpaFilterSidebar
             riskTiers={RISK_TIERS}
             statuses={STATUSES}
@@ -230,7 +238,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
             }}
             revenueBounds={revenueBounds}
           />
-        )}
+        </ControlsRegion>
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <PpaActiveFilters />
@@ -279,5 +287,6 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
         </div>
       </div>
     </div>
+    </ControlsVisibilityProvider>
   );
 }

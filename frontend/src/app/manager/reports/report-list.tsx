@@ -1,7 +1,9 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useUrlState } from "@/lib/use-url-state";
 import { Badge, statusVariant } from "@/components/ui/badge";
 import { RescoreChip } from "./rescore-badge";
 import type { RescoreState } from "@/types/database";
@@ -40,12 +42,14 @@ export function ReportList({
   filtered: boolean;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { isPending, setParam } = useUrlState("/manager/reports");
+  // Selecting a report re-renders the detail pane from the server and signs its
+  // photo URLs -- measured at 897ms. The row now shows as selected immediately.
+  const [requested, setRequested] = useState<string | null>(null);
 
   function select(id: string) {
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("report", id);
-    router.push(`/manager/reports?${next.toString()}`, { scroll: false });
+    setRequested(id);
+    setParam("report", id, { scroll: false });
   }
 
   // Two different situations were showing the same sentence, and only one of
@@ -82,11 +86,14 @@ export function ReportList({
           <button
             type="button"
             onClick={() => select(report.id)}
+            aria-current={report.id === selectedId ? "true" : undefined}
+            aria-busy={isPending && requested === report.id ? true : undefined}
             className={cn(
               "w-full rounded-md border px-2.5 py-2 text-left transition-colors",
-              report.id === selectedId
+              report.id === selectedId || (isPending && requested === report.id)
                 ? "border-brand-navy/20 bg-brand-surface"
-                : "border-transparent hover:bg-brand-surface/60"
+                : "border-transparent hover:bg-brand-surface/60",
+              isPending && requested === report.id && "animate-pulse"
             )}
           >
             <div className="flex items-baseline justify-between gap-2">

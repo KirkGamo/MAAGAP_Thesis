@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useUrlState } from "@/lib/use-url-state";
 import { RiskMarker } from "./risk-marker";
 import { DAILY_CAPACITY } from "./capacity";
 
@@ -29,13 +30,15 @@ export interface DayTabInfo {
  * defense: see SCHEDULE_WORKFLOW_IMPROVEMENT_PLAN.md section 3.
  */
 export function DayStrip({ tabs, current }: { tabs: DayTabInfo[]; current: string }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const { isPending, setParam } = useUrlState("/manager/schedule");
+  // Which tab was clicked, so the feedback lands on that tab rather than on
+  // all of them. Changing a day re-renders the map and the agenda from the
+  // server -- measured at 902ms, previously with nothing on screen to show it.
+  const [requested, setRequested] = useState<string | null>(null);
 
   function setDay(day: string) {
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("day", day);
-    router.push(`/manager/schedule?${next.toString()}`);
+    setRequested(day);
+    setParam("day", day);
   }
 
   return (
@@ -45,11 +48,15 @@ export function DayStrip({ tabs, current }: { tabs: DayTabInfo[]; current: strin
           key={tab.day}
           type="button"
           onClick={() => setDay(tab.day)}
+          aria-current={current === tab.day ? "true" : undefined}
           className={cn(
-            "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
+            "relative flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
             current === tab.day
               ? "bg-brand-navy text-white"
-              : "text-brand-navy/70 hover:bg-brand-surface"
+              : "text-brand-navy/70 hover:bg-brand-surface",
+            // The requested tab takes the selected styling immediately, so the
+            // click registers before the server has answered.
+            isPending && requested === tab.day && "bg-brand-navy/80 text-white"
           )}
         >
           <span>{tab.day}</span>
@@ -61,6 +68,12 @@ export function DayStrip({ tabs, current }: { tabs: DayTabInfo[]; current: strin
           >
             {tab.count}
           </span>
+          {isPending && requested === tab.day && (
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-1 bottom-0.5 h-0.5 animate-pulse rounded-full bg-white/70"
+            />
+          )}
           {tab.critical > 0 && <RiskMarker tier="Critical" count={tab.critical} />}
           {tab.high > 0 && <RiskMarker tier="High" count={tab.high} />}
           {tab.overCapacity && (

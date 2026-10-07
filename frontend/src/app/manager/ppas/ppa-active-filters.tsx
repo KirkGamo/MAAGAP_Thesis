@@ -29,6 +29,7 @@ export function PpaActiveFilters() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Removing a chip re-queries the whole table from the server.
   function push(next: URLSearchParams) {
     next.delete("page");
     router.push(next.toString() ? `/manager/ppas?${next.toString()}` : "/manager/ppas");

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUrlState } from "@/lib/use-url-state";
 import { parseCsvParam, PPA_FILTER_PARAM_KEYS } from "./filters";
 
 interface Bounds {
@@ -83,18 +83,20 @@ export function PpaFilterSidebar({
   counts,
   revenueBounds,
 }: PpaFilterSidebarProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  // Every filter change re-queries 2,393 projects and recomputes the facet
+  // counts, so the sidebar dims while that is in flight rather than looking
+  // like the click did nothing.
+  const { isPending, setParams, searchParams } = useUrlState("/manager/ppas");
 
   function setCsvParam(key: string, values: string[]) {
-    const next = new URLSearchParams(searchParams.toString());
-    if (values.length > 0) next.set(key, values.join(","));
-    else next.delete(key);
-    // Changing a filter can shrink the result set below the page the
-    // Manager was on -- reset to page 1 rather than showing a confusing
-    // "no projects match" for a page that no longer exists.
-    next.delete("page");
-    router.push(`/manager/ppas?${next.toString()}`);
+    setParams((next) => {
+      if (values.length > 0) next.set(key, values.join(","));
+      else next.delete(key);
+      // Changing a filter can shrink the result set below the page the
+      // Manager was on -- reset to page 1 rather than showing a confusing
+      // "no projects match" for a page that no longer exists.
+      next.delete("page");
+    });
   }
 
   function toggleCsvValue(key: string, value: string) {
@@ -108,18 +110,27 @@ export function PpaFilterSidebar({
   // every other param, including `page` -- resetting filters always goes
   // back to page 1.
   function resetAll() {
-    const next = new URLSearchParams();
-    const view = searchParams.get("view");
-    const controls = searchParams.get("controls");
-    if (view) next.set("view", view);
-    if (controls) next.set("controls", controls);
-    router.push(next.toString() ? `/manager/ppas?${next.toString()}` : "/manager/ppas");
+    setParams((next) => {
+      // Clear every filter but keep the two params that are view state rather
+      // than filters, so clearing filters does not also throw the Manager back
+      // to the table or re-open the sidebar they hid.
+      for (const key of [...next.keys()]) {
+        if (key !== "view" && key !== "controls") next.delete(key);
+      }
+    });
   }
 
   const hasActiveFilters = PPA_FILTER_PARAM_KEYS.some((key) => searchParams.get(key));
 
   return (
-    <aside className="flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-brand-navy/10 bg-white shadow-md lg:h-[700px] lg:w-64">
+    <aside
+      id="ppa-filter-sidebar"
+      aria-busy={isPending || undefined}
+      className={cn(
+        "flex w-full shrink-0 flex-col overflow-hidden rounded-xl border border-brand-navy/10 bg-white shadow-md transition-opacity lg:h-[700px] lg:w-64",
+        isPending && "opacity-60"
+      )}
+    >
       <div className="flex shrink-0 items-center justify-between p-4 pb-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Filters</p>
         {hasActiveFilters && (
@@ -288,8 +299,7 @@ function RangeFilterSection({
   prefix?: string;
   suffix?: string;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const { isPending, setParams, searchParams } = useUrlState("/manager/ppas");
 
   const urlMin = Number(searchParams.get(paramMinKey) ?? bounds.min);
   const urlMax = Number(searchParams.get(paramMaxKey) ?? bounds.max);
@@ -306,18 +316,21 @@ function RangeFilterSection({
   }, [searchParams.get(paramMinKey), searchParams.get(paramMaxKey)]);
 
   function commit(next: [number, number]) {
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (next[0] > bounds.min) nextParams.set(paramMinKey, String(next[0]));
-    else nextParams.delete(paramMinKey);
-    if (next[1] < bounds.max) nextParams.set(paramMaxKey, String(next[1]));
-    else nextParams.delete(paramMaxKey);
-    nextParams.delete("page");
-    router.push(`/manager/ppas?${nextParams.toString()}`);
+    setParams((nextParams) => {
+      if (next[0] > bounds.min) nextParams.set(paramMinKey, String(next[0]));
+      else nextParams.delete(paramMinKey);
+      if (next[1] < bounds.max) nextParams.set(paramMaxKey, String(next[1]));
+      else nextParams.delete(paramMaxKey);
+      nextParams.delete("page");
+    });
   }
 
   return (
     <FilterSection title={title}>
-      <div className="flex items-center gap-2 pb-4">
+      <div
+        aria-busy={isPending || undefined}
+        className={cn("flex items-center gap-2 pb-4 transition-opacity", isPending && "opacity-60")}
+      >
         <NumberField
           label="Min."
           value={range[0]}

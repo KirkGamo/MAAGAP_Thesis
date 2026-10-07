@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { SignOutButton } from "./sign-out-button";
+import { NavigationProgress } from "@/components/navigation-progress";
 
 /**
  * Inspector portal shell — deliberately mobile-first (single-column,
@@ -16,6 +17,7 @@ export default async function InspectorLayout({
   const profile = await requireRole(["inspector"]);
 
   return (
+    <NavigationProgress>
     <div className="mx-auto flex min-h-screen max-w-md flex-col bg-brand-surface">
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-navy/10 bg-white px-4 py-3">
         <div>
@@ -26,5 +28,6 @@ export default async function InspectorLayout({
       </header>
       <main className="flex-1 px-4 py-4">{children}</main>
     </div>
+    </NavigationProgress>
   );
 }

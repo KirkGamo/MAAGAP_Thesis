@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NotificationBell } from "@/components/tremor/notification-bell";
 import { UserMenu } from "@/components/tremor/user-menu";
 import { SidebarNav } from "./sidebar-nav";
+import { NavigationProgress } from "@/components/navigation-progress";
 
 /**
  * Manager portal shell. `requireRole` redirects to /inspector if a
@@ -40,6 +41,9 @@ export default async function ManagerLayout({
   } = await supabase.auth.getUser();
 
   return (
+    // Wraps the portal so any URL navigation shows a progress bar, whichever
+    // control started it. See navigation-progress.tsx.
+    <NavigationProgress>
     <div className="flex min-h-screen bg-brand-surface">
       <SidebarNav />
 
@@ -61,6 +65,7 @@ export default async function ManagerLayout({
         <main className="flex-1 px-6 py-6">{children}</main>
       </div>
     </div>
+    </NavigationProgress>
   );
 }
 

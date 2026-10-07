@@ -1,7 +1,8 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useUrlState } from "@/lib/use-url-state";
 
 export type PpaView = "table" | "map";
 
@@ -11,13 +12,14 @@ export type PpaView = "table" | "map";
  * two-button segmented control rather than pulling in a new
  * @radix-ui/react-toggle-group dependency for something this small. */
 export function ViewToggle({ current }: { current: PpaView }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const { isPending, setParam } = useUrlState("/manager/ppas");
+  const [requested, setRequested] = useState<PpaView | null>(null);
 
+  // Switching between a 2,393-row table and a clustered map is the heaviest
+  // view change in the portal, and it rebuilds entirely on the server.
   function setView(view: PpaView) {
-    const next = new URLSearchParams(searchParams.toString());
-    next.set("view", view);
-    router.push(`/manager/ppas?${next.toString()}`);
+    setRequested(view);
+    setParam("view", view);
   }
 
   return (
@@ -27,11 +29,14 @@ export function ViewToggle({ current }: { current: PpaView }) {
           key={view}
           type="button"
           onClick={() => setView(view)}
+          aria-current={current === view ? "true" : undefined}
+          aria-busy={isPending && requested === view ? true : undefined}
           className={cn(
             "rounded px-3 py-1.5 text-sm font-medium capitalize transition-colors",
-            current === view
+            current === view || (isPending && requested === view)
               ? "bg-brand-navy text-white"
-              : "text-brand-navy/70 hover:bg-brand-surface"
+              : "text-brand-navy/70 hover:bg-brand-surface",
+            isPending && requested === view && "animate-pulse"
           )}
         >
           {view}
