@@ -109,10 +109,27 @@ const REGRESSOR_LABELS: Record<string, string> = {
 async function loadScoreBasisSplit() {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("projects")
-      .select("risk_tier, score_basis");
-    if (error || !data) return null;
+    // Paginated deliberately. An unbounded select() is capped at 1,000 rows by
+    // PostgREST with no error, which silently truncated this split to the first
+    // 1,000 of 2,393 projects: the page reported 70% (698/1000) and, for the
+    // tiers that drive inspection decisions, 80% (20/25). The true figures are
+    // 72% (1725/2393) and 76% (76/100) -- and that 76% is the exact number
+    // D23-Keep-The-LSTM.md cites as a finding, so the page was contradicting
+    // the thesis's own decision record on the screen most likely to be checked
+    // against it.
+    const PAGE = 1000;
+    const data: { risk_tier: string | null; score_basis: string | null }[] = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data: page, error } = await supabase
+        .from("projects")
+        .select("risk_tier, score_basis")
+        .range(offset, offset + PAGE - 1);
+      if (error) return null;
+      if (!page?.length) break;
+      data.push(...page);
+      if (page.length < PAGE) break;
+    }
+    if (data.length === 0) return null;
 
     const actionable = data.filter(
       (r) => r.risk_tier === "High" || r.risk_tier === "Critical"
