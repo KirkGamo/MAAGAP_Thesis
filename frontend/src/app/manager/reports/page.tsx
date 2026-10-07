@@ -6,6 +6,7 @@ import { STATUSES } from "../ppas/filters";
 import { ReportsFilters } from "./reports-filters";
 import { ReportList, type ReportListItem } from "./report-list";
 import { parseReportSort, sortReports } from "./lib/sort";
+import { PageHeader } from "@/components/page-header";
 import { ReportDetail, type ReportDetailData } from "./report-detail";
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
@@ -201,13 +202,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
   return (
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <div>
-          <h1 className="text-xl font-semibold text-brand-navy">Reports</h1>
-          <p className="text-xs text-slate-500">{headline}</p>
-        </div>
-        <ReportsFilters inspectors={inspectors ?? []} />
-      </div>
+      <PageHeader
+        title="Reports"
+        description={headline}
+        density="compact"
+        actions={<ReportsFilters inspectors={inspectors ?? []} />}
+      />
 
       {error && (
         <p className="shrink-0 text-sm text-red-600">Could not load reports: {error.message}</p>

@@ -4,6 +4,7 @@ import { Card } from "@/components/tremor/card";
 import { DAILY_CAPACITY, WEEKLY_CAPACITY } from "../schedule/capacity";
 import { InviteInspectorForm } from "./invite-inspector-form";
 import { RosterReadiness, readinessHeadline } from "./roster-readiness";
+import { PageHeader } from "@/components/page-header";
 import { SlotCard } from "./slot-card";
 import { UnrosteredTable } from "./unrostered-table";
 import {
@@ -136,15 +137,17 @@ export default async function InspectorsPage() {
 
   return (
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <div>
-          <h1 className="text-xl font-semibold text-brand-navy">Inspectors</h1>
-          <p className="text-xs text-slate-500">
-            {readinessHeadline(summary, solverRoster !== null, undeployable, solverRoster?.totalRows ?? 0)}
-          </p>
-        </div>
-        <InviteInspectorForm />
-      </div>
+      <PageHeader
+        title="Inspectors"
+        description={readinessHeadline(
+          summary,
+          solverRoster !== null,
+          undeployable,
+          solverRoster?.totalRows ?? 0
+        )}
+        density="compact"
+        actions={<InviteInspectorForm />}
+      />
 
       <div className="shrink-0">
         <RosterReadiness

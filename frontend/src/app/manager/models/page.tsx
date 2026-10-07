@@ -2,6 +2,7 @@ import { Card } from "@/components/tremor/card";
 import { createClient } from "@/lib/supabase/server";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { mlServiceFetch } from "@/lib/ml-service";
+import { PageHeader } from "@/components/page-header";
 
 interface TreeModelMetrics {
   test_metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
@@ -159,7 +160,10 @@ export default async function ModelsPage() {
   if (!baseUrl) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader />
+        <PageHeader
+        title="Models"
+        description="Validation performance from the most recent training run."
+      />
         <Card>
           <p className="text-sm text-slate-500">
             <code>FASTAPI_ML_SERVICE_URL</code> is not configured, so this page can&apos;t reach
@@ -193,7 +197,10 @@ export default async function ModelsPage() {
   if (errorMessage || !data) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader />
+        <PageHeader
+        title="Models"
+        description="Validation performance from the most recent training run."
+      />
         <Card>
           <p className="text-sm text-red-600">{errorMessage}</p>
         </Card>
@@ -215,7 +222,10 @@ export default async function ModelsPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <PageHeader />
+      <PageHeader
+        title="Models"
+        description="Validation performance from the most recent training run."
+      />
 
       {/* LEVEL 1 -- the question a reader actually arrives with.
           Before this, the page opened with the three-learner's validation
@@ -511,17 +521,6 @@ function ConfusionMatrix({
         <p className="font-semibold text-emerald-800">{matrix.true_negative}</p>
         <p className="text-emerald-700">True Negative</p>
       </div>
-    </div>
-  );
-}
-
-function PageHeader() {
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold text-brand-navy">Models</h1>
-      <p className="text-sm text-field-ink-muted">
-        Validation performance from the most recent training run.
-      </p>
     </div>
   );
 }

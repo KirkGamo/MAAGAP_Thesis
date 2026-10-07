@@ -5,6 +5,7 @@ import { PpaActiveFilters } from "./ppa-active-filters";
 import { PpaSearchBar } from "./ppa-search-bar";
 import { PpaControlsToggle } from "./ppa-controls-toggle";
 import { PpaImportPanel } from "./ppa-import-panel";
+import { PageHeader } from "@/components/page-header";
 import { ViewToggle, type PpaView } from "./view-toggle";
 import { MapLoader } from "../map/map-loader";
 import type { MapProject } from "../map/types";
@@ -203,21 +204,16 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
           the page 15px past a 390px viewport -- the one horizontal overflow
           the four-viewport sweep found. min-w-0 lets the title column shrink
           rather than hold its longest line. */}
-      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold text-brand-navy">
-            Program, Projects, and Activities (PPAs)
-          </h1>
-          <p className="text-sm text-slate-500">
-            Every tracked PPA, filterable by name, risk tier, status, project type, municipality,
-            budget, and risk probability — as a table or on the map.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <ViewToggle current={view} />
-          <PpaImportPanel />
-        </div>
-      </div>
+      <PageHeader
+        title="Program, Projects, and Activities (PPAs)"
+        description="Every tracked PPA, filterable by name, risk tier, status, project type, municipality, budget, and risk probability — as a table or on the map."
+        actions={
+          <div className="flex items-center gap-3">
+            <ViewToggle current={view} />
+            <PpaImportPanel />
+          </div>
+        }
+      />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         {!controlsHidden && (

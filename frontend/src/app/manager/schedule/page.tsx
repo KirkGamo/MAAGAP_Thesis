@@ -16,6 +16,7 @@ import {
 } from "./agenda-pane";
 import type { ScheduleMapPoint } from "./schedule-map";
 import { mlServiceFetch } from "@/lib/ml-service";
+import { PageHeader } from "@/components/page-header";
 import { daysOverCapacity } from "./capacity";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
@@ -378,23 +379,24 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
   return (
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
       {/* ---- Top strip: identity, status, scorecard, actions ---- */}
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <div>
-          <h1 className="text-xl font-semibold text-brand-navy">Schedule</h1>
-          <p className="text-xs text-slate-500">{headerCaption}</p>
-        </div>
-        <div className="flex items-start gap-2">
-          <RunOptimizerButton
-            initiallyRunning={optimizerStatus?.state === "running"}
-            freshnessLabel={
-              optimizerStatus?.schedule_generated_at
-                ? `Last optimized ${relativeTimeLabel(optimizerStatus.schedule_generated_at)}`
-                : null
-            }
-          />
-          <DeployScheduleButton />
-        </div>
-      </div>
+      <PageHeader
+        title="Schedule"
+        description={headerCaption}
+        density="compact"
+        actions={
+          <div className="flex items-start gap-2">
+            <RunOptimizerButton
+              initiallyRunning={optimizerStatus?.state === "running"}
+              freshnessLabel={
+                optimizerStatus?.schedule_generated_at
+                  ? `Last optimized ${relativeTimeLabel(optimizerStatus.schedule_generated_at)}`
+                  : null
+              }
+            />
+            <DeployScheduleButton />
+          </div>
+        }
+      />
 
       {/* Day tabs and the optimizer scorecard share one band: the tabs are
           the workspace's primary control, the scorecard the standing
