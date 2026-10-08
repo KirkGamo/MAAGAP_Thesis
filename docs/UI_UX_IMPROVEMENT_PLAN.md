@@ -108,7 +108,9 @@ Already addressed on the pages that needed it. Four tabs hold a verified one-scr
 
 **C1. Extend the glossary pattern beyond Models.** The term stays; a plain gloss sits beside it. `P(RedFlag)` is the clearest offender — a column header no PPDO officer can read.
 
-**C2. A rename shortlist, for the owner to approve.** Candidates: `P(RedFlag)` → "Delay risk"; `optimizer slot` → "roster position"; `re-score` → "risk updated"; `solver` → "scheduler". **Each needs a decision**, because some terms appear in the manuscript and must stay consistent with Chapter 3.
+**C2. Renaming — decided 2026-10-08: the terms stay.** `P(RedFlag)`, `optimizer slot`, `re-score` and `solver` keep their names. They appear in the manuscript, and a UI that calls something different from Chapter 3 costs more at a defence than it saves at a desk.
+
+This makes C1 and C4 carry the whole workstream: the precise term stays on screen and a plain gloss sits beside it, which is the pattern the Models glossary already uses. *Explain in place, do not rename.*
 
 **C3. A plain-language summary line per page**, under the title, in the user's terms rather than the system's.
 
@@ -140,7 +142,7 @@ Each item must be demonstrated, not asserted:
 - **A spinner can hide a real performance bug.** A3 exists because the honest fix for the 2.3 s toggle is to stop doing the work, not to narrate it. Add feedback *and* remove the cause.
 - **Icons are a contrast surface too.** A 16px glyph at `--ink-faint` on white passes AA for text, but non-text contrast is a separate 3:1 requirement against adjacent colour.
 - **Any new full-table read needs explicit pagination.** Three defects in this codebase have come from PostgREST's silent 1,000-row cap. B4's charts will want aggregates — page them.
-- **Renaming terms touches the manuscript.** C2 is the only workstream with a dependency outside the code; do not rename unilaterally.
+- **Renaming terms touches the manuscript.** Decided 2026-10-08: no renames. Glosses go beside the terms, never in place of them — the precision is the thesis's defensibility.
 - **These screens are only honest against real data.** Every one is a different problem at 2,393 projects than at six placeholder rows.
 - **Open the component before claiming what it does.** The lesson from `WEBSITE_REDESIGN_PLAN.md` §0, and the reason §1 is numbers rather than impressions.
 
@@ -153,7 +155,7 @@ Each item must be demonstrated, not asserted:
 | 1 | A1–A3 interaction feedback + the PPAs toggle fix | 1 day | The only item users currently experience as the system being broken |
 | 2 | A4–A5, D1–D2 | 0.5 day | Finishes the responsiveness story |
 | 3 | B1–B3 icons and empty states | 1 day | Highest visual return per hour |
-| 4 | C1–C4 plain language | 1 day | Needs C2 decisions first |
+| 4 | C1, C3, C4 plain language | 1 day | C2 decided: no renames, so gloss in place |
 | 5 | B4–B5 charts and photo grid | 1 day | Largest, least urgent |
 
 **Roughly 4.5 days.** Phase 1 alone addresses the complaint most likely to be raised in an ISO 25010 session, since "the system was easy to operate and control" (US5) and "the system behaved consistently" (RL1) are both rated after a task walkthrough in which every filter click currently appears to do nothing for a second.
