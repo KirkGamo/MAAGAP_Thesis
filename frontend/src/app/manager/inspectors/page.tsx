@@ -5,6 +5,7 @@ import { DAILY_CAPACITY, WEEKLY_CAPACITY } from "../schedule/capacity";
 import { InviteInspectorForm } from "./invite-inspector-form";
 import { RosterReadiness, readinessHeadline } from "./roster-readiness";
 import { PageHeader } from "@/components/page-header";
+import { TermHint } from "@/components/term-hint";
 import { SlotCard } from "./slot-card";
 import { UnrosteredTable } from "./unrostered-table";
 import {
@@ -132,8 +133,10 @@ export default async function InspectorsPage() {
     "The optimizer allocates every site visit to a numbered roster slot rather than to a person. " +
     "Binding a real inspector to a slot is what lets a deployed schedule reach them — visits " +
     "routed to an empty slot are skipped at deploy time and nobody is sent.";
+  // Split so "Solver" can carry its own explanation. The slot concept is
+  // already explained in prose above this line; the solver was not.
   const capacityNote =
-    `Solver assumptions: ${DAILY_CAPACITY} visits per inspector per day, ${WEEKLY_CAPACITY} per week. ` +
+    `assumptions: ${DAILY_CAPACITY} visits per inspector per day, ${WEEKLY_CAPACITY} per week. ` +
     "These are global planning figures, not per-person settings.";
 
   return (
@@ -210,7 +213,12 @@ export default async function InspectorsPage() {
           <Card className="bg-surface-sunk shrink-0 p-4">
             <p className="text-sm font-semibold text-brand-navy">How slots work</p>
             <p className="mt-1.5 text-[11px] leading-relaxed text-ink-muted">{slotsExplainer}</p>
-            <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">{capacityNote}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
+              <TermHint term="solver" className="text-[11px] text-ink-faint">
+                Solver
+              </TermHint>{" "}
+              {capacityNote}
+            </p>
           </Card>
         </div>
       </div>

@@ -132,7 +132,7 @@ Each item must be demonstrated, not asserted:
 2. **The PPAs controls toggle issues zero database queries.**
 3. **No page regresses its one-screen contract at 1366×768**, and no page gains horizontal overflow at 1868/1493/1366/1280/1024/390.
 4. **Contrast stays at 0 styles below AA**; new icons are not the sole carrier of any meaning.
-5. **Jargon count falls on the pages outside Models**, re-measured with the same script.
+5. **Explanation coverage, not jargon count.** The original metric assumed the terms would be renamed; the 2026-10-08 decision was that they stay, so a count of terms present reads identically before and after and cannot tell you whether the work succeeded. The metric is now *what share of the technical terms shown on a page have an explanation reachable from that page* — measured at **12/12 (100%)**, against the term count which is, correctly, unchanged.
 6. **60 tests still pass**, plus new tests for the pending-state hook.
 
 ---

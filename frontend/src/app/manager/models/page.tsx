@@ -4,6 +4,7 @@ import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { mlServiceFetch } from "@/lib/ml-service";
 import { PageHeader } from "@/components/page-header";
 import { Brain } from "lucide-react";
+import { glossary, glossText, type GlossaryKey } from "@/lib/glossary";
 
 interface TreeModelMetrics {
   test_metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
@@ -463,33 +464,17 @@ function Disclosure({
  * invites agreement rather than understanding.
  */
 function Glossary() {
-  const terms: [string, string][] = [
-    ["Accuracy", "How often the model's call was right, across every project it scored."],
-    [
-      "Precision",
-      "When it flags a project as at risk, how often it is correct. Low precision wastes inspection trips.",
-    ],
-    [
-      "Recall",
-      "Of the projects genuinely at risk, how many it caught. Low recall means at-risk projects go unvisited.",
-    ],
-    ["F1", "A single score balancing precision and recall, for when one number is needed."],
-    [
-      "AUC-ROC",
-      "How well the model separates at-risk from not-at-risk across every threshold. 50% is a coin toss, 100% is perfect.",
-    ],
-    [
-      "MAE (days)",
-      "Average error in days when predicting how late a project will run. Only meaningful against the baseline shown beside it.",
-    ],
-  ];
+  // Read from the shared dictionary rather than written here, so the same term
+  // cannot be explained one way on this page and another in a tooltip
+  // elsewhere. See lib/glossary.ts.
+  const keys: GlossaryKey[] = ["accuracy", "precision", "recall", "f1", "aucRoc", "mae"];
   return (
     <Disclosure summary="What these numbers mean" hint="Plain language">
       <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-        {terms.map(([term, meaning]) => (
-          <div key={term}>
-            <dt className="text-sm font-semibold text-brand-navy">{term}</dt>
-            <dd className="text-sm text-ink-muted">{meaning}</dd>
+        {keys.map((key) => (
+          <div key={key}>
+            <dt className="text-sm font-semibold text-brand-navy">{glossary(key).term}</dt>
+            <dd className="text-sm text-ink-muted">{glossText(key)}</dd>
           </div>
         ))}
       </dl>

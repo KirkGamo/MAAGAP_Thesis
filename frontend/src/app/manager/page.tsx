@@ -8,6 +8,7 @@ import { KpiHeaderSkeleton } from "./kpi-header-skeleton";
 import { MunicipalityPpaChart } from "./charts/municipality-ppa-chart";
 import { CountBarChart } from "./charts/count-bar-chart";
 import { CurrencyBarChart } from "./charts/currency-bar-chart";
+import { TermHint } from "@/components/term-hint";
 import {
   budgetByMunicipality,
   BUDGET_CATEGORY,
@@ -115,10 +116,13 @@ export default async function ManagerOverviewPage() {
   // Captions are composed as plain strings (not JSX text nodes) -- immune
   // to this repo's Next build fusing boundary whitespace around entities,
   // and easy to keep to one compact line each in the fixed-height layout.
-  const scoredCaption =
+  // Split so the term can carry its explanation. "LSTM monitoring-event
+  // sequence" is the densest phrase on the Overview and the one a planning
+  // officer is least able to act on without it.
+  const scoredCaptionLead =
     `Model risk tiers cover ${scoredRows.length.toLocaleString()} of ` +
-    `${rows.length.toLocaleString()} live PPAs; the rest lack the LSTM ` +
-    `monitoring-event sequence and stay unscored rather than guessed.`;
+    `${rows.length.toLocaleString()} live PPAs; the rest lack the`;
+  const scoredCaptionTail = "and stay unscored rather than guessed.";
 
   const municipalityCaption =
     municipality.excludedNoMunicipality > 0
@@ -184,7 +188,13 @@ export default async function ManagerOverviewPage() {
               </div>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] leading-tight text-ink-faint">{scoredCaption}</p>
+          <p className="mt-1.5 text-[11px] leading-tight text-ink-faint">
+            {scoredCaptionLead}{" "}
+            <TermHint term="eventSequence" className="text-[11px] text-ink-faint">
+              LSTM monitoring-event sequence
+            </TermHint>{" "}
+            {scoredCaptionTail}
+          </p>
         </Card>
       </div>
 

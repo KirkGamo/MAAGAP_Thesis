@@ -1,4 +1,6 @@
 import { ScorecardRetry } from "./scorecard-retry";
+import { TermHint } from "@/components/term-hint";
+import type { GlossaryKey } from "@/lib/glossary";
 
 /**
  * The optimizer scorecard: renders optimization_engine.py's summary JSON
@@ -29,11 +31,27 @@ export interface OptimizerSummary {
   clusters_touched?: number;
 }
 
-function Chip({ label, value }: { label: string; value: string }) {
+function Chip({
+  label,
+  value,
+  term,
+}: {
+  label: string;
+  value: string;
+  /** Attaches a plain-language explanation to a chip whose label is a term of
+   * art. "solver" and "clusters" mean nothing to a planning officer. */
+  term?: GlossaryKey;
+}) {
   return (
     <span className="inline-flex items-baseline gap-1.5 rounded-md border border-brand-navy/10 bg-white px-2 py-1">
       <span className="text-xs font-semibold text-brand-navy">{value}</span>
-      <span className="text-[11px] text-ink-muted">{label}</span>
+      {term ? (
+        <TermHint term={term} className="text-[11px] text-ink-muted">
+          {label}
+        </TermHint>
+      ) : (
+        <span className="text-[11px] text-ink-muted">{label}</span>
+      )}
     </span>
   );
 }
@@ -55,14 +73,14 @@ export function Scorecard({ summary }: { summary: OptimizerSummary | null }) {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Chip label="solver" value={summary.solver_status ?? "—"} />
+      <Chip label="solver" term="solver" value={summary.solver_status ?? "—"} />
       <Chip
         label="scheduled"
         value={`${summary.projects_scheduled ?? "—"}/${summary.candidate_projects ?? "—"}`}
       />
       <Chip label="coverage" value={coverage} />
       <Chip label="Critical covered" value={String(summary.critical_projects_scheduled ?? "—")} />
-      <Chip label="clusters" value={String(summary.clusters_touched ?? "—")} />
+      <Chip label="clusters" term="cluster" value={String(summary.clusters_touched ?? "—")} />
     </div>
   );
 }

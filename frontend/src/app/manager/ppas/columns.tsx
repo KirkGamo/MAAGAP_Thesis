@@ -6,6 +6,7 @@ import { MapPin } from "lucide-react";
 import { Badge, riskTierVariant, statusVariant } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarqueeText } from "./marquee-text";
+import { TermHint } from "@/components/term-hint";
 
 /** One row of the PPAs table -- mirrors exactly the fields page.tsx selects
  * from `projects` (see its `.select(...)` call). Kept as its own type here
@@ -122,7 +123,9 @@ export const ppaColumns: ColumnDef<PpaRow>[] = [
   },
   {
     accessorKey: "risk_probability",
-    header: "P(RedFlag)",
+    // The column nobody outside the project can read. The term stays -- it is
+    // the manuscript's -- so the explanation comes to it instead.
+    header: () => <TermHint term="redflag" />,
     cell: ({ row }) =>
       row.original.risk_probability != null
         ? `${(row.original.risk_probability * 100).toFixed(1)}%`

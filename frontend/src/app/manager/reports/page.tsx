@@ -9,6 +9,7 @@ import { parseReportSort, sortReports } from "./lib/sort";
 import { PageHeader } from "@/components/page-header";
 import { ReportDetail, type ReportDetailData } from "./report-detail";
 import { ClipboardList } from "lucide-react";
+import { TermHint } from "@/components/term-hint";
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
 const SIGNED_URL_TTL_SECONDS = 60 * 10; // only needs to outlive one page render
@@ -206,7 +207,14 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       <PageHeader
         title="Reports"
         icon={ClipboardList}
-        description={headline}
+        description={
+          <span className="inline-flex flex-wrap items-center gap-x-1">
+            {headline}
+            <TermHint term="rescore" className="text-xs text-ink-muted">
+              re-score
+            </TermHint>
+          </span>
+        }
         density="compact"
         actions={<ReportsFilters inspectors={inspectors ?? []} />}
       />
