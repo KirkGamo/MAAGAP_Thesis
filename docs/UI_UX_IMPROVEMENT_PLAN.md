@@ -100,9 +100,9 @@ Already addressed on the pages that needed it. Four tabs hold a verified one-scr
 
 **B3. Empty-state illustration.** A single reusable `EmptyState` with icon, heading, one line, and an action. Currently empty states are bare sentences of varying copy.
 
-**B4. Charts where a number is currently prose.** The Overview tier counts, the Inspectors weekly load, and the Models population split are all small-multiple candidates. Tremor is already a dependency.
+**B4. Charts where a number is currently prose.** *Audited 2026-10-08 and mostly already done.* The Overview already carries four charts, the Inspectors slot card already draws a per-weekday load strip, and the project page has a SHAP diverging bar chart. The one genuine gap was the **Models population split**, now a coverage bar: a third-full bar beside a full one says "these two were not measured on the same thing" faster than 598 against 1,765 does, and that misreading is exactly what `D23` exists to prevent. **Shipped.**
 
-**B5. Photographic evidence on report detail.** Inspector photos exist and are signed per render; they deserve a proper thumbnail grid with a lightbox rather than a strip.
+**B5. Photographic evidence on report detail.** *Audited 2026-10-08: the premise was wrong.* It is already a three-column thumbnail grid with click-to-open, not a strip. The only difference a lightbox would make is staying in-page instead of opening a tab, which is a modest gain against adding a modal, a focus trap and keyboard navigation. **Not done, and not recommended** unless someone asks for it.
 
 ### C. Plain language — ~1 day
 

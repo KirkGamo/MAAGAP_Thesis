@@ -241,7 +241,7 @@ export default async function ModelsPage() {
   const pop = evaluation_populations;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       <PageHeader
         title="Models"
         icon={Brain}
@@ -267,6 +267,7 @@ export default async function ModelsPage() {
                 pop?.three_learner.description ?? "test rows with an LSTM event sequence"
               }
               caveat="a minority of the predictions this system makes."
+              fullTestSet={pop?.two_learner.n_test ?? meta_learner_two?.n_test ?? null}
             />
           )}
           {meta_learner_two && (
@@ -276,6 +277,7 @@ export default async function ModelsPage() {
               population={pop?.two_learner.n_test ?? meta_learner_two.n_test ?? null}
               populationNote={pop?.two_learner.description ?? "test rows"}
               caveat="most of what the system actually scores."
+              fullTestSet={pop?.two_learner.n_test ?? meta_learner_two?.n_test ?? null}
             />
           )}
         </div>
@@ -385,13 +387,19 @@ function MetaLearnerCard({
   population,
   populationNote,
   caveat,
+  fullTestSet,
 }: {
   title: string;
   metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
   population: number | null;
   populationNote: string;
   caveat: string;
+  /** The full test set, so the bar below can show what share of it this model
+   * was actually measured on. */
+  fullTestSet: number | null;
 }) {
+  const share =
+    population != null && fullTestSet ? Math.min(1, population / fullTestSet) : null;
   return (
     <Card>
       <MetricLabel>{title}</MetricLabel>
@@ -403,6 +411,21 @@ function MetaLearnerCard({
         Accuracy on <span className="font-semibold text-brand-navy">{population ?? "—"}</span>{" "}
         {populationNote} — {caveat}
       </p>
+      {/* The page's central caveat, as a proportion rather than a sentence.
+          Side by side, a third-full bar against a full one says "these were not
+          measured on the same thing" faster than "598" against "1765" does --
+          and that misreading is the one D23-Keep-The-LSTM.md exists to prevent.
+
+          aria-hidden: the numbers and the note above already carry this for a
+          screen reader, so the bar is redundant encoding, not new information. */}
+      {share != null && (
+        <div aria-hidden="true" className="mt-2 h-1 w-full rounded-full bg-brand-navy/10">
+          <div
+            className="h-1 rounded-full bg-brand-sky-dark"
+            style={{ width: `${(share * 100).toFixed(1)}%` }}
+          />
+        </div>
+      )}
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink-muted">
         <span>Precision: {pct(metrics.precision)}</span>
         <span>Recall: {pct(metrics.recall)}</span>
