@@ -166,7 +166,10 @@ export default async function ManagerOverviewPage() {
 
       {/* ---- Top strip: portal KPIs + risk-tier counts ---- */}
       <div className="grid shrink-0 gap-3 lg:grid-cols-[1.2fr_1fr]">
-        <Card className="p-4">
+        {/* The one primary card on this view. --shadow-raised was defined for
+            this and went unused, so every card sat at identical weight and
+            nothing said where to look first. */}
+        <Card className="p-4 shadow-raised">
           <Suspense fallback={<KpiHeaderSkeleton />}>
             <KpiHeader />
           </Suspense>

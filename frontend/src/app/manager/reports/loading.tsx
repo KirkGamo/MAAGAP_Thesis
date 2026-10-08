@@ -15,9 +15,13 @@ export default function ReportsLoading() {
           <Skeleton className="h-6 w-28" />
           <Skeleton className="h-3 w-80" />
         </div>
+        {/* Search, inspector, sort -- keep in step with ReportsFilters; a
+            skeleton that does not match what replaces it causes a visible
+            jump at the moment the content arrives. */}
         <div className="flex gap-2">
           <Skeleton className="h-9 w-56" />
           <Skeleton className="h-9 w-36" />
+          <Skeleton className="h-9 w-40" />
         </div>
       </div>
 

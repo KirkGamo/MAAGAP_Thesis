@@ -149,6 +149,10 @@ body {
    * Introducing navy as a SURFACE is what makes the brand usable in the
    * product rather than only in the logo file. */
   --surface-base: #ffffff;
+  /* Deliberately the same value as --color-brand-surface, the page
+   * background: a sunk surface recedes by matching what is behind it, so a
+   * panel on it reads as a well rather than as another card. The two are not
+   * accidentally duplicated -- do not 'fix' one without the other. */
   --surface-sunk: #f2f8fd;          /* wells, secondary panels, code */
   --surface-raised: #ffffff;        /* the one primary card per view */
   /* Navy is for BRIEF, ceremonial surfaces only — the login screen, at most a
@@ -192,8 +196,14 @@ body {
   --border-default: #cbd5e1;
   --border-strong: #94a3b8;
 
-  --shadow-raised: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
-  --shadow-overlay: 0 8px 28px rgb(15 23 42 / 0.14);
+  /* Raw values. The Tailwind-facing `--shadow-*` names live in the @theme
+   * block below, because Tailwind v4 generates `shadow-raised` only from a
+   * token in that namespace -- these sat in :root alone since 22b9a5b, so
+   * `shadow-raised` silently produced no CSS at all and every card stayed at
+   * identical weight. A clean build does not prove a utility exists; check the
+   * generated stylesheet. */
+  --elevation-raised: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
+  --elevation-overlay: 0 8px 28px rgb(15 23 42 / 0.14);
 
   /* --- Risk ramp ----------------------------------------------------------
    * Deliberately separate from the brand palette: risk tier is the most
@@ -249,6 +259,9 @@ body {
 }
 
 @theme inline {
+  --shadow-raised: var(--elevation-raised);
+  --shadow-overlay: var(--elevation-overlay);
+
   --color-surface-base: var(--surface-base);
   --color-surface-sunk: var(--surface-sunk);
   --color-surface-raised: var(--surface-raised);

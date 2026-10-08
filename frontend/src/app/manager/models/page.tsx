@@ -194,15 +194,32 @@ export default async function ModelsPage() {
     }`;
   }
 
+  // Read before the error branch, deliberately. This comes from Supabase, not
+  // the ML service, so it is still available when the service is down -- and it
+  // is the one fact on this page a manager most needs: which model produced the
+  // tiers they are looking at. Returning early withheld it at exactly the
+  // moment the rest of the page could say nothing, which is the same failure
+  // shape as the Inspectors roster headline fixed in 7070607.
+  const basis = await loadScoreBasisSplit();
+
   if (errorMessage || !data) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         <PageHeader
-        title="Models"
-        description="Validation performance from the most recent training run."
-      />
+          title="Models"
+          description="Validation performance from the most recent training run."
+        />
+        {basis && <DeployedReality basis={basis} />}
         <Card>
-          <p className="text-sm text-red-600">{errorMessage}</p>
+          <p className="text-sm font-semibold text-brand-navy">
+            Validation metrics are unavailable
+          </p>
+          <p className="mt-1 text-sm text-ink-muted">{errorMessage}</p>
+          <p className="mt-2 text-sm text-ink-muted">
+            {basis
+              ? "The figures above still apply — they are read from the project records, not from the ML service."
+              : "Training results are served by the ML service; start it to see them."}
+          </p>
         </Card>
       </div>
     );
@@ -218,7 +235,6 @@ export default async function ModelsPage() {
     regression,
   } = data;
   const pop = evaluation_populations;
-  const basis = await loadScoreBasisSplit();
 
   return (
     <div className="flex flex-col gap-3">
@@ -337,7 +353,7 @@ function DeployedReality({
   const actPct =
     basis.actionable > 0 ? Math.round((basis.actionableTwo / basis.actionable) * 100) : null;
   return (
-    <Card className="border-l-4 border-l-brand-sky-dark">
+    <Card className="border-l-4 border-l-brand-sky-dark shadow-raised">
       <MetricLabel>Which model is actually running</MetricLabel>
       <p className="mt-1 text-sm text-ink-muted">
         Read from <code>projects.score_basis</code>. Most predictions that drive an
@@ -418,7 +434,7 @@ function Disclosure({
   children: React.ReactNode;
 }) {
   return (
-    <details className="group rounded-lg border border-brand-navy/10 bg-white">
+    <details className="group rounded-lg border border-brand-navy/10 bg-surface-sunk">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm font-semibold text-brand-navy focus-visible:ring-2 focus-visible:ring-brand-sky-dark focus-visible:ring-offset-1 focus-visible:outline-none">
         <span className="flex items-center gap-2">
           <span

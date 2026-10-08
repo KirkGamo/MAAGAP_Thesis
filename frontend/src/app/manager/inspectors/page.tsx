@@ -205,7 +205,7 @@ export default async function InspectorsPage() {
             </div>
           </Card>
 
-          <Card className="shrink-0 p-4">
+          <Card className="bg-surface-sunk shrink-0 p-4">
             <p className="text-sm font-semibold text-brand-navy">How slots work</p>
             <p className="mt-1.5 text-[11px] leading-relaxed text-ink-muted">{slotsExplainer}</p>
             <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">{capacityNote}</p>
