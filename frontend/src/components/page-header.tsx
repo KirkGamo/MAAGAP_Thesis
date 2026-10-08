@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 
 /**
  * The shared page header for the manager portal.
@@ -26,11 +27,15 @@ import type { ReactNode } from "react";
 export function PageHeader({
   title,
   description,
+  icon: Icon,
   density = "default",
   actions,
 }: {
   title: ReactNode;
   description?: ReactNode;
+  /** The page's nav icon. Comes from manager/nav-items.ts so the header and
+   * the sidebar always agree; decorative, since the h1 beside it is the name. */
+  icon?: LucideIcon;
   /** "compact" for pages pinned to the viewport; "default" for scrolling pages. */
   density?: "compact" | "default";
   /** Buttons, filters or toggles rendered opposite the title. */
@@ -45,7 +50,14 @@ export function PageHeader({
           : "flex flex-col items-start gap-4 sm:flex-row sm:justify-between"
       }
     >
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-start gap-2.5">
+        {Icon && (
+          <Icon
+            aria-hidden="true"
+            className={compact ? "mt-1 size-5 shrink-0 text-brand-blue" : "mt-1.5 size-6 shrink-0 text-brand-blue"}
+          />
+        )}
+        <div className="min-w-0">
         <h1
           className={
             compact
@@ -60,6 +72,7 @@ export function PageHeader({
             {description}
           </p>
         )}
+        </div>
       </div>
       {actions}
     </div>

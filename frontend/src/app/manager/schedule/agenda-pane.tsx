@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { updateAssignment, removeAssignment } from "@/actions/schedule";
 import { DAILY_CAPACITY, WEEKLY_CAPACITY } from "./capacity";
 import { AddVisitDialog } from "./add-visit-dialog";
+import { EmptyState } from "@/components/empty-state";
+import { CalendarOff } from "lucide-react";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 
@@ -78,9 +80,11 @@ export function AgendaPane({ groups, inspectors, selectedDay, loadByInspector }:
       </div>
 
       {groups.length === 0 && (
-        <p className="p-4 text-center text-sm text-ink-faint">
-          No visits scheduled for this day.
-        </p>
+        <EmptyState
+          icon={CalendarOff}
+          title="No visits scheduled for this day"
+          hint="Run the optimizer to generate a week, or add a visit directly."
+        />
       )}
 
       {groups.map((group) => {

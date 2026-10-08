@@ -17,6 +17,7 @@ import {
   type InspectorProfile,
 } from "./lib/roster";
 import { mlServiceFetch } from "@/lib/ml-service";
+import { HardHat } from "lucide-react";
 
 /**
  * The optimizer's roster slots, read from its latest solve rather than a
@@ -139,6 +140,7 @@ export default async function InspectorsPage() {
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
       <PageHeader
         title="Inspectors"
+        icon={HardHat}
         description={readinessHeadline(
           summary,
           solverRoster !== null,

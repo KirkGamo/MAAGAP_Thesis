@@ -7,6 +7,8 @@ import { useUrlState } from "@/lib/use-url-state";
 import { Badge, statusVariant } from "@/components/ui/badge";
 import { RescoreChip } from "./rescore-badge";
 import type { RescoreState } from "@/types/database";
+import { ClipboardList, SearchX } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 export interface ReportListItem {
   id: string;
@@ -58,24 +60,26 @@ export function ReportList({
   // yet -- it implies reports exist and are being hidden.
   if (reports.length === 0) {
     return filtered ? (
-      <div className="flex flex-col items-center gap-2 p-6 text-center">
-        <p className="text-sm text-ink-muted">No reports match these filters.</p>
-        <button
-          type="button"
-          onClick={() => router.push("/manager/reports")}
-          className="rounded-md border border-brand-navy/15 px-2.5 py-1 text-xs font-medium text-brand-navy transition-colors hover:bg-brand-surface focus-visible:ring-2 focus-visible:ring-brand-sky-dark focus-visible:ring-offset-1 focus-visible:outline-none"
-        >
-          Clear filters
-        </button>
-      </div>
+      <EmptyState
+        icon={SearchX}
+        title="No reports match these filters"
+        hint="Try widening the search, or clear the filters to see every report."
+        action={
+          <button
+            type="button"
+            onClick={() => router.push("/manager/reports")}
+            className="rounded-md border border-brand-navy/15 px-2.5 py-1 text-xs font-medium text-brand-navy transition-colors hover:bg-brand-surface focus-visible:ring-2 focus-visible:ring-brand-sky-dark focus-visible:ring-offset-1 focus-visible:outline-none"
+          >
+            Clear filters
+          </button>
+        }
+      />
     ) : (
-      <div className="flex flex-col gap-1 p-6 text-center">
-        <p className="text-sm text-ink-muted">No monitoring reports yet.</p>
-        <p className="text-xs text-ink-faint">
-          Reports appear here once an inspector files one from the field. Assign visits on
-          the Schedule tab and deploy the week to put inspectors on site.
-        </p>
-      </div>
+      <EmptyState
+        icon={ClipboardList}
+        title="No monitoring reports yet"
+        hint="Reports appear here once an inspector files one from the field. Assign visits on the Schedule tab and deploy the week to put inspectors on site."
+      />
     );
   }
 

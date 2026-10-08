@@ -4,15 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-
-const NAV_ITEMS = [
-  { href: "/manager", label: "Overview" },
-  { href: "/manager/ppas", label: "Program, Projects, and Activities (PPAs)" },
-  { href: "/manager/schedule", label: "Schedule" },
-  { href: "/manager/inspectors", label: "Inspectors" },
-  { href: "/manager/models", label: "Models" },
-  { href: "/manager/reports", label: "Reports" },
-];
+import { NAV_ITEMS } from "./nav-items";
 
 /**
  * Phase 12: the left sidebar, restored after the Phase 11 top-tab
@@ -46,7 +38,7 @@ export function SidebarNav() {
               href={item.href}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-start gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 // Phase 13: the old bg-brand-surface active state (a very
                 // pale near-white tint) was too faint to read as "this is
                 // where you are" at a glance -- bg-brand-blue/10 gives a
@@ -58,7 +50,17 @@ export function SidebarNav() {
                   : "border-l-4 border-l-transparent text-brand-navy/70 hover:bg-brand-surface hover:text-brand-navy"
               )}
             >
-              {item.label}
+              {/* Decorative: the label beside it is the accessible name, and an
+                  icon that repeats the text adds nothing for a screen reader
+                  while adding another thing to announce. */}
+              <item.icon
+                aria-hidden="true"
+                className={cn(
+                  "mt-0.5 size-4 shrink-0",
+                  isActive ? "text-brand-blue" : "text-brand-navy/40"
+                )}
+              />
+              <span>{item.label}</span>
             </Link>
           );
         })}

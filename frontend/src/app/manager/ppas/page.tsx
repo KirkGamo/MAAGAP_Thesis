@@ -16,6 +16,7 @@ import type { MapProject } from "../map/types";
 import { PpasDataTable } from "./data-table";
 import { ppaColumns } from "./columns";
 import { RISK_TIERS, STATUSES, PROJECT_TYPES, applyPpaFilters, type PpaFilterParams } from "./filters";
+import { FolderKanban } from "lucide-react";
 
 // Table view is paginated for real (see PAGE_SIZE below) -- this used to be
 // a flat `.limit(200)` with no way to reach project #201 onward, which
@@ -214,6 +215,7 @@ export default async function PpasPage({ searchParams }: PpasPageProps) {
           rather than hold its longest line. */}
       <PageHeader
         title="Program, Projects, and Activities (PPAs)"
+        icon={FolderKanban}
         description="Every tracked PPA, filterable by name, risk tier, status, project type, municipality, budget, and risk probability — as a table or on the map."
         actions={
           <div className="flex items-center gap-3">

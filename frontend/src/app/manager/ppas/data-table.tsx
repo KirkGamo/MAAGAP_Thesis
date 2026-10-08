@@ -11,7 +11,7 @@ import {
   type ColumnDef,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { Download, SlidersHorizontal, Check } from "lucide-react";
+import { Check, Download, SearchX, SlidersHorizontal } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PpaSearchBar } from "./ppa-search-bar";
 import { PpaControlsToggle } from "./controls-visibility";
+import { EmptyState } from "@/components/empty-state";
 
 export interface PpaTableParams {
   q?: string;
@@ -267,7 +268,11 @@ export function PpasDataTable<TData extends { id: string }>({
             ) : (
               <TableRow>
                 <TableCell colSpan={visibleColumnCount} className="p-5 text-center text-ink-faint">
-                  No projects match the current filters.
+                  <EmptyState
+                    icon={SearchX}
+                    title="No projects match the current filters"
+                    hint="Clear a filter or widen the search to see more of the portfolio."
+                  />
                 </TableCell>
               </TableRow>
             )}

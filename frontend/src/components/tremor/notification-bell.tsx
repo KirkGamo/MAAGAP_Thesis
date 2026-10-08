@@ -31,7 +31,7 @@ export function NotificationBell() {
             "text-brand-navy/70 transition-colors hover:bg-brand-surface hover:text-brand-navy"
           )}
         >
-          <Bell className="size-4" />
+          <Bell aria-hidden="true" className="size-4" />
         </button>
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

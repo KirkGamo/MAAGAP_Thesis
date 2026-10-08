@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Metric, MetricLabel } from "@/components/tremor/metric";
 import { mlServiceFetch } from "@/lib/ml-service";
 import { PageHeader } from "@/components/page-header";
+import { Brain } from "lucide-react";
 
 interface TreeModelMetrics {
   test_metrics: { accuracy: number; precision: number; recall: number; f1: number; auc_roc: number };
@@ -162,6 +163,7 @@ export default async function ModelsPage() {
       <div className="flex flex-col gap-6">
         <PageHeader
         title="Models"
+        icon={Brain}
         description="Validation performance from the most recent training run."
       />
         <Card>
@@ -207,6 +209,7 @@ export default async function ModelsPage() {
       <div className="flex flex-col gap-4">
         <PageHeader
           title="Models"
+        icon={Brain}
           description="Validation performance from the most recent training run."
         />
         {basis && <DeployedReality basis={basis} />}
@@ -240,6 +243,7 @@ export default async function ModelsPage() {
     <div className="flex flex-col gap-3">
       <PageHeader
         title="Models"
+        icon={Brain}
         description="Validation performance from the most recent training run."
       />
 

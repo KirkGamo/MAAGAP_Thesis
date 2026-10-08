@@ -8,6 +8,7 @@ import { ReportList, type ReportListItem } from "./report-list";
 import { parseReportSort, sortReports } from "./lib/sort";
 import { PageHeader } from "@/components/page-header";
 import { ReportDetail, type ReportDetailData } from "./report-detail";
+import { ClipboardList } from "lucide-react";
 
 const MONITORING_PHOTOS_BUCKET = "monitoring-photos";
 const SIGNED_URL_TTL_SECONDS = 60 * 10; // only needs to outlive one page render
@@ -204,6 +205,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     <div className="flex flex-col gap-3 lg:h-[calc(100dvh-7.25rem)] lg:min-h-135 lg:overflow-hidden">
       <PageHeader
         title="Reports"
+        icon={ClipboardList}
         description={headline}
         density="compact"
         actions={<ReportsFilters inspectors={inspectors ?? []} />}

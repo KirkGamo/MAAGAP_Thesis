@@ -18,6 +18,7 @@ import type { ScheduleMapPoint } from "./schedule-map";
 import { mlServiceFetch } from "@/lib/ml-service";
 import { PageHeader } from "@/components/page-header";
 import { daysOverCapacity } from "./capacity";
+import { CalendarDays } from "lucide-react";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
 
@@ -381,6 +382,7 @@ export default async function SchedulePage({ searchParams }: SchedulePageProps) 
       {/* ---- Top strip: identity, status, scorecard, actions ---- */}
       <PageHeader
         title="Schedule"
+        icon={CalendarDays}
         description={headerCaption}
         density="compact"
         actions={
